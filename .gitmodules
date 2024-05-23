@@ -1,0 +1,3 @@
+[submodule "t8code"]
+	path = t8code
+	url = https://github.com/DLR-AMR/t8code.git
