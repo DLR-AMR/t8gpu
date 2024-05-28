@@ -29,13 +29,15 @@ private:
   t8_cmesh_t       cmesh;
   t8_forest_t      forest;
 
-  std::vector<double>             element_data;
-  std::vector<std::array<int, 4>> element_neighbors;
+  std::vector<double>               element_data;
+  std::vector<std::array<int,2>>    face_neighbors;
+  std::vector<std::array<double,2>> face_normals;
 
   double delta_x;
   double delta_t;
 
   double* device_element_data_input;
   double* device_element_data_output;
-  int*    device_element_neighbors;
+  int*    device_face_neighbors;
+  double* device_face_normals;
  };

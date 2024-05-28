@@ -13,12 +13,18 @@
 
 static constexpr size_t num_faces = 4;
 
+static constexpr double normals[4][2] = {
+					 {-1.0,  0.0},
+					 { 1.0,  0.0},
+					 { 0.0, -1.0},
+					 { 0.0,  1.0}
+};
+
 advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 					   cmesh(t8_cmesh_new_periodic(comm, dim)),
 					   scheme(t8_scheme_new_default_cxx()),
 					   forest(t8_forest_new_uniform(cmesh, scheme, level, false, comm)),
 					   element_data(t8_forest_get_local_num_elements(forest)),
-					   element_neighbors(element_data.size()),
 					   delta_x(std::pow(0.5, level)),
 					   delta_t(1.0*delta_x) {
 
@@ -45,7 +51,11 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 
 	t8_forest_leaf_face_neighbors(forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors,
 				      &neighbor_ids, &neigh_scheme, 1);
-	element_neighbors[element_idx][face_idx] = neighbor_ids[0];
+
+	if (neighbor_ids[0] > element_idx) {
+	  face_neighbors.push_back(std::array<int,2>{element_idx, neighbor_ids[0]});
+	  face_normals.push_back(std::array<double,2>{normals[face_idx][0], normals[face_idx][1]});
+	}
 
 	T8_FREE(neighbors);
 	T8_FREE(dual_faces);
@@ -58,10 +68,12 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 
   cudaMalloc(&device_element_data_input, sizeof(double)*num_local_elements);
   cudaMalloc(&device_element_data_output, sizeof(double)*num_local_elements);
-  cudaMalloc(&device_element_neighbors, sizeof(int)*num_local_elements*num_faces);
+  cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2);
+  cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2);
 
   cudaMemcpy(device_element_data_output, element_data.data(), num_local_elements*sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_element_neighbors, element_neighbors.data(), num_local_elements*num_faces*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(device_face_neighbors, face_neighbors.data(), face_neighbors.size()*2*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(device_face_normals, face_normals.data(), face_normals.size()*2*sizeof(double), cudaMemcpyHostToDevice);
 }
 
 advection_solver_t::~advection_solver_t() {
@@ -70,37 +82,39 @@ advection_solver_t::~advection_solver_t() {
 
   cudaFree(device_element_data_input);
   cudaFree(device_element_data_output);
-  cudaFree(device_element_neighbors);
+  cudaFree(device_face_neighbors);
+  cudaFree(device_face_normals);
 }
 
-__global__ static void advect(double const* __restrict__ in, double* __restrict__ out, int* n_idx, double delta_t, double delta_x) {
-  double normals[4][2] = {
-			  {-1.0,  0.0},
-			  { 1.0,  0.0},
-			  { 0.0, -1.0},
-			  { 0.0,  1.0}
-  };
+__global__ static void exchange_fluxes(double const* __restrict__ in,
+				       double* __restrict__ out,
+				       double const* __restrict__ normal,
+				       int const* e_idx,
+				       double delta_t, double delta_x) {
 
   double a[2] = {0.5*sqrt(2.0), 0.5*sqrt(2.0)};
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-  double result = in[i];
-  for (int j=0; j<4; j++) {
-    double coeff = delta_t/delta_x*(a[0]*normals[j][0]+a[1]*normals[j][1]);
-    if (coeff < 0.0) {
-      result -= coeff*in[n_idx[4*i+j]];
-    } else {
-      result -= coeff*in[i];
-    }
+  double flux = delta_t/delta_x*(a[0]*normal[2*i]+a[1]*normal[2*i+1]);
+
+  if (flux > 0.0) {
+    flux *= in[e_idx[2*i]];
+  } else {
+    flux *= in[e_idx[2*i+1]];
   }
 
-  out[i] = result;
+  atomicAdd(&out[e_idx[2*i]], -flux);
+  atomicAdd(&out[e_idx[2*i+1]], flux);
 }
 
 void advection_solver_t::iterate() {
-  std::swap(device_element_data_input, device_element_data_output);
-  advect<<<element_data.size(), 1>>>(device_element_data_input, device_element_data_output, device_element_neighbors, delta_t, delta_x);
+  cudaMemcpy(device_element_data_input, device_element_data_output, element_data.size()*sizeof(double), cudaMemcpyDeviceToDevice);
+  exchange_fluxes<<<face_neighbors.size(), 1>>>(device_element_data_input,
+						device_element_data_output,
+						device_face_normals,
+						device_face_neighbors,
+						delta_t, delta_x);
 }
 
 void advection_solver_t::save_vtk(const std::string& prefix) {
