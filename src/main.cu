@@ -16,7 +16,7 @@ int main(int argc, char* argv[]) {
 
     advection_solver.save_vtk("advection_step_00000");
 
-    for (size_t i=0; i<22; i++) {
+    for (size_t i=0; i<60; i++) {
       advection_solver.iterate();
 
       char buffer[256];

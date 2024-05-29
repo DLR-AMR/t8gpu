@@ -37,7 +37,7 @@ private:
 
   // face data
   std::vector<std::array<double,2>> face_normals;
-  std::vector<double>               face_surface;
+  std::vector<double>               face_area;
 
   double delta_t;
 
@@ -48,5 +48,5 @@ private:
 
   int*    device_face_neighbors;
   double* device_face_normals;
-  double* device_face_surface;
+  double* device_face_area;
  };

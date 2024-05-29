@@ -18,7 +18,7 @@ target_sources(miniapp PRIVATE
 target_include_directories(miniapp PRIVATE src)
 
 target_compile_features(miniapp PRIVATE cxx_std_20)
-target_compile_options(miniapp PRIVATE -Wall -Wextra)
+target_compile_options(miniapp PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
 target_link_libraries(miniapp PRIVATE T8CODE::T8)
 
