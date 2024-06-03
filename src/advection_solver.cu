@@ -46,7 +46,7 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 					   forest(t8_forest_new_uniform(cmesh, scheme, level, false, comm)),
 					   element_variable(t8_forest_get_local_num_elements(forest)),
 					   element_volume(t8_forest_get_local_num_elements(forest)),
-					   delta_t(0.8*std::pow(0.5, level+1)) {
+					   delta_t(1.0*std::pow(0.5, level+1) / sqrt(2.0)) {
 
   t8_forest_t new_forest = t8_forest_new_adapt(forest, adapt_callback, 0, 0, nullptr);
   forest = new_forest;
