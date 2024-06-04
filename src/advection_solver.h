@@ -21,6 +21,7 @@ class advection_solver_t {
   void save_vtk(const std::string& prefix);
 
   void iterate();
+  void adapt();
 
 private:
   sc_MPI_Comm      comm;
