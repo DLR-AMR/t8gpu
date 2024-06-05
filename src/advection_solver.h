@@ -13,7 +13,8 @@
 class advection_solver_t {
  public:
   static constexpr size_t dim = 2;
-  static constexpr t8_locidx_t level = 4;
+  static constexpr t8_locidx_t min_level = 3;
+  static constexpr t8_locidx_t max_level = 7;
 
   advection_solver_t();
   ~advection_solver_t();
@@ -24,6 +25,8 @@ class advection_solver_t {
   void adapt();
 
 private:
+  void compute_edge_information();
+
   sc_MPI_Comm      comm;
   t8_scheme_cxx_t* scheme;
   t8_cmesh_t       cmesh;
@@ -34,7 +37,7 @@ private:
   std::vector<double>               element_volume;
 
   // face connectivity
-  std::vector<std::array<int,2>>    face_neighbors;
+  std::vector<std::array<t8_locidx_t,2>>    face_neighbors;
 
   // face data
   std::vector<std::array<double,2>> face_normals;

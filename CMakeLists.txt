@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_CUDA_ARCHITECTURES 86)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 project(T8CODE_GPU_MINIAPP
   DESCRIPTION "A miniapp to test using t8code meshing capabilities in tandem with GPUs"
@@ -17,8 +21,11 @@ target_sources(miniapp PRIVATE
   src/advection_solver.cu)
 target_include_directories(miniapp PRIVATE src)
 
-target_compile_features(miniapp PRIVATE cxx_std_20)
 target_compile_options(miniapp PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+# embed kernel source code debug info in the binary
+target_compile_options(miniapp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>)
+set_property(TARGET miniapp PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 target_link_libraries(miniapp PRIVATE T8CODE::T8)
 

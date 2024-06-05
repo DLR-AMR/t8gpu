@@ -12,9 +12,6 @@
 #include <t8_forest/t8_forest_iterate.h>
 #include <t8_schemes/t8_default/t8_default_cxx.hxx>
 
-#define MAX_LEVEL 7
-#define MIN_LEVEL 2
-
 struct forest_user_data_t {
   std::vector<double>* element_variable;
   std::vector<double>* element_volume;
@@ -27,7 +24,7 @@ int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t
 
   double b = 0.02;
 
-  if (element_level < MAX_LEVEL) {
+  if (element_level < advection_solver_t::max_level) {
     double center[3];
     t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
@@ -36,7 +33,7 @@ int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t
     if (std::abs(variable) < b)
       return 1;
   }
-  if (element_level > MIN_LEVEL && is_family) {
+  if (element_level > advection_solver_t::min_level && is_family) {
     double center[] = {0.0, 0.0, 0.0};
     double current_element_center[] = {0.0, 0.0, 0.0};
     for (size_t i=0; i<4; i++) {
@@ -64,7 +61,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
   double b = 1.0;
   double h = std::pow(0.5, element_level);
 
-  if (element_level < MAX_LEVEL) {
+  if (element_level < advection_solver_t::max_level) {
     double center[3];
     t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
@@ -74,7 +71,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
       return 1;
     }
   }
-  if (element_level > MIN_LEVEL && is_family) {
+  if (element_level > advection_solver_t::min_level && is_family) {
     double variable = 0.0;
     for (size_t i=0; i<4; i++) {
       variable += (*forest_user_data->element_variable)[lelement_id + i] / 4.0;
@@ -109,7 +106,7 @@ void iterate_replace_callback(t8_forest_t forest_old, t8_forest_t forest_new, t8
   else if (refine == 1) {
     for (int i = 0; i < num_incoming; i++) {
       (*forest_user_data_new->element_variable)[first_incoming + i] = (*forest_user_data_old->element_variable)[first_outgoing];
-      (*forest_user_data_new->element_volume)[first_incoming + i] = (*forest_user_data_old->element_volume)[first_outgoing];
+      (*forest_user_data_new->element_volume)[first_incoming + i] = (*forest_user_data_old->element_volume)[first_outgoing] / 4.0;
     }
   }
   /* Old element is coarsened */
@@ -129,7 +126,7 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 					   forest(t8_forest_new_uniform(cmesh, scheme, 6, false, comm)),
 					   element_variable(t8_forest_get_local_num_elements(forest)),
 					   element_volume(t8_forest_get_local_num_elements(forest)),
-					   delta_t(1.0*std::pow(0.5, MAX_LEVEL) / sqrt(2.0)) {
+					   delta_t(1.0*std::pow(0.5, max_level) / sqrt(2.0)) {
 
   t8_forest_t new_forest;
   t8_forest_init(&new_forest);
@@ -173,7 +170,7 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 	if ((num_neighbors == 1) && ((neighbor_ids[0] > element_idx) ||
 				     (neighbor_ids[0] < element_idx  && neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)
 				      ))) {
-	  face_neighbors.push_back(std::array<int,2>{element_idx, neighbor_ids[0]});
+	  face_neighbors.push_back(std::array<t8_locidx_t,2>{element_idx, neighbor_ids[0]});
 	  double face_normal[3];
 	  t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
 	  face_normals.push_back(std::array<double,2>{face_normal[0], face_normal[1]});
@@ -247,51 +244,7 @@ void advection_solver_t::adapt() {
 
   forest = adapted_forest;
 
-  face_neighbors.clear();
-  face_normals.clear();
-  face_area.clear();
-  // TODO: make a function of the following code that can be reused in the initialization code as well
-  t8_locidx_t num_local_elements = element_variable.size();
-
-  t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
-  t8_locidx_t element_idx = 0;
-  for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t tree_class = t8_forest_get_tree_class (forest, tree_idx);
-    t8_eclass_scheme_c *eclass_scheme = t8_forest_get_eclass_scheme(forest, tree_class);
-
-    t8_locidx_t num_elements_in_tree = t8_forest_get_tree_num_elements(forest, tree_idx);
-    for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      const t8_element_t* element = t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx);
-
-      size_t num_faces = static_cast<size_t>(eclass_scheme->t8_element_num_faces(element));
-      for (size_t face_idx=0; face_idx < num_faces; face_idx++) {
-	int num_neighbors;
-	int* dual_faces;
-	t8_locidx_t* neighbor_ids;
-	t8_element_t** neighbors;
-	t8_eclass_scheme_c* neigh_scheme;
-
-	t8_forest_leaf_face_neighbors(forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors,
-				      &neighbor_ids, &neigh_scheme, true);
-
-	if ((num_neighbors == 1) && ((neighbor_ids[0] > element_idx) ||
-				     (neighbor_ids[0] < element_idx  && neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)
-				      ))) {
-	  face_neighbors.push_back(std::array<int,2>{element_idx, neighbor_ids[0]});
-	  double face_normal[3];
-	  t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
-	  face_normals.push_back(std::array<double,2>{face_normal[0], face_normal[1]});
-	  face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx));
-	}
-
-	T8_FREE(neighbors);
-	T8_FREE(dual_faces);
-	T8_FREE(neighbor_ids);
-      }
-
-      element_idx++;
-    }
-  }
+  compute_edge_information();
 
   // TODO: do more clever reallocation
   cudaFree(device_element_variable_prev);
@@ -362,7 +315,7 @@ __global__ static void compute_fluxes(double const* __restrict__ variable,
 
 __global__ static void explicit_euler_time_step(double const* __restrict__ variable_prev,
 						double* __restrict__ variable_next,
-						double const * __restrict__ volume,
+						double const* __restrict__ volume,
 						double* __restrict__ fluxes,
 						double delta_t) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -394,8 +347,56 @@ void advection_solver_t::save_vtk(const std::string& prefix) {
 
   t8_vtk_data_field_t vtk_data_field =  {};
   vtk_data_field.type = T8_VTK_SCALAR;
-  strcpy(vtk_data_field.description, "diffusion variable");
+  strcpy(vtk_data_field.description, "advection variable");
   vtk_data_field.data = element_variable.data();
 
   t8_forest_write_vtk_ext(forest, prefix.c_str(), 1, 1, 1, 1, 0, 0, 0, 1, &vtk_data_field);
+}
+
+void advection_solver_t::compute_edge_information() {
+  face_neighbors.clear();
+  face_normals.clear();
+  face_area.clear();
+
+  t8_locidx_t num_local_elements = t8_forest_get_local_num_elements(forest);
+
+  t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
+  t8_locidx_t element_idx = 0;
+  for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
+    t8_eclass_t tree_class = t8_forest_get_tree_class (forest, tree_idx);
+    t8_eclass_scheme_c *eclass_scheme = t8_forest_get_eclass_scheme(forest, tree_class);
+
+    t8_locidx_t num_elements_in_tree = t8_forest_get_tree_num_elements(forest, tree_idx);
+    for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
+      const t8_element_t* element = t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx);
+
+      size_t num_faces = static_cast<size_t>(eclass_scheme->t8_element_num_faces(element));
+      for (size_t face_idx=0; face_idx < num_faces; face_idx++) {
+	int num_neighbors;
+	int* dual_faces;
+	t8_locidx_t* neighbor_ids;
+	t8_element_t** neighbors;
+	t8_eclass_scheme_c* neigh_scheme;
+
+	t8_forest_leaf_face_neighbors(forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors,
+				      &neighbor_ids, &neigh_scheme, true);
+
+	if ((num_neighbors == 1) && ((neighbor_ids[0] > element_idx) ||
+				     (neighbor_ids[0] < element_idx  && neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)
+				      ))) {
+	  face_neighbors.push_back(std::array<t8_locidx_t,2>{element_idx, neighbor_ids[0]});
+	  double face_normal[3];
+	  t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
+	  face_normals.push_back(std::array<double,2>{face_normal[0], face_normal[1]});
+	  face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx));
+	}
+
+	T8_FREE(neighbors);
+	T8_FREE(dual_faces);
+	T8_FREE(neighbor_ids);
+      }
+
+      element_idx++;
+    }
+  }
 }
