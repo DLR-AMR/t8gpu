@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ADVECTION_SOLVER_H
+#define ADVECTION_SOLVER_H
 
 #include <array>
 #include <vector>
@@ -54,3 +55,5 @@ private:
   double* device_face_normals;
   double* device_face_area;
  };
+
+#endif // ADVECTION_SOLVER_H

@@ -1,4 +1,5 @@
 #include <advection_solver.h>
+#include <cuda_utils.h>
 
 #include <cassert>
 #include <cmath>
@@ -7,7 +8,6 @@
 #include <t8.h>
 #include <t8_cmesh.h>
 #include <t8_cmesh/t8_cmesh_examples.h>
-
 #include <t8_forest/t8_forest.h>
 #include <t8_forest/t8_forest_iterate.h>
 #include <t8_schemes/t8_default/t8_default_cxx.hxx>
@@ -186,22 +186,22 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
     }
   }
 
-  cudaMalloc(&device_element_variable_prev, sizeof(double)*num_local_elements);
-  cudaMalloc(&device_element_variable_next, sizeof(double)*num_local_elements);
-  cudaMalloc(&device_element_fluxes, sizeof(double)*num_local_elements);
-  cudaMalloc(&device_element_volume, sizeof(double)*num_local_elements);
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_prev, sizeof(double)*num_local_elements));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_next, sizeof(double)*num_local_elements));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_fluxes, sizeof(double)*num_local_elements));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_volume, sizeof(double)*num_local_elements));
 
-  cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2);
-  cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2);
-  cudaMalloc(&device_face_area, sizeof(double)*face_normals.size()*2);
+  CUDA_CHECK_ERROR(cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_face_area, sizeof(double)*face_normals.size()*2));
 
-  cudaMemcpy(device_element_variable_next, element_variable.data(), element_variable.size()*sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_element_volume, element_volume.data(), element_volume.size()*sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemset(device_element_fluxes, 0, element_variable.size());
+  CUDA_CHECK_ERROR(cudaMemcpy(device_element_variable_next, element_variable.data(), element_variable.size()*sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemcpy(device_element_volume, element_volume.data(), element_volume.size()*sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes, 0, element_variable.size()));
 
-  cudaMemcpy(device_face_neighbors, face_neighbors.data(), face_neighbors.size()*2*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_face_normals, face_normals.data(), face_normals.size()*2*sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_face_area, face_area.data(), face_area.size()*2*sizeof(double), cudaMemcpyHostToDevice);
+  CUDA_CHECK_ERROR(cudaMemcpy(device_face_neighbors, face_neighbors.data(), face_neighbors.size()*2*sizeof(int), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemcpy(device_face_normals, face_normals.data(), face_normals.size()*2*sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemcpy(device_face_area, face_area.data(), face_area.size()*2*sizeof(double), cudaMemcpyHostToDevice));
 
   // TODO: remove allocation out of RAII paradigm
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
@@ -211,7 +211,7 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 }
 
 void advection_solver_t::adapt() {
-  cudaMemcpy(element_variable.data(), device_element_variable_next, element_variable.size()*sizeof(double), cudaMemcpyDeviceToHost);
+  CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element_variable_next, element_variable.size()*sizeof(double), cudaMemcpyDeviceToHost));
   cudaDeviceSynchronize();
 
   t8_forest_ref(forest);
@@ -247,31 +247,31 @@ void advection_solver_t::adapt() {
   compute_edge_information();
 
   // TODO: do more clever reallocation
-  cudaFree(device_element_variable_prev);
-  cudaFree(device_element_variable_next);
-  cudaFree(device_element_fluxes);
-  cudaFree(device_element_volume);
+  CUDA_CHECK_ERROR(cudaFree(device_element_variable_prev));
+  CUDA_CHECK_ERROR(cudaFree(device_element_variable_next));
+  CUDA_CHECK_ERROR(cudaFree(device_element_fluxes));
+  CUDA_CHECK_ERROR(cudaFree(device_element_volume));
 
-  cudaFree(device_face_neighbors);
-  cudaFree(device_face_normals);
-  cudaFree(device_face_area);
+  CUDA_CHECK_ERROR(cudaFree(device_face_neighbors));
+  CUDA_CHECK_ERROR(cudaFree(device_face_normals));
+  CUDA_CHECK_ERROR(cudaFree(device_face_area));
 
-  cudaMalloc(&device_element_variable_prev, sizeof(double)*element_variable.size());
-  cudaMalloc(&device_element_variable_next, sizeof(double)*element_variable.size());
-  cudaMalloc(&device_element_fluxes, sizeof(double)*element_variable.size());
-  cudaMalloc(&device_element_volume, sizeof(double)*element_variable.size());
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_prev, sizeof(double)*element_variable.size()));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_next, sizeof(double)*element_variable.size()));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_fluxes, sizeof(double)*element_variable.size()));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_volume, sizeof(double)*element_variable.size()));
 
-  cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2);
-  cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2);
-  cudaMalloc(&device_face_area, sizeof(double)*face_normals.size()*2);
+  CUDA_CHECK_ERROR(cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_face_area, sizeof(double)*face_normals.size()*2));
 
-  cudaMemcpy(device_element_variable_next, element_variable.data(), element_variable.size()*sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_element_volume, element_volume.data(), element_volume.size()*sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemset(device_element_fluxes, 0, element_variable.size());
+  CUDA_CHECK_ERROR(cudaMemcpy(device_element_variable_next, element_variable.data(), element_variable.size()*sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemcpy(device_element_volume, element_volume.data(), element_volume.size()*sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes, 0, element_variable.size()));
 
-  cudaMemcpy(device_face_neighbors, face_neighbors.data(), face_neighbors.size()*2*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_face_normals, face_normals.data(), face_normals.size()*2*sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_face_area, face_area.data(), face_area.size()*2*sizeof(double), cudaMemcpyHostToDevice);
+  CUDA_CHECK_ERROR(cudaMemcpy(device_face_neighbors, face_neighbors.data(), face_neighbors.size()*2*sizeof(int), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemcpy(device_face_normals, face_normals.data(), face_normals.size()*2*sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_CHECK_ERROR(cudaMemcpy(device_face_area, face_area.data(), face_area.size()*2*sizeof(double), cudaMemcpyHostToDevice));
 }
 
 advection_solver_t::~advection_solver_t() {
@@ -281,14 +281,14 @@ advection_solver_t::~advection_solver_t() {
   t8_forest_unref(&forest);
   t8_cmesh_destroy(&cmesh);
 
-  cudaFree(device_element_variable_prev);
-  cudaFree(device_element_variable_next);
-  cudaFree(device_element_fluxes);
-  cudaFree(device_element_volume);
+  CUDA_CHECK_ERROR(cudaFree(device_element_variable_prev));
+  CUDA_CHECK_ERROR(cudaFree(device_element_variable_next));
+  CUDA_CHECK_ERROR(cudaFree(device_element_fluxes));
+  CUDA_CHECK_ERROR(cudaFree(device_element_volume));
 
-  cudaFree(device_face_neighbors);
-  cudaFree(device_face_normals);
-  cudaFree(device_face_area);
+  CUDA_CHECK_ERROR(cudaFree(device_face_neighbors));
+  CUDA_CHECK_ERROR(cudaFree(device_face_normals));
+  CUDA_CHECK_ERROR(cudaFree(device_face_area));
 }
 
 __global__ static void compute_fluxes(double const* __restrict__ variable,
@@ -342,7 +342,7 @@ void advection_solver_t::iterate() {
 }
 
 void advection_solver_t::save_vtk(const std::string& prefix) {
-  cudaMemcpy(element_variable.data(), device_element_variable_next, element_variable.size()*sizeof(double), cudaMemcpyDeviceToHost);
+  CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element_variable_next, element_variable.size()*sizeof(double), cudaMemcpyDeviceToHost));
   cudaDeviceSynchronize();
 
   t8_vtk_data_field_t vtk_data_field =  {};
