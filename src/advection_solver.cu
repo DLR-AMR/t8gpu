@@ -295,11 +295,14 @@ __global__ static void compute_fluxes(double const* __restrict__ variable,
 				      double* __restrict__ fluxes,
 				      double const* __restrict__ normal,
 				      double const* __restrict__ area,
-				      int const* e_idx) {
+				      int const* e_idx,
+				      int nb_edges) {
 
   double a[2] = {0.5*sqrt(2.0), 0.5*sqrt(2.0)};
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= nb_edges)
+    return;
 
   double flux = area[i]*(a[0]*normal[2*i]+a[1]*normal[2*i+1]);
 
@@ -317,8 +320,12 @@ __global__ static void explicit_euler_time_step(double const* __restrict__ varia
 						double* __restrict__ variable_next,
 						double const* __restrict__ volume,
 						double* __restrict__ fluxes,
-						double delta_t) {
+						double delta_t,
+						int nb_elements) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i >= nb_elements)
+    return;
 
   variable_next[i] = variable_prev[i] + delta_t/volume[i]*fluxes[i];
 
@@ -328,18 +335,23 @@ __global__ static void explicit_euler_time_step(double const* __restrict__ varia
 void advection_solver_t::iterate() {
   std::swap(device_element_variable_next, device_element_variable_prev);
 
-  compute_fluxes<<<face_area.size(), 1>>>(device_element_variable_prev,
-					     device_element_fluxes,
-					     device_face_normals,
-					     device_face_area,
-					     device_face_neighbors);
+  constexpr int thread_block_size = 256;
+  const int fluxes_num_blocks = face_area.size() / thread_block_size + (face_area.size() % thread_block_size != 0);
+  compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(device_element_variable_prev,
+							   device_element_fluxes,
+							   device_face_normals,
+							   device_face_area,
+							   device_face_neighbors,
+							   face_neighbors.size());
   CUDA_CHECK_LAST_ERROR();
 
-  explicit_euler_time_step<<<element_volume.size(),1>>>(device_element_variable_prev,
-							device_element_variable_next,
-							device_element_volume,
-							device_element_fluxes,
-							delta_t);
+  const int euler_num_blocks = element_variable.size() / thread_block_size + (element_variable.size() % thread_block_size != 0);
+  explicit_euler_time_step<<<euler_num_blocks, thread_block_size>>>(device_element_variable_prev,
+								    device_element_variable_next,
+								    device_element_volume,
+								    device_element_fluxes,
+								    delta_t,
+								    element_variable.size());
   CUDA_CHECK_LAST_ERROR();
 }
 
