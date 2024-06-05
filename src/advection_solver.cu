@@ -333,12 +333,14 @@ void advection_solver_t::iterate() {
 					     device_face_normals,
 					     device_face_area,
 					     device_face_neighbors);
+  CUDA_CHECK_LAST_ERROR();
 
   explicit_euler_time_step<<<element_volume.size(),1>>>(device_element_variable_prev,
 							device_element_variable_next,
 							device_element_volume,
 							device_element_fluxes,
 							delta_t);
+  CUDA_CHECK_LAST_ERROR();
 }
 
 void advection_solver_t::save_vtk(const std::string& prefix) {
