@@ -36,6 +36,7 @@ private:
   // element data
   std::vector<double>               element_variable;
   std::vector<double>               element_volume;
+  std::vector<double>               element_refinement_criteria;
 
   // face connectivity
   std::vector<std::array<t8_locidx_t,2>>    face_neighbors;
@@ -50,6 +51,7 @@ private:
   double* device_element_variable_next;
   double* device_element_fluxes;
   double* device_element_volume;
+  double* device_element_refinement_criteria;
 
   int*    device_face_neighbors;
   double* device_face_normals;

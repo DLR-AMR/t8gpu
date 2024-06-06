@@ -13,8 +13,7 @@
 #include <t8_schemes/t8_default/t8_default_cxx.hxx>
 
 struct forest_user_data_t {
-  std::vector<double>* element_variable;
-  std::vector<double>* element_volume;
+  std::vector<double>* element_refinement_criteria;
 };
 
 int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id,
@@ -65,7 +64,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
     double center[3];
     t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
-    double variable = (*forest_user_data->element_variable)[lelement_id];
+    double variable = (*forest_user_data->element_refinement_criteria)[lelement_id];
 
     if (std::abs(variable) < b*h) {
       return 1;
@@ -74,7 +73,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
   if (element_level > advection_solver_t::min_level && is_family) {
     double variable = 0.0;
     for (size_t i=0; i<4; i++) {
-      variable += (*forest_user_data->element_variable)[lelement_id + i] / 4.0;
+      variable += (*forest_user_data-> element_refinement_criteria)[lelement_id + i] / 4.0;
     }
 
     if (std::abs(variable) > (2*h)*b) {
@@ -83,41 +82,6 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
   }
 
   return 0;
-}
-
-
-void iterate_replace_callback(t8_forest_t forest_old, t8_forest_t forest_new, t8_locidx_t which_tree,
-			      t8_eclass_scheme_c* ts, const int refine, const int num_outgoing,
-			      t8_locidx_t first_outgoing, const int num_incoming,
-			      t8_locidx_t first_incoming) {
-
-  forest_user_data_t* forest_user_data_new = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest_new));
-  forest_user_data_t* forest_user_data_old = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest_old));
-
-  first_incoming += t8_forest_get_tree_element_offset(forest_new, which_tree);
-  first_outgoing += t8_forest_get_tree_element_offset(forest_old, which_tree);
-
-  /* Do not adapt or coarsen */
-  if (refine == 0) {
-    (*forest_user_data_new->element_variable)[first_incoming] = (*forest_user_data_old->element_variable)[first_outgoing];
-    (*forest_user_data_new->element_volume)[first_incoming] = (*forest_user_data_old->element_volume)[first_outgoing];
-  }
-  /* The old element is refined, we copy the element values */
-  else if (refine == 1) {
-    for (int i = 0; i < num_incoming; i++) {
-      (*forest_user_data_new->element_variable)[first_incoming + i] = (*forest_user_data_old->element_variable)[first_outgoing];
-      (*forest_user_data_new->element_volume)[first_incoming + i] = (*forest_user_data_old->element_volume)[first_outgoing] / 4.0;
-    }
-  }
-  /* Old element is coarsened */
-  else if (refine == -1) {
-    double tmp_variable = 0.0;
-    for (t8_locidx_t i = 0; i < num_outgoing; i++) {
-      tmp_variable += (*forest_user_data_old->element_variable)[first_outgoing + i] / 4.0;
-    }
-    (*forest_user_data_new->element_variable)[first_incoming] = tmp_variable;
-    (*forest_user_data_new->element_volume)[first_incoming] = (*forest_user_data_old->element_volume)[first_outgoing] * 4.0;
-  }
 }
 
 advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
@@ -137,6 +101,7 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 
   element_variable.resize(t8_forest_get_local_num_elements(forest));
   element_volume.resize(t8_forest_get_local_num_elements(forest));
+  element_refinement_criteria.resize(t8_forest_get_local_num_elements(forest));
 
   t8_locidx_t num_local_elements = element_variable.size();
 
@@ -190,6 +155,7 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
   CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_next, sizeof(double)*num_local_elements));
   CUDA_CHECK_ERROR(cudaMalloc(&device_element_fluxes, sizeof(double)*num_local_elements));
   CUDA_CHECK_ERROR(cudaMalloc(&device_element_volume, sizeof(double)*num_local_elements));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_refinement_criteria, sizeof(double)*num_local_elements));
 
   CUDA_CHECK_ERROR(cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2));
   CUDA_CHECK_ERROR(cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2));
@@ -205,13 +171,30 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 
   // TODO: remove allocation out of RAII paradigm
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
-  forest_user_data->element_variable = &element_variable;
-  forest_user_data->element_volume = &element_volume;
+  forest_user_data->element_refinement_criteria = &element_refinement_criteria;
   t8_forest_set_user_data(forest, forest_user_data);
 }
 
+__global__ static void compute_refinement_criteria(double const* __restrict__ variable,
+						   double* __restrict__ criteria,
+						   int nb_elements) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i >= nb_elements)
+    return;
+
+  criteria[i] = variable[i];
+}
+
 void advection_solver_t::adapt() {
-  CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element_variable_next, element_variable.size()*sizeof(double), cudaMemcpyDeviceToHost));
+  constexpr int thread_block_size = 256;
+  const int fluxes_num_blocks = element_variable.size() / thread_block_size + (element_variable.size() % thread_block_size != 0);
+  compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(device_element_variable_next,
+									device_element_refinement_criteria,
+									element_variable.size());
+  CUDA_CHECK_LAST_ERROR();
+
+  CUDA_CHECK_ERROR(cudaMemcpy(element_refinement_criteria.data(), device_element_refinement_criteria, element_variable.size()*sizeof(double), cudaMemcpyDeviceToHost));
   cudaDeviceSynchronize();
 
   t8_forest_ref(forest);
@@ -225,21 +208,57 @@ void advection_solver_t::adapt() {
   std::vector<double> adapted_element_variable(t8_forest_get_local_num_elements(adapted_forest));
   std::vector<double> adapted_element_volume(t8_forest_get_local_num_elements(adapted_forest));
 
-  forest_user_data_t* adapted_forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
-  adapted_forest_user_data->element_variable = &adapted_element_variable;
-  adapted_forest_user_data->element_volume = &adapted_element_volume;
-  t8_forest_set_user_data(adapted_forest, adapted_forest_user_data);
+  t8_locidx_t old_idx = 0;
+  t8_locidx_t new_idx = 0;
 
-  t8_forest_iterate_replace(adapted_forest, forest, iterate_replace_callback);
+  t8_locidx_t num_new_elements = t8_forest_get_local_num_elements(adapted_forest);
+  t8_locidx_t num_old_elements = t8_forest_get_local_num_elements(forest);
+
+  while (old_idx < num_old_elements && new_idx < num_new_elements) {
+
+    t8_locidx_t old_tree, new_tree;
+    t8_element_t* old_element = t8_forest_get_element(forest, old_idx, &old_tree);
+    t8_element_t* new_element = t8_forest_get_element(adapted_forest, new_idx, &new_tree);
+
+    t8_eclass_t old_class = t8_forest_get_eclass(forest, old_tree);
+    t8_eclass_t new_class = t8_forest_get_eclass(adapted_forest, new_tree);
+
+    t8_eclass_scheme_c* old_eclass_scheme = t8_forest_get_eclass_scheme(forest, old_class);
+    t8_eclass_scheme_c* new_eclass_scheme = t8_forest_get_eclass_scheme(adapted_forest, new_class);
+
+    size_t old_level = old_eclass_scheme->t8_element_level(old_element);
+    size_t new_level = new_eclass_scheme->t8_element_level(new_element);
+
+    if (old_level < new_level) { // refined
+      for (size_t i=0; i<4; i++) {
+	adapted_element_variable[new_idx+i] = element_variable[old_idx];
+	adapted_element_volume[new_idx+i] = element_volume[old_idx] / 4.0;
+      }
+      old_idx += 1;
+      new_idx += 4;
+    } else if (old_level > new_level) { // coarsened
+      adapted_element_variable[new_idx] = 0.0;
+      adapted_element_volume[new_idx] = 0.0;
+      for (size_t i=0; i<4; i++) {
+	adapted_element_variable[new_idx] += element_variable[old_idx+i] / 4.0;
+	adapted_element_volume[new_idx] += element_volume[old_idx+i];
+      }
+      old_idx += 4;
+      new_idx += 1;
+    } else {
+      adapted_element_variable[new_idx] = element_variable[old_idx];
+      adapted_element_volume[new_idx] = element_volume[old_idx];
+
+      old_idx += 1;
+      new_idx += 1;
+    }
+  }
 
   element_variable = std::move(adapted_element_variable);
   element_volume = std::move(adapted_element_volume);
 
-  adapted_forest_user_data->element_variable = &element_variable;
-  adapted_forest_user_data->element_volume = &element_volume;
-
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
-  free(forest_user_data);
+  t8_forest_set_user_data(adapted_forest, forest_user_data);
   t8_forest_unref(&forest);
 
   forest = adapted_forest;
@@ -251,6 +270,7 @@ void advection_solver_t::adapt() {
   CUDA_CHECK_ERROR(cudaFree(device_element_variable_next));
   CUDA_CHECK_ERROR(cudaFree(device_element_fluxes));
   CUDA_CHECK_ERROR(cudaFree(device_element_volume));
+  CUDA_CHECK_ERROR(cudaFree(device_element_refinement_criteria));
 
   CUDA_CHECK_ERROR(cudaFree(device_face_neighbors));
   CUDA_CHECK_ERROR(cudaFree(device_face_normals));
@@ -260,6 +280,8 @@ void advection_solver_t::adapt() {
   CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_next, sizeof(double)*element_variable.size()));
   CUDA_CHECK_ERROR(cudaMalloc(&device_element_fluxes, sizeof(double)*element_variable.size()));
   CUDA_CHECK_ERROR(cudaMalloc(&device_element_volume, sizeof(double)*element_variable.size()));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_refinement_criteria, sizeof(double)*element_variable.size()));
+  element_refinement_criteria.resize(element_variable.size());
 
   CUDA_CHECK_ERROR(cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2));
   CUDA_CHECK_ERROR(cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2));
@@ -285,6 +307,7 @@ advection_solver_t::~advection_solver_t() {
   CUDA_CHECK_ERROR(cudaFree(device_element_variable_next));
   CUDA_CHECK_ERROR(cudaFree(device_element_fluxes));
   CUDA_CHECK_ERROR(cudaFree(device_element_volume));
+  CUDA_CHECK_ERROR(cudaFree(device_element_refinement_criteria));
 
   CUDA_CHECK_ERROR(cudaFree(device_face_neighbors));
   CUDA_CHECK_ERROR(cudaFree(device_face_normals));
