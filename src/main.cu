@@ -13,19 +13,17 @@ int main(int argc, char* argv[]) {
 
   {
     advection_solver_t advection_solver;
-    advection_solver.adapt();
 
     advection_solver.save_vtk("advection_step_00000");
 
     for (size_t i=0; i<100; i++) {
+      advection_solver.adapt();
       advection_solver.iterate();
 
       char buffer[256];
       std::snprintf(buffer, sizeof(buffer), "advection_step_%05zu", i+1);
       std::string prefix(buffer);
       advection_solver.save_vtk(prefix);
-
-      advection_solver.adapt();
     }
 
   }

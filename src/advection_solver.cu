@@ -178,12 +178,38 @@ advection_solver_t::advection_solver_t() : comm(sc_MPI_COMM_WORLD),
 __global__ static void compute_refinement_criteria(double const* __restrict__ variable,
 						   double* __restrict__ criteria,
 						   int nb_elements) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements)
     return;
 
   criteria[i] = variable[i];
+}
+
+__global__ static void adapt_variable_and_volume(double const* __restrict__ variable_old,
+						 double const* __restrict__ volume_old,
+						 double* __restrict__ variable_new,
+						 double* __restrict__ volume_new,
+						 t8_locidx_t* adapt_data,
+						 int nb_new_elements) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i >= nb_new_elements)
+    return;
+
+  int diff = adapt_data[i+1]-adapt_data[i];
+  int nb_elements_sum = max(1, diff);
+  // printf("i:%i, adapt_data[i]:%d\n", i, nb_elements_sum);
+  volume_new[i] = volume_old[adapt_data[i]]*((diff == 0 ? 0.25 : (diff == 1 ? 1.0 : 4.0)));
+  if (i > 0 && adapt_data[i-1] == adapt_data[i]) {
+    volume_new[i] = volume_old[adapt_data[i]] * 0.25;
+  }
+
+  variable_new[i] = 0.0;
+  for (int j=0; j<nb_elements_sum; j++) {
+    variable_new[i] += variable_old[adapt_data[i]+j] / static_cast<double>(nb_elements_sum);
+  }
+
 }
 
 void advection_solver_t::adapt() {
@@ -205,14 +231,15 @@ void advection_solver_t::adapt() {
   t8_forest_set_balance(adapted_forest, forest, true);
   t8_forest_commit(adapted_forest);
 
-  std::vector<double> adapted_element_variable(t8_forest_get_local_num_elements(adapted_forest));
-  std::vector<double> adapted_element_volume(t8_forest_get_local_num_elements(adapted_forest));
-
   t8_locidx_t old_idx = 0;
   t8_locidx_t new_idx = 0;
 
   t8_locidx_t num_new_elements = t8_forest_get_local_num_elements(adapted_forest);
   t8_locidx_t num_old_elements = t8_forest_get_local_num_elements(forest);
+
+  std::vector<double> adapted_element_variable(num_new_elements);
+  std::vector<double> adapted_element_volume(num_new_elements);
+  std::vector<t8_locidx_t> element_adapt_data(num_new_elements+1);
 
   while (old_idx < num_old_elements && new_idx < num_new_elements) {
 
@@ -231,66 +258,87 @@ void advection_solver_t::adapt() {
 
     if (old_level < new_level) { // refined
       for (size_t i=0; i<4; i++) {
-	adapted_element_variable[new_idx+i] = element_variable[old_idx];
-	adapted_element_volume[new_idx+i] = element_volume[old_idx] / 4.0;
+	// adapted_element_variable[new_idx+i] = element_variable[old_idx];
+	// adapted_element_volume[new_idx+i] = element_volume[old_idx] / 4.0;
+	element_adapt_data[new_idx+i] = old_idx;
       }
       old_idx += 1;
       new_idx += 4;
     } else if (old_level > new_level) { // coarsened
-      adapted_element_variable[new_idx] = 0.0;
-      adapted_element_volume[new_idx] = 0.0;
+      // adapted_element_variable[new_idx] = 0.0;
+      // adapted_element_volume[new_idx] = 0.0;
       for (size_t i=0; i<4; i++) {
-	adapted_element_variable[new_idx] += element_variable[old_idx+i] / 4.0;
-	adapted_element_volume[new_idx] += element_volume[old_idx+i];
+	// adapted_element_variable[new_idx] += element_variable[old_idx+i] / 4.0;
+	// adapted_element_volume[new_idx] += element_volume[old_idx+i];
       }
+      element_adapt_data[new_idx] = old_idx;
       old_idx += 4;
       new_idx += 1;
     } else {
-      adapted_element_variable[new_idx] = element_variable[old_idx];
-      adapted_element_volume[new_idx] = element_volume[old_idx];
+      // adapted_element_variable[new_idx] = element_variable[old_idx];
+      // adapted_element_volume[new_idx] = element_volume[old_idx];
 
+      element_adapt_data[new_idx] = old_idx;
       old_idx += 1;
       new_idx += 1;
     }
   }
+  element_adapt_data[new_idx] = old_idx;
 
-  element_variable = std::move(adapted_element_variable);
-  element_volume = std::move(adapted_element_volume);
+  // element_variable = std::move(adapted_element_variable);
+  // element_volume = std::move(adapted_element_volume);
+  element_refinement_criteria.resize(num_new_elements);
+  element_variable.resize(num_new_elements);
+  element_volume.resize(num_new_elements);
 
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
   t8_forest_set_user_data(adapted_forest, forest_user_data);
   t8_forest_unref(&forest);
 
-  forest = adapted_forest;
+  double* device_element_variable_next_adapted;
+  double* device_element_volume_adapted;
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_next_adapted, sizeof(double)*num_new_elements));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_volume_adapted, sizeof(double)*num_new_elements));
 
+t8_locidx_t* device_element_adapt_data;
+ CUDA_CHECK_ERROR(cudaMalloc(&device_element_adapt_data, (num_new_elements+1)*sizeof(t8_locidx_t)));
+ CUDA_CHECK_ERROR(cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size()*sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
+  const int adapt_num_blocks = num_new_elements / thread_block_size + (num_new_elements % thread_block_size != 0);
+  adapt_variable_and_volume<<<adapt_num_blocks, thread_block_size>>>(device_element_variable_next,
+								     device_element_volume,
+								     device_element_variable_next_adapted,
+								     device_element_volume_adapted,
+								     device_element_adapt_data,
+								     num_new_elements);
+  CUDA_CHECK_LAST_ERROR();
+
+  CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
+  CUDA_CHECK_ERROR(cudaFree(device_element_variable_next));
+  CUDA_CHECK_ERROR(cudaFree(device_element_volume));
+  device_element_variable_next = device_element_variable_next_adapted;
+  device_element_volume = device_element_volume_adapted;
+
+  forest = adapted_forest;
   compute_edge_information();
 
   // TODO: do more clever reallocation
   CUDA_CHECK_ERROR(cudaFree(device_element_variable_prev));
-  CUDA_CHECK_ERROR(cudaFree(device_element_variable_next));
   CUDA_CHECK_ERROR(cudaFree(device_element_fluxes));
-  CUDA_CHECK_ERROR(cudaFree(device_element_volume));
   CUDA_CHECK_ERROR(cudaFree(device_element_refinement_criteria));
 
   CUDA_CHECK_ERROR(cudaFree(device_face_neighbors));
   CUDA_CHECK_ERROR(cudaFree(device_face_normals));
   CUDA_CHECK_ERROR(cudaFree(device_face_area));
 
-  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_prev, sizeof(double)*element_variable.size()));
-  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_next, sizeof(double)*element_variable.size()));
-  CUDA_CHECK_ERROR(cudaMalloc(&device_element_fluxes, sizeof(double)*element_variable.size()));
-  CUDA_CHECK_ERROR(cudaMalloc(&device_element_volume, sizeof(double)*element_variable.size()));
-  CUDA_CHECK_ERROR(cudaMalloc(&device_element_refinement_criteria, sizeof(double)*element_variable.size()));
-  element_refinement_criteria.resize(element_variable.size());
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_variable_prev, sizeof(double)*num_new_elements));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_fluxes, sizeof(double)*num_new_elements));
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_refinement_criteria, sizeof(double)*num_new_elements));
 
   CUDA_CHECK_ERROR(cudaMalloc(&device_face_neighbors, sizeof(int)*face_neighbors.size()*2));
   CUDA_CHECK_ERROR(cudaMalloc(&device_face_normals, sizeof(double)*face_normals.size()*2));
   CUDA_CHECK_ERROR(cudaMalloc(&device_face_area, sizeof(double)*face_normals.size()*2));
 
-  CUDA_CHECK_ERROR(cudaMemcpy(device_element_variable_next, element_variable.data(), element_variable.size()*sizeof(double), cudaMemcpyHostToDevice));
-  CUDA_CHECK_ERROR(cudaMemcpy(device_element_volume, element_volume.data(), element_volume.size()*sizeof(double), cudaMemcpyHostToDevice));
-  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes, 0, element_variable.size()));
-
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes, 0, num_new_elements*sizeof(double)));
   CUDA_CHECK_ERROR(cudaMemcpy(device_face_neighbors, face_neighbors.data(), face_neighbors.size()*2*sizeof(int), cudaMemcpyHostToDevice));
   CUDA_CHECK_ERROR(cudaMemcpy(device_face_normals, face_normals.data(), face_normals.size()*2*sizeof(double), cudaMemcpyHostToDevice));
   CUDA_CHECK_ERROR(cudaMemcpy(device_face_area, face_area.data(), face_area.size()*2*sizeof(double), cudaMemcpyHostToDevice));
@@ -323,7 +371,7 @@ __global__ static void compute_fluxes(double const* __restrict__ variable,
 
   double a[2] = {0.5*sqrt(2.0), 0.5*sqrt(2.0)};
 
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= nb_edges)
     return;
 
@@ -345,19 +393,18 @@ __global__ static void explicit_euler_time_step(double const* __restrict__ varia
 						double* __restrict__ fluxes,
 						double delta_t,
 						int nb_elements) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements)
     return;
 
   variable_next[i] = variable_prev[i] + delta_t/volume[i]*fluxes[i];
-
-  fluxes[i] = 0.0;
 }
 
 void advection_solver_t::iterate() {
   std::swap(device_element_variable_next, device_element_variable_prev);
 
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes, 0, element_variable.size()*sizeof(double)));
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = face_area.size() / thread_block_size + (face_area.size() % thread_block_size != 0);
   compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(device_element_variable_prev,
@@ -386,7 +433,6 @@ void advection_solver_t::save_vtk(const std::string& prefix) {
   vtk_data_field.type = T8_VTK_SCALAR;
   strcpy(vtk_data_field.description, "advection variable");
   vtk_data_field.data = element_variable.data();
-
   t8_forest_write_vtk_ext(forest, prefix.c_str(), 1, 1, 1, 1, 0, 0, 0, 1, &vtk_data_field);
 }
 
