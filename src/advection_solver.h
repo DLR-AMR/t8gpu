@@ -1,9 +1,10 @@
 #ifndef ADVECTION_SOLVER_H
 #define ADVECTION_SOLVER_H
 
-#include <array>
-#include <vector>
 #include <string>
+
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
 
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
@@ -34,28 +35,28 @@ private:
   t8_forest_t      forest;
 
   // element data
-  std::vector<double>               element_variable;
-  std::vector<double>               element_volume;
-  std::vector<double>               element_refinement_criteria;
+  thrust::host_vector<double> element_variable;
+  thrust::host_vector<double> element_volume;
+  thrust::host_vector<double> element_refinement_criteria;
 
   // face connectivity
-  std::vector<std::array<t8_locidx_t,2>>    face_neighbors;
+  thrust::host_vector<t8_locidx_t> face_neighbors;
 
   // face data
-  std::vector<std::array<double,2>> face_normals;
-  std::vector<double>               face_area;
+  thrust::host_vector<double> face_normals;
+  thrust::host_vector<double> face_area;
 
   double delta_t;
 
-  double* device_element_variable_prev;
-  double* device_element_variable_next;
-  double* device_element_fluxes;
-  double* device_element_volume;
-  double* device_element_refinement_criteria;
+  thrust::device_vector<double> device_element_variable_prev;
+  thrust::device_vector<double> device_element_variable_next;
+  thrust::device_vector<double> device_element_fluxes;
+  thrust::device_vector<double> device_element_volume;
+  thrust::device_vector<double> device_element_refinement_criteria;
 
-  int*    device_face_neighbors;
-  double* device_face_normals;
-  double* device_face_area;
+  thrust::device_vector<t8_locidx_t> device_face_neighbors;
+  thrust::device_vector<double>      device_face_normals;
+  thrust::device_vector<double>      device_face_area;
  };
 
 #endif // ADVECTION_SOLVER_H
