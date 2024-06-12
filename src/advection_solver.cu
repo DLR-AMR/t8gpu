@@ -1,5 +1,5 @@
 #include <advection_solver.h>
-#include <cuda_utils.h>
+#include <utils/cuda.h>
 
 #include <cmath>
 #include <iostream>
@@ -281,10 +281,10 @@ void advection_solver_t::adapt() {
   thrust::device_vector<double> device_element_variable_next_adapted(num_new_elements);
   thrust::device_vector<double> device_element_volume_adapted(num_new_elements);
 
-t8_locidx_t* device_element_adapt_data;
- CUDA_CHECK_ERROR(cudaMalloc(&device_element_adapt_data, (num_new_elements+1)*sizeof(t8_locidx_t)));
- CUDA_CHECK_ERROR(cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size()*sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
- const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
+  t8_locidx_t* device_element_adapt_data;
+  CUDA_CHECK_ERROR(cudaMalloc(&device_element_adapt_data, (num_new_elements+1)*sizeof(t8_locidx_t)));
+  CUDA_CHECK_ERROR(cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size()*sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
+  const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
   adapt_variable_and_volume<<<adapt_num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_element_variable_next.data()),
 								     thrust::raw_pointer_cast(device_element_volume.data()),
 								     thrust::raw_pointer_cast(device_element_variable_next_adapted.data()),

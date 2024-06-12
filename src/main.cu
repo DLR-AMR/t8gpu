@@ -25,7 +25,6 @@ int main(int argc, char* argv[]) {
       std::string prefix(buffer);
       advection_solver.save_vtk(prefix);
     }
-
   }
 
   sc_finalize();

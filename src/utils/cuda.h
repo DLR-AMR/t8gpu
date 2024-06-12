@@ -1,5 +1,5 @@
-#ifndef CUDA_UTILS_H
-#define CUDA_UTILS_H
+#ifndef UTILS_CUDA_H
+#define UTILS_CUDA_H
 
 #include <cuda_runtime.h>
 #include <cstdlib>
@@ -30,4 +30,4 @@
 #define CUDA_CHECK_LAST_ERROR()
 #endif // NDEBUG
 
-#endif // CUDA_UTILS_H
+#endif // UTILS_CUDA_H

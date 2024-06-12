@@ -19,7 +19,8 @@ add_executable(miniapp)
 target_sources(miniapp PRIVATE
   src/main.cu
   src/advection_solver.cu
-  src/cuda_utils.h)
+  src/utils/cuda.h
+  src/utils/profiling.h)
 target_include_directories(miniapp PRIVATE src)
 
 target_compile_options(miniapp PRIVATE -Wall -Wextra -Wno-unused-parameter)
