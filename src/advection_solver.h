@@ -1,17 +1,16 @@
 #ifndef ADVECTION_SOLVER_H
 #define ADVECTION_SOLVER_H
 
-#include <string>
-
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+
+#include <string>
 
 /*
  * Simple upwind finite volume advection solver
-*/
+ */
 class advection_solver_t {
  public:
   static constexpr size_t dim = 2;
@@ -26,13 +25,13 @@ class advection_solver_t {
   void iterate();
   void adapt();
 
-private:
+ private:
   void compute_edge_information();
 
-  sc_MPI_Comm      comm;
+  sc_MPI_Comm comm;
   t8_scheme_cxx_t* scheme;
-  t8_cmesh_t       cmesh;
-  t8_forest_t      forest;
+  t8_cmesh_t cmesh;
+  t8_forest_t forest;
 
   // element data
   thrust::host_vector<double> element_variable;
@@ -55,8 +54,8 @@ private:
   thrust::device_vector<double> device_element_refinement_criteria;
 
   thrust::device_vector<t8_locidx_t> device_face_neighbors;
-  thrust::device_vector<double>      device_face_normals;
-  thrust::device_vector<double>      device_face_area;
- };
+  thrust::device_vector<double> device_face_normals;
+  thrust::device_vector<double> device_face_area;
+};
 
-#endif // ADVECTION_SOLVER_H
+#endif  // ADVECTION_SOLVER_H

@@ -1,10 +1,10 @@
 #include <advection_solver.h>
+#include <utils/profiling.h>
 
 #include <cstdio>
 #include <string>
 
 int main(int argc, char* argv[]) {
-
   int mpiret = sc_MPI_Init(&argc, &argv);
   SC_CHECK_MPI(mpiret);
 
@@ -16,12 +16,12 @@ int main(int argc, char* argv[]) {
 
     advection_solver.save_vtk("advection_step_00000");
 
-    for (size_t i=0; i<100; i++) {
-      advection_solver.adapt();
-      advection_solver.iterate();
+    for (size_t i = 0; i < 100; i++) {
+      TIME(advection_solver.adapt());
+      TIME(advection_solver.iterate());
 
       char buffer[256];
-      std::snprintf(buffer, sizeof(buffer), "advection_step_%05zu", i+1);
+      std::snprintf(buffer, sizeof(buffer), "advection_step_%05zu", i + 1);
       std::string prefix(buffer);
       advection_solver.save_vtk(prefix);
     }
