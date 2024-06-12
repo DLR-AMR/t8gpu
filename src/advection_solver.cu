@@ -116,33 +116,6 @@ advection_solver_t::advection_solver_t()
       element_variable[element_idx] = sqrt((0.5 - center[0]) * (0.5 - center[0]) + (0.5 - center[1]) * (0.5 - center[1])) - 0.25;
       element_volume[element_idx] = t8_forest_element_volume(forest, tree_idx, element);
 
-      size_t num_faces = static_cast<size_t>(eclass_scheme->t8_element_num_faces(element));
-      for (size_t face_idx = 0; face_idx < num_faces; face_idx++) {
-        int num_neighbors;
-        int* dual_faces;
-        t8_locidx_t* neighbor_ids;
-        t8_element_t** neighbors;
-        t8_eclass_scheme_c* neigh_scheme;
-
-        t8_forest_leaf_face_neighbors(forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors, &neighbor_ids, &neigh_scheme, 1);
-
-        if ((num_neighbors == 1) &&
-            ((neighbor_ids[0] > element_idx) ||
-             (neighbor_ids[0] < element_idx && neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
-          face_neighbors.push_back(element_idx);
-          face_neighbors.push_back(neighbor_ids[0]);
-          double face_normal[3];
-          t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
-          face_normals.push_back(face_normal[0]);
-          face_normals.push_back(face_normal[1]);
-          face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx));
-        }
-
-        T8_FREE(neighbors);
-        T8_FREE(dual_faces);
-        T8_FREE(neighbor_ids);
-      }
-
       element_idx++;
     }
   }
@@ -155,6 +128,7 @@ advection_solver_t::advection_solver_t()
   device_element_volume = element_volume;
   thrust::fill(device_element_fluxes.begin(), device_element_fluxes.end(), 0.0);
 
+  compute_edge_information();
   device_face_neighbors = face_neighbors;
   device_face_normals = face_normals;
   device_face_area = face_area;
