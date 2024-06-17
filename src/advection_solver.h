@@ -23,12 +23,15 @@ class advection_solver_t {
   void save_vtk(const std::string& prefix);
 
   void iterate();
+  void exchange_ghost_elements();
   void adapt();
 
  private:
-  void compute_edge_information();
+  void compute_edge_connectivity();
 
   sc_MPI_Comm comm;
+  int rank;
+  int nb_ranks;
   t8_scheme_cxx_t* scheme;
   t8_cmesh_t cmesh;
   t8_forest_t forest;
@@ -37,6 +40,10 @@ class advection_solver_t {
   thrust::host_vector<double> element_variable;
   thrust::host_vector<double> element_volume;
   thrust::host_vector<double> element_refinement_criteria;
+  thrust::host_vector<t8_locidx_t> ranks;
+  thrust::host_vector<t8_locidx_t> indices;
+  thrust::device_vector<t8_locidx_t> device_ranks;
+  thrust::device_vector<t8_locidx_t> device_indices;
 
   // face connectivity
   thrust::host_vector<t8_locidx_t> face_neighbors;
@@ -52,6 +59,15 @@ class advection_solver_t {
   thrust::device_vector<double> device_element_fluxes;
   thrust::device_vector<double> device_element_volume;
   thrust::device_vector<double> device_element_refinement_criteria;
+
+  thrust::host_vector<double*> all_fluxes;
+  thrust::device_vector<double*> device_all_fluxes;
+
+  thrust::host_vector<double*> all_variables_prev;
+  thrust::device_vector<double*> device_all_variables_prev;
+
+  thrust::host_vector<double*> all_variables_next;
+  thrust::device_vector<double*> device_all_variables_next;
 
   thrust::device_vector<t8_locidx_t> device_face_neighbors;
   thrust::device_vector<double> device_face_normals;

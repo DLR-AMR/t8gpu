@@ -12,7 +12,7 @@ project(T8CODE_GPU_MINIAPP
 
 # module load PrgEnv/gcc11-openmpi-cuda
 # cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=../install -DT8CODE_ROOT=../../builds/install -DP4EST_ROOT=../../builds/install
-find_package(P4EST)
+# find_package(P4EST)
 find_package(T8CODE)
 
 add_executable(miniapp)

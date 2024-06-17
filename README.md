@@ -1,6 +1,8 @@
-# Compile
+# Build
 
 ```
-module load PrgEnv/gcc11-openmpi-cuda
-cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=../install -DT8CODE_ROOT=../../builds/install -DP4EST_ROOT=../../builds/install
+cmake .. -DCMAKE_BUILD_TYPE=Debug \
+	 -DCMAKE_INSTALL_PREFIX=path/to/install \
+	 -DT8CODE_ROOT=path/to/t8code/install
+make -j
 ```

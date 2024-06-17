@@ -5,6 +5,7 @@
 #include <t8_forest/t8_forest.h>
 #include <t8_forest/t8_forest_iterate.h>
 #include <utils/cuda.h>
+#include <utils/profiling.h>
 
 #include <cmath>
 #include <iostream>
@@ -83,22 +84,45 @@ advection_solver_t::advection_solver_t()
     : comm(sc_MPI_COMM_WORLD),
       cmesh(t8_cmesh_new_periodic(comm, dim)),
       scheme(t8_scheme_new_default_cxx()),
-      forest(t8_forest_new_uniform(cmesh, scheme, 6, false, comm)),
+      forest(t8_forest_new_uniform(cmesh, scheme, 6, true, comm)),
       element_variable(t8_forest_get_local_num_elements(forest)),
       element_volume(t8_forest_get_local_num_elements(forest)),
       delta_t(1.0 * std::pow(0.5, max_level) / sqrt(2.0)) {
   t8_forest_t new_forest;
   t8_forest_init(&new_forest);
   t8_forest_set_adapt(new_forest, forest, adapt_callback_initialization, true);
+  t8_forest_set_partition(new_forest, forest, true);
+  t8_forest_set_ghost(new_forest, true, T8_GHOST_FACES);
   t8_forest_set_balance(new_forest, forest, true);
   t8_forest_commit(new_forest);
   forest = new_forest;
 
-  element_variable.resize(t8_forest_get_local_num_elements(forest));
-  element_volume.resize(t8_forest_get_local_num_elements(forest));
-  element_refinement_criteria.resize(t8_forest_get_local_num_elements(forest));
+  MPI_Comm_size(MPI_COMM_WORLD, &nb_ranks);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  t8_locidx_t num_local_elements = element_variable.size();
+  t8_locidx_t num_ghost_elements = t8_forest_get_num_ghosts(forest);
+  t8_locidx_t num_local_elements = t8_forest_get_local_num_elements(forest);
+
+  ranks.resize(num_local_elements + num_ghost_elements);
+  indices.resize(num_local_elements + num_ghost_elements);
+  for (t8_locidx_t i=0; i<num_local_elements; i++) {
+    ranks[i] = rank;
+    indices[i] = i;
+  }
+  sc_array* sc_array_ranks_wrapper = sc_array_new_data(ranks.data(), sizeof(int), num_local_elements + num_ghost_elements);
+  t8_forest_ghost_exchange_data(forest, sc_array_ranks_wrapper);
+  sc_array_destroy(sc_array_ranks_wrapper);
+
+  sc_array* sc_array_indices_wrapper = sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_local_elements + num_ghost_elements);
+  t8_forest_ghost_exchange_data(forest, sc_array_indices_wrapper);
+  sc_array_destroy(sc_array_indices_wrapper);
+
+  device_ranks = ranks;
+  device_indices = indices;
+
+  element_variable.resize(num_local_elements);
+  element_volume.resize(num_local_elements);
+  element_refinement_criteria.resize(num_local_elements);
 
   t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
   t8_locidx_t element_idx = 0;
@@ -128,7 +152,7 @@ advection_solver_t::advection_solver_t()
   device_element_volume = element_volume;
   thrust::fill(device_element_fluxes.begin(), device_element_fluxes.end(), 0.0);
 
-  compute_edge_information();
+  compute_edge_connectivity();
   device_face_neighbors = face_neighbors;
   device_face_normals = face_normals;
   device_face_area = face_area;
@@ -137,6 +161,47 @@ advection_solver_t::advection_solver_t()
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
   forest_user_data->element_refinement_criteria = &element_refinement_criteria;
   t8_forest_set_user_data(forest, forest_user_data);
+
+  std::vector<cudaIpcMemHandle_t> handles_fluxes(nb_ranks);
+  all_fluxes.resize(nb_ranks);
+  all_fluxes[rank] = thrust::raw_pointer_cast(device_element_fluxes.data());
+
+  CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&handles_fluxes[rank], thrust::raw_pointer_cast(device_element_fluxes.data())));
+  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_fluxes.data(), sizeof(cudaIpcMemHandle_t), MPI_BYTE, MPI_COMM_WORLD);
+  for (int i=0; i<nb_ranks; i++) {
+    if (i != rank) {
+      CUDA_CHECK_ERROR(cudaIpcOpenMemHandle(reinterpret_cast<void**>(&all_fluxes[i]), handles_fluxes[i], cudaIpcMemLazyEnablePeerAccess));
+    }
+  }
+  device_all_fluxes = all_fluxes;
+
+
+  std::vector<cudaIpcMemHandle_t> handles_variables_prev(nb_ranks);
+  all_variables_prev.resize(nb_ranks);
+  all_variables_prev[rank] = thrust::raw_pointer_cast(device_element_variable_prev.data());
+
+  CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&handles_variables_prev[rank], thrust::raw_pointer_cast(device_element_variable_prev.data())));
+  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_variables_prev.data(), sizeof(cudaIpcMemHandle_t), MPI_BYTE, MPI_COMM_WORLD);
+  for (int i=0; i<nb_ranks; i++) {
+    if (i != rank) {
+      CUDA_CHECK_ERROR(cudaIpcOpenMemHandle(reinterpret_cast<void**>(&all_variables_prev[i]), handles_variables_prev[i], cudaIpcMemLazyEnablePeerAccess));
+    }
+  }
+  device_all_variables_prev = all_variables_prev;
+
+  std::vector<cudaIpcMemHandle_t> handles_variables_next(nb_ranks);
+  all_variables_next.resize(nb_ranks);
+  all_variables_next[rank] = thrust::raw_pointer_cast(device_element_variable_next.data());
+
+  CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&handles_variables_next[rank], thrust::raw_pointer_cast(device_element_variable_next.data())));
+  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_variables_next.data(), sizeof(cudaIpcMemHandle_t), MPI_BYTE, MPI_COMM_WORLD);
+  for (int i=0; i<nb_ranks; i++) {
+    if (i != rank) {
+      CUDA_CHECK_ERROR(cudaIpcOpenMemHandle(reinterpret_cast<void**>(&all_variables_next[i]), handles_variables_next[i], cudaIpcMemLazyEnablePeerAccess));
+    }
+  }
+  device_all_variables_next = all_variables_next;
+
 }
 
 __global__ static void compute_refinement_criteria(double const* __restrict__ variable, double* __restrict__ criteria, int nb_elements) {
@@ -183,6 +248,9 @@ void advection_solver_t::adapt() {
   t8_forest_t adapted_forest;
   t8_forest_init(&adapted_forest);
   t8_forest_set_adapt(adapted_forest, forest, adapt_callback_iteration, false);
+  // TODO: handle repartition of elements
+  // t8_forest_set_partition(adapted_forest, forest, true);
+  t8_forest_set_ghost(adapted_forest, true, T8_GHOST_FACES);
   t8_forest_set_balance(adapted_forest, forest, true);
   t8_forest_commit(adapted_forest);
 
@@ -240,7 +308,6 @@ void advection_solver_t::adapt() {
 
   thrust::device_vector<double> device_element_variable_next_adapted(num_new_elements);
   thrust::device_vector<double> device_element_volume_adapted(num_new_elements);
-
   t8_locidx_t* device_element_adapt_data;
   CUDA_CHECK_ERROR(cudaMalloc(&device_element_adapt_data, (num_new_elements + 1) * sizeof(t8_locidx_t)));
   CUDA_CHECK_ERROR(
@@ -251,13 +318,13 @@ void advection_solver_t::adapt() {
       thrust::raw_pointer_cast(device_element_variable_next_adapted.data()), thrust::raw_pointer_cast(device_element_volume_adapted.data()),
       device_element_adapt_data, num_new_elements);
   CUDA_CHECK_LAST_ERROR();
-
   CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
   device_element_variable_next = device_element_variable_next_adapted;
   device_element_volume = device_element_volume_adapted;
 
   forest = adapted_forest;
-  compute_edge_information();
+
+  compute_edge_connectivity();
 
   device_element_variable_prev.resize(num_new_elements);
 
@@ -274,12 +341,19 @@ advection_solver_t::~advection_solver_t() {
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
   free(forest_user_data);
 
+  for (int i=0; i<nb_ranks; i++) {
+    if (i != rank) {
+      CUDA_CHECK_ERROR(cudaIpcCloseMemHandle(all_fluxes[i]));
+    }
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+
   t8_forest_unref(&forest);
   t8_cmesh_destroy(&cmesh);
 }
 
-__global__ static void compute_fluxes(double const* __restrict__ variable, double* __restrict__ fluxes, double const* __restrict__ normal,
-                                      double const* __restrict__ area, int const* e_idx, int nb_edges) {
+__global__ static void compute_fluxes(double** __restrict__ variables, double** __restrict__ fluxes, double const* __restrict__ normal,
+                                      double const* __restrict__ area, int const* e_idx, int* rank, t8_locidx_t* indices, int nb_edges) {
   double a[2] = {0.5 * sqrt(2.0), 0.5 * sqrt(2.0)};
 
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -288,13 +362,13 @@ __global__ static void compute_fluxes(double const* __restrict__ variable, doubl
   double flux = area[i] * (a[0] * normal[2 * i] + a[1] * normal[2 * i + 1]);
 
   if (flux > 0.0) {
-    flux *= variable[e_idx[2 * i]];
+    flux *= variables[rank[e_idx[2 * i]]][indices[e_idx[2 * i]]];
   } else {
-    flux *= variable[e_idx[2 * i + 1]];
+    flux *= variables[rank[e_idx[2 * i + 1]]][indices[e_idx[2 * i + 1]]];
   }
 
-  atomicAdd(&fluxes[e_idx[2 * i]], -flux);
-  atomicAdd(&fluxes[e_idx[2 * i + 1]], flux);
+  atomicAdd(&fluxes[rank[e_idx[2 * i]]][indices[e_idx[2 * i]]], -flux);
+  atomicAdd(&fluxes[rank[e_idx[2 * i + 1]]][indices[e_idx[2 * i + 1]]], flux);
 }
 
 __global__ static void explicit_euler_time_step(double const* __restrict__ variable_prev, double* __restrict__ variable_next,
@@ -308,15 +382,23 @@ __global__ static void explicit_euler_time_step(double const* __restrict__ varia
 
 void advection_solver_t::iterate() {
   std::swap(device_element_variable_next, device_element_variable_prev);
+  std::swap(device_all_variables_next, device_all_variables_prev);
 
   thrust::fill(device_element_fluxes.begin(), device_element_fluxes.end(), 0.0);
+  MPI_Barrier(MPI_COMM_WORLD);
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (face_area.size() + thread_block_size - 1) / thread_block_size;
   compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
-      thrust::raw_pointer_cast(device_element_variable_prev.data()), thrust::raw_pointer_cast(device_element_fluxes.data()),
-      thrust::raw_pointer_cast(device_face_normals.data()), thrust::raw_pointer_cast(device_face_area.data()),
-      thrust::raw_pointer_cast(device_face_neighbors.data()), face_neighbors.size() / 2);
+							   thrust::raw_pointer_cast(device_all_variables_prev.data()),
+							   thrust::raw_pointer_cast(device_all_fluxes.data()),
+							   thrust::raw_pointer_cast(device_face_normals.data()),
+							   thrust::raw_pointer_cast(device_face_area.data()),
+							   thrust::raw_pointer_cast(device_face_neighbors.data()),
+							   thrust::raw_pointer_cast(device_ranks.data()),
+							   thrust::raw_pointer_cast(device_indices.data()),
+							   face_neighbors.size() / 2);
   CUDA_CHECK_LAST_ERROR();
+  MPI_Barrier(MPI_COMM_WORLD);
 
   const int euler_num_blocks = (element_variable.size() + thread_block_size - 1) / thread_block_size;
   explicit_euler_time_step<<<euler_num_blocks, thread_block_size>>>(
@@ -336,7 +418,7 @@ void advection_solver_t::save_vtk(const std::string& prefix) {
   t8_forest_write_vtk_ext(forest, prefix.c_str(), 1, 1, 1, 1, 0, 0, 0, 1, &vtk_data_field);
 }
 
-void advection_solver_t::compute_edge_information() {
+void advection_solver_t::compute_edge_connectivity() {
   face_neighbors.clear();
   face_normals.clear();
   face_area.clear();
@@ -364,18 +446,29 @@ void advection_solver_t::compute_edge_information() {
         t8_forest_leaf_face_neighbors(forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors, &neighbor_ids, &neigh_scheme,
                                       true);
 
-        if ((num_neighbors == 1) &&
+	for (int i=0; i<num_neighbors; i++) {
+	  if (neighbor_ids[i] >= num_local_elements && rank < ranks[neighbor_ids[i]]) {
+	    face_neighbors.push_back(element_idx);
+	    face_neighbors.push_back(neighbor_ids[i]);
+	    double face_normal[3];
+	    t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
+	    face_normals.push_back(face_normal[0]);
+	    face_normals.push_back(face_normal[1]);
+	    face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx) / static_cast<double>(num_neighbors));
+	  }
+	}
+
+        if ((num_neighbors == 1) && (neighbor_ids[0] < num_local_elements) &&
             ((neighbor_ids[0] > element_idx) ||
              (neighbor_ids[0] < element_idx && neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
-          face_neighbors.push_back(element_idx);
-          face_neighbors.push_back(neighbor_ids[0]);
-          double face_normal[3];
-          t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
-          face_normals.push_back(face_normal[0]);
-          face_normals.push_back(face_normal[1]);
-          face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx));
+	  face_neighbors.push_back(element_idx);
+	  face_neighbors.push_back(neighbor_ids[0]);
+	  double face_normal[3];
+	  t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
+	  face_normals.push_back(face_normal[0]);
+	  face_normals.push_back(face_normal[1]);
+	  face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx));
         }
-
         T8_FREE(neighbors);
         T8_FREE(dual_faces);
         T8_FREE(neighbor_ids);

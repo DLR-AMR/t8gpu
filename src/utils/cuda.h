@@ -2,7 +2,7 @@
 #define UTILS_CUDA_H
 
 #include <cuda_runtime.h>
-#include <cstdlib>
+#include <iostream>
 
 #define CUDA_CHECK_ERROR(expr) do {					\
     cudaError_t value = (expr);						\
