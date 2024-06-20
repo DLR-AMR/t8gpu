@@ -319,6 +319,20 @@ void advection_solver_t::adapt() {
   device_face_area = face_area;
 }
 
+double advection_solver_t::compute_integral() const {
+  double local_integral = 0.0;
+  double const* mem = device_element_variable_next.get_own();
+  thrust::host_vector<double> variable(device_element_variable_next.size());
+  CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(double)*device_element_variable_next.size(), cudaMemcpyDeviceToHost));
+  thrust::host_vector<double> volume = device_element_volume;
+  for (size_t i=0; i<device_element_variable_next.size(); i++) {
+    local_integral += volume[i] * variable[i];
+  }
+  double global_integral;
+  MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  return global_integral;
+}
+
 advection_solver_t::~advection_solver_t() {
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
   free(forest_user_data);
