@@ -17,8 +17,9 @@ int main(int argc, char* argv[]) {
     advection_solver.save_vtk("advection_step_00000");
 
     for (size_t i = 0; i < 100; i++) {
-      TIME(advection_solver.adapt());
-      TIME(advection_solver.iterate());
+      advection_solver.adapt();
+      advection_solver.partition();
+      advection_solver.iterate();
 
       char buffer[256];
       std::snprintf(buffer, sizeof(buffer), "advection_step_%05zu", i + 1);

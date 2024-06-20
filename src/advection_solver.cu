@@ -4,6 +4,7 @@
 #include <t8_cmesh/t8_cmesh_examples.h>
 #include <t8_forest/t8_forest.h>
 #include <t8_forest/t8_forest_iterate.h>
+#include <t8_forest/t8_forest_partition.h>
 #include <utils/cuda.h>
 #include <utils/profiling.h>
 
@@ -274,14 +275,13 @@ void advection_solver_t::adapt() {
       cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size() * sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
   const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
   adapt_variable_and_volume<<<adapt_num_blocks, thread_block_size>>>(
-      device_element_variable_next.get_own(), thrust::raw_pointer_cast(device_element_volume.data()),
+      device_element_variable_next.get_own(), device_element_volume.get_own(),
       thrust::raw_pointer_cast(device_element_variable_next_adapted.data()), thrust::raw_pointer_cast(device_element_volume_adapted.data()),
       device_element_adapt_data, num_new_elements);
   CUDA_CHECK_LAST_ERROR();
   CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
-  // not optimal TODO: use explicit std::move
-  device_element_variable_next = device_element_variable_next_adapted;
-  device_element_volume = device_element_volume_adapted;
+  device_element_variable_next = std::move(device_element_variable_next_adapted);
+  device_element_volume = std::move(device_element_volume_adapted);
 
   forest = adapted_forest;
 
@@ -319,12 +319,114 @@ void advection_solver_t::adapt() {
   device_face_area = face_area;
 }
 
+__global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict__ indices,
+			       double* __restrict__ new_variable, double* __restrict__ new_volume,
+			       double const*const* __restrict__ old_variable, double const*const* __restrict__ old_volume,
+			       int num_new_elements) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= num_new_elements) return;
+
+  new_variable[i] = old_variable[ranks[i]][indices[i]];
+  new_volume[i] = old_volume[ranks[i]][indices[i]];
+}
+
+void advection_solver_t::partition() {
+  t8_forest_ref(forest);
+  t8_forest_t partitioned_forest;
+  t8_forest_init(&partitioned_forest);
+  t8_forest_set_partition(partitioned_forest, forest, true);
+  t8_forest_set_ghost(partitioned_forest, true, T8_GHOST_FACES);
+  t8_forest_commit(partitioned_forest);
+
+  t8_locidx_t num_old_elements = t8_forest_get_local_num_elements(forest);
+  t8_locidx_t num_new_elements = t8_forest_get_local_num_elements(partitioned_forest);
+
+  thrust::host_vector<t8_locidx_t> new_ranks(num_new_elements);
+  thrust::host_vector<t8_locidx_t> new_indices(num_new_elements);
+
+  sc_array* sc_array_old_ranks_wrapper = sc_array_new_data(ranks.data(), sizeof(int), num_old_elements);
+  sc_array* sc_array_old_indices_wrapper = sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_old_elements);
+
+  sc_array* sc_array_new_ranks_wrapper = sc_array_new_data(new_ranks.data(), sizeof(int), num_new_elements);
+  sc_array* sc_array_new_indices_wrapper = sc_array_new_data(new_indices.data(), sizeof(t8_locidx_t), num_new_elements);
+
+  t8_forest_partition_data(forest, partitioned_forest,
+			   sc_array_old_ranks_wrapper,
+			   sc_array_new_ranks_wrapper);
+
+  t8_forest_partition_data(forest, partitioned_forest,
+			   sc_array_old_indices_wrapper,
+			   sc_array_new_indices_wrapper);
+
+  sc_array_destroy(sc_array_old_indices_wrapper);
+  sc_array_destroy(sc_array_new_indices_wrapper);
+  sc_array_destroy(sc_array_old_ranks_wrapper);
+  sc_array_destroy(sc_array_new_ranks_wrapper);
+
+  thrust::device_vector<int> device_new_ranks = new_ranks;
+  thrust::device_vector<t8_locidx_t> device_new_indices = new_indices;
+
+  shared_device_vector<double> device_new_element_variable(num_new_elements);
+  shared_device_vector<double> device_new_element_volume(num_new_elements);
+
+  constexpr int thread_block_size = 256;
+  const int fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
+  partition_data<<<fluxes_num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_new_ranks.data()),
+							   thrust::raw_pointer_cast(device_new_indices.data()),
+							   device_new_element_variable.get_own(),
+							   device_new_element_volume.get_own(),
+							   device_element_variable_next.get_all(),
+							   device_element_volume.get_all(),
+							   num_new_elements);
+  cudaDeviceSynchronize();
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  device_element_variable_next = std::move(device_new_element_variable);
+  device_element_variable_prev.resize(num_new_elements);
+  device_element_volume = std::move(device_new_element_volume);
+  device_element_refinement_criteria.resize(num_new_elements);
+  device_element_fluxes.resize(num_new_elements);
+
+  forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
+  t8_forest_set_user_data(partitioned_forest, forest_user_data);
+  t8_forest_unref(&forest);
+  forest = partitioned_forest;
+
+  // recompute ghost data and edge information
+  t8_locidx_t num_ghost_elements = t8_forest_get_num_ghosts(forest);
+  t8_locidx_t num_local_elements = t8_forest_get_local_num_elements(forest);
+
+  ranks.resize(num_local_elements + num_ghost_elements);
+  indices.resize(num_local_elements + num_ghost_elements);
+  for (t8_locidx_t i=0; i<num_local_elements; i++) {
+    ranks[i] = rank;
+    indices[i] = i;
+  }
+  sc_array* sc_array_ranks_wrapper = sc_array_new_data(ranks.data(), sizeof(int), num_local_elements + num_ghost_elements);
+  t8_forest_ghost_exchange_data(forest, sc_array_ranks_wrapper);
+  sc_array_destroy(sc_array_ranks_wrapper);
+
+  sc_array* sc_array_indices_wrapper = sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_local_elements + num_ghost_elements);
+  t8_forest_ghost_exchange_data(forest, sc_array_indices_wrapper);
+  sc_array_destroy(sc_array_indices_wrapper);
+
+  device_ranks = ranks;
+  device_indices = indices;
+
+  compute_edge_connectivity();
+  device_face_neighbors = face_neighbors;
+  device_face_normals = face_normals;
+  device_face_area = face_area;
+}
+
 double advection_solver_t::compute_integral() const {
   double local_integral = 0.0;
   double const* mem = device_element_variable_next.get_own();
   thrust::host_vector<double> variable(device_element_variable_next.size());
   CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(double)*device_element_variable_next.size(), cudaMemcpyDeviceToHost));
-  thrust::host_vector<double> volume = device_element_volume;
+  thrust::host_vector<double> volume(device_element_volume.size());
+  CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), device_element_volume.get_own(), sizeof(double)*device_element_volume.size(), cudaMemcpyDeviceToHost));
+
   for (size_t i=0; i<device_element_variable_next.size(); i++) {
     local_integral += volume[i] * variable[i];
   }
@@ -395,8 +497,8 @@ void advection_solver_t::iterate() {
   const int euler_num_blocks = (t8_forest_get_local_num_elements(forest) + thread_block_size - 1) / thread_block_size;
   explicit_euler_time_step<<<euler_num_blocks, thread_block_size>>>(
       device_element_variable_prev.get_own(), device_element_variable_next.get_own(),
-      thrust::raw_pointer_cast(device_element_volume.data()), device_element_fluxes.get_own(), delta_t,
-      element_variable.size());
+      device_element_volume.get_own(), device_element_fluxes.get_own(), delta_t,
+      device_element_variable_next.size());
   CUDA_CHECK_LAST_ERROR();
 }
 

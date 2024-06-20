@@ -24,6 +24,7 @@ class advection_solver_t {
 
   void iterate();
   void adapt();
+  void partition();
   double compute_integral() const;
  private:
   void compute_edge_connectivity();
@@ -36,12 +37,15 @@ class advection_solver_t {
   t8_forest_t forest;
 
   // element data
+  // TODO remove those arrays as they are only necessary in the initialization
   thrust::host_vector<double> element_variable;
   thrust::host_vector<double> element_volume;
+
   thrust::host_vector<double> element_refinement_criteria;
-  thrust::host_vector<t8_locidx_t> ranks;
+
+  thrust::host_vector<int> ranks;
   thrust::host_vector<t8_locidx_t> indices;
-  thrust::device_vector<t8_locidx_t> device_ranks;
+  thrust::device_vector<int> device_ranks;
   thrust::device_vector<t8_locidx_t> device_indices;
 
   // face connectivity
@@ -56,7 +60,7 @@ class advection_solver_t {
   shared_device_vector<double> device_element_variable_prev;
   shared_device_vector<double> device_element_variable_next;
   shared_device_vector<double> device_element_fluxes;
-  thrust::device_vector<double> device_element_volume;
+  shared_device_vector<double> device_element_volume;
   thrust::device_vector<double> device_element_refinement_criteria;
 
   thrust::device_vector<t8_locidx_t> device_face_neighbors;
