@@ -91,9 +91,9 @@ advection_solver_t::advection_solver_t()
   t8_forest_t new_forest;
   t8_forest_init(&new_forest);
   t8_forest_set_adapt(new_forest, forest, adapt_callback_initialization, true);
-  t8_forest_set_partition(new_forest, forest, true);
   t8_forest_set_ghost(new_forest, true, T8_GHOST_FACES);
-  t8_forest_set_balance(new_forest, forest, true);
+  t8_forest_set_balance(new_forest, forest, false);
+  t8_forest_set_partition(new_forest, forest, true);
   t8_forest_commit(new_forest);
   forest = new_forest;
 
@@ -150,7 +150,8 @@ advection_solver_t::advection_solver_t()
 
   device_element_variable_next = element_variable;
   device_element_volume = element_volume;
-  thrust::fill(device_element_fluxes.begin(), device_element_fluxes.end(), 0.0);
+  double* device_element_fluxes_ptr = device_element_fluxes.get_own();
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*device_element_fluxes.size()));
 
   compute_edge_connectivity();
   device_face_neighbors = face_neighbors;
@@ -161,47 +162,6 @@ advection_solver_t::advection_solver_t()
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
   forest_user_data->element_refinement_criteria = &element_refinement_criteria;
   t8_forest_set_user_data(forest, forest_user_data);
-
-  std::vector<cudaIpcMemHandle_t> handles_fluxes(nb_ranks);
-  all_fluxes.resize(nb_ranks);
-  all_fluxes[rank] = thrust::raw_pointer_cast(device_element_fluxes.data());
-
-  CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&handles_fluxes[rank], thrust::raw_pointer_cast(device_element_fluxes.data())));
-  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_fluxes.data(), sizeof(cudaIpcMemHandle_t), MPI_BYTE, MPI_COMM_WORLD);
-  for (int i=0; i<nb_ranks; i++) {
-    if (i != rank) {
-      CUDA_CHECK_ERROR(cudaIpcOpenMemHandle(reinterpret_cast<void**>(&all_fluxes[i]), handles_fluxes[i], cudaIpcMemLazyEnablePeerAccess));
-    }
-  }
-  device_all_fluxes = all_fluxes;
-
-
-  std::vector<cudaIpcMemHandle_t> handles_variables_prev(nb_ranks);
-  all_variables_prev.resize(nb_ranks);
-  all_variables_prev[rank] = thrust::raw_pointer_cast(device_element_variable_prev.data());
-
-  CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&handles_variables_prev[rank], thrust::raw_pointer_cast(device_element_variable_prev.data())));
-  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_variables_prev.data(), sizeof(cudaIpcMemHandle_t), MPI_BYTE, MPI_COMM_WORLD);
-  for (int i=0; i<nb_ranks; i++) {
-    if (i != rank) {
-      CUDA_CHECK_ERROR(cudaIpcOpenMemHandle(reinterpret_cast<void**>(&all_variables_prev[i]), handles_variables_prev[i], cudaIpcMemLazyEnablePeerAccess));
-    }
-  }
-  device_all_variables_prev = all_variables_prev;
-
-  std::vector<cudaIpcMemHandle_t> handles_variables_next(nb_ranks);
-  all_variables_next.resize(nb_ranks);
-  all_variables_next[rank] = thrust::raw_pointer_cast(device_element_variable_next.data());
-
-  CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&handles_variables_next[rank], thrust::raw_pointer_cast(device_element_variable_next.data())));
-  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_variables_next.data(), sizeof(cudaIpcMemHandle_t), MPI_BYTE, MPI_COMM_WORLD);
-  for (int i=0; i<nb_ranks; i++) {
-    if (i != rank) {
-      CUDA_CHECK_ERROR(cudaIpcOpenMemHandle(reinterpret_cast<void**>(&all_variables_next[i]), handles_variables_next[i], cudaIpcMemLazyEnablePeerAccess));
-    }
-  }
-  device_all_variables_next = all_variables_next;
-
 }
 
 __global__ static void compute_refinement_criteria(double const* __restrict__ variable, double* __restrict__ criteria, int nb_elements) {
@@ -236,7 +196,7 @@ __global__ static void adapt_variable_and_volume(double const* __restrict__ vari
 void advection_solver_t::adapt() {
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (element_variable.size() + thread_block_size - 1) / thread_block_size;
-  compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_element_variable_next.data()),
+  compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(device_element_variable_next.get_own(),
                                                                         thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
                                                                         element_variable.size());
   CUDA_CHECK_LAST_ERROR();
@@ -314,24 +274,46 @@ void advection_solver_t::adapt() {
       cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size() * sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
   const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
   adapt_variable_and_volume<<<adapt_num_blocks, thread_block_size>>>(
-      thrust::raw_pointer_cast(device_element_variable_next.data()), thrust::raw_pointer_cast(device_element_volume.data()),
+      device_element_variable_next.get_own(), thrust::raw_pointer_cast(device_element_volume.data()),
       thrust::raw_pointer_cast(device_element_variable_next_adapted.data()), thrust::raw_pointer_cast(device_element_volume_adapted.data()),
       device_element_adapt_data, num_new_elements);
   CUDA_CHECK_LAST_ERROR();
   CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
+  // not optimal TODO: use explicit std::move
   device_element_variable_next = device_element_variable_next_adapted;
   device_element_volume = device_element_volume_adapted;
 
   forest = adapted_forest;
 
-  compute_edge_connectivity();
-
   device_element_variable_prev.resize(num_new_elements);
 
   device_element_fluxes.resize(num_new_elements);
-  thrust::fill(device_element_fluxes.begin(), device_element_fluxes.end(), 0.0);
+  double* device_element_fluxes_ptr = device_element_fluxes.get_own();
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*num_new_elements));
 
   device_element_refinement_criteria.resize(num_new_elements);
+
+  t8_locidx_t num_ghost_elements = t8_forest_get_num_ghosts(forest);
+  t8_locidx_t num_local_elements = t8_forest_get_local_num_elements(forest);
+
+  ranks.resize(num_local_elements + num_ghost_elements);
+  indices.resize(num_local_elements + num_ghost_elements);
+  for (t8_locidx_t i=0; i<num_local_elements; i++) {
+    ranks[i] = rank;
+    indices[i] = i;
+  }
+  sc_array* sc_array_ranks_wrapper = sc_array_new_data(ranks.data(), sizeof(int), num_local_elements + num_ghost_elements);
+  t8_forest_ghost_exchange_data(forest, sc_array_ranks_wrapper);
+  sc_array_destroy(sc_array_ranks_wrapper);
+
+  sc_array* sc_array_indices_wrapper = sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_local_elements + num_ghost_elements);
+  t8_forest_ghost_exchange_data(forest, sc_array_indices_wrapper);
+  sc_array_destroy(sc_array_indices_wrapper);
+
+  device_ranks = ranks;
+  device_indices = indices;
+
+  compute_edge_connectivity();
   device_face_neighbors = face_neighbors;
   device_face_normals = face_normals;
   device_face_area = face_area;
@@ -340,13 +322,6 @@ void advection_solver_t::adapt() {
 advection_solver_t::~advection_solver_t() {
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
   free(forest_user_data);
-
-  for (int i=0; i<nb_ranks; i++) {
-    if (i != rank) {
-      CUDA_CHECK_ERROR(cudaIpcCloseMemHandle(all_fluxes[i]));
-    }
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
 
   t8_forest_unref(&forest);
   t8_cmesh_destroy(&cmesh);
@@ -382,34 +357,38 @@ __global__ static void explicit_euler_time_step(double const* __restrict__ varia
 
 void advection_solver_t::iterate() {
   std::swap(device_element_variable_next, device_element_variable_prev);
-  std::swap(device_all_variables_next, device_all_variables_prev);
 
-  thrust::fill(device_element_fluxes.begin(), device_element_fluxes.end(), 0.0);
+  double* device_element_fluxes_ptr = device_element_fluxes.get_own();
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*device_element_fluxes.size()));
+
+  cudaDeviceSynchronize();
   MPI_Barrier(MPI_COMM_WORLD);
   constexpr int thread_block_size = 256;
-  const int fluxes_num_blocks = (face_area.size() + thread_block_size - 1) / thread_block_size;
+  const int fluxes_num_blocks = (device_face_area.size() + thread_block_size - 1) / thread_block_size;
   compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
-							   thrust::raw_pointer_cast(device_all_variables_prev.data()),
-							   thrust::raw_pointer_cast(device_all_fluxes.data()),
+							   device_element_variable_prev.get_all(),
+							   device_element_fluxes.get_all(),
 							   thrust::raw_pointer_cast(device_face_normals.data()),
 							   thrust::raw_pointer_cast(device_face_area.data()),
 							   thrust::raw_pointer_cast(device_face_neighbors.data()),
 							   thrust::raw_pointer_cast(device_ranks.data()),
 							   thrust::raw_pointer_cast(device_indices.data()),
-							   face_neighbors.size() / 2);
+							   device_face_area.size());
   CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
   MPI_Barrier(MPI_COMM_WORLD);
 
-  const int euler_num_blocks = (element_variable.size() + thread_block_size - 1) / thread_block_size;
+  const int euler_num_blocks = (t8_forest_get_local_num_elements(forest) + thread_block_size - 1) / thread_block_size;
   explicit_euler_time_step<<<euler_num_blocks, thread_block_size>>>(
-      thrust::raw_pointer_cast(device_element_variable_prev.data()), thrust::raw_pointer_cast(device_element_variable_next.data()),
-      thrust::raw_pointer_cast(device_element_volume.data()), thrust::raw_pointer_cast(device_element_fluxes.data()), delta_t,
+      device_element_variable_prev.get_own(), device_element_variable_next.get_own(),
+      thrust::raw_pointer_cast(device_element_volume.data()), device_element_fluxes.get_own(), delta_t,
       element_variable.size());
   CUDA_CHECK_LAST_ERROR();
 }
 
 void advection_solver_t::save_vtk(const std::string& prefix) {
-  element_variable = device_element_variable_next;
+  element_variable.resize(device_element_variable_next.size());
+  CUDA_CHECK_ERROR(cudaMemcpy(thrust::raw_pointer_cast(element_variable.data()), device_element_variable_next.get_own(), sizeof(double)*element_variable.size(), cudaMemcpyDeviceToHost));
 
   t8_vtk_data_field_t vtk_data_field = {};
   vtk_data_field.type = T8_VTK_SCALAR;

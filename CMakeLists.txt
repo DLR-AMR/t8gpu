@@ -19,6 +19,7 @@ add_executable(miniapp)
 target_sources(miniapp PRIVATE
   src/main.cu
   src/advection_solver.cu
+  src/shared_device_vector.h
   src/utils/cuda.h
   src/utils/profiling.h)
 target_include_directories(miniapp PRIVATE src)

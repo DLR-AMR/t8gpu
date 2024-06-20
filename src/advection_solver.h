@@ -5,7 +5,7 @@
 #include <t8_forest/t8_forest.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-
+#include <shared_device_vector.h>
 #include <string>
 
 /*
@@ -23,7 +23,6 @@ class advection_solver_t {
   void save_vtk(const std::string& prefix);
 
   void iterate();
-  void exchange_ghost_elements();
   void adapt();
 
  private:
@@ -54,20 +53,11 @@ class advection_solver_t {
 
   double delta_t;
 
-  thrust::device_vector<double> device_element_variable_prev;
-  thrust::device_vector<double> device_element_variable_next;
-  thrust::device_vector<double> device_element_fluxes;
+  shared_device_vector<double> device_element_variable_prev;
+  shared_device_vector<double> device_element_variable_next;
+  shared_device_vector<double> device_element_fluxes;
   thrust::device_vector<double> device_element_volume;
   thrust::device_vector<double> device_element_refinement_criteria;
-
-  thrust::host_vector<double*> all_fluxes;
-  thrust::device_vector<double*> device_all_fluxes;
-
-  thrust::host_vector<double*> all_variables_prev;
-  thrust::device_vector<double*> device_all_variables_prev;
-
-  thrust::host_vector<double*> all_variables_next;
-  thrust::device_vector<double*> device_all_variables_next;
 
   thrust::device_vector<t8_locidx_t> device_face_neighbors;
   thrust::device_vector<double> device_face_normals;
