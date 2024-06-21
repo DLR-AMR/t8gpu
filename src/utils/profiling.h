@@ -5,7 +5,7 @@
 #include <cstdio>
 
 #define TIME(expr) do {							\
-    std::timespec ts_begin, ts_end;					\
+    std::timespec ts_begin {}, ts_end{};				\
     std::timespec_get(&ts_begin, TIME_UTC);				\
     (expr);								\
     std::timespec_get(&ts_end, TIME_UTC);				\
@@ -13,9 +13,9 @@
     std::fprintf(stderr, "%20.20s:%5d       %-40.40s %.5e sec \n", __FUNCTION__, __LINE__, #expr, time_spent); \
   } while(0)
 
-#define TIMER_START(name)			\
-  int ln_begin_##name = __LINE__;		\
-  std::timespec ts_begin_##name, ts_end_##name;	\
+#define TIMER_START(name)				\
+  int ln_begin_##name = __LINE__;			\
+  std::timespec ts_begin_##name {}, ts_end_##name {};	\
   std::timespec_get(&ts_begin_##name, TIME_UTC)
 
 #define TIMER_STOP(name) do {						\

@@ -77,7 +77,7 @@ inline void t8gpu::shared_device_vector<T>::resize(size_t new_size) {
   } else {
     capacity_ = new_size + new_size / 2;
 
-    T* new_allocation;
+    T* new_allocation {};
     CUDA_CHECK_ERROR(cudaMalloc(&new_allocation, sizeof(T)*capacity_));
     CUDA_CHECK_ERROR(cudaMemcpy(new_allocation, arrays_[rank_], sizeof(T)*size_, cudaMemcpyDeviceToDevice));
     size_ = new_size;

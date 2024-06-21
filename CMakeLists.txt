@@ -10,9 +10,6 @@ project(T8CODE_GPU_MINIAPP
   DESCRIPTION "A miniapp to test using t8code meshing capabilities in tandem with GPUs"
   LANGUAGES C CXX CUDA)
 
-# module load PrgEnv/gcc11-openmpi-cuda
-# cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=../install -DT8CODE_ROOT=../../builds/install -DP4EST_ROOT=../../builds/install
-# find_package(P4EST)
 find_package(T8CODE)
 
 add_executable(miniapp)

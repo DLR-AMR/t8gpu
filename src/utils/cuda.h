@@ -5,7 +5,7 @@
 #include <iostream>
 
 #define CUDA_CHECK_ERROR(expr) do {					\
-    cudaError_t value = (expr);						\
+    cudaError_t value {(expr)};						\
     if (value != cudaSuccess) {						\
       std::cerr << "caught CUDA runtime error at: " __FILE__ ":" << __LINE__ << std::endl; \
       std::cerr << cudaGetErrorString(value) << std::endl;		\
@@ -19,7 +19,7 @@
 #ifndef NDEBUG
 #define CUDA_CHECK_LAST_ERROR() do {					\
     cudaDeviceSynchronize();						\
-    cudaError_t value = cudaGetLastError();				\
+    cudaError_t value {cudaGetLastError()};				\
     if (value != cudaSuccess) {						\
       std::cerr << "caught CUDA runtime error at: " __FILE__ ":" << __LINE__ << std::endl; \
       std::cerr << cudaGetErrorString(value) << std::endl;		\
