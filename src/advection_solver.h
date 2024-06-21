@@ -25,6 +25,7 @@ class advection_solver_t {
   void iterate();
   void adapt();
   void partition();
+  void compute_ghost_information();
   double compute_integral() const;
  private:
   void compute_edge_connectivity();

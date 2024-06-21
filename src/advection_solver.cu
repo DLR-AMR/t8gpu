@@ -292,7 +292,9 @@ void advection_solver_t::adapt() {
   CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*num_new_elements));
 
   device_element_refinement_criteria.resize(num_new_elements);
+}
 
+void advection_solver_t::compute_ghost_information() {
   t8_locidx_t num_ghost_elements = t8_forest_get_num_ghosts(forest);
   t8_locidx_t num_local_elements = t8_forest_get_local_num_elements(forest);
 
@@ -341,11 +343,18 @@ void advection_solver_t::partition() {
   t8_locidx_t num_old_elements = t8_forest_get_local_num_elements(forest);
   t8_locidx_t num_new_elements = t8_forest_get_local_num_elements(partitioned_forest);
 
+  thrust::host_vector<t8_locidx_t> old_ranks(num_old_elements);
+  thrust::host_vector<t8_locidx_t> old_indices(num_old_elements);
+  for (t8_locidx_t i=0; i<num_old_elements; i++) {
+    old_ranks[i] = rank;
+    old_indices[i] = i;
+  }
+
   thrust::host_vector<t8_locidx_t> new_ranks(num_new_elements);
   thrust::host_vector<t8_locidx_t> new_indices(num_new_elements);
 
-  sc_array* sc_array_old_ranks_wrapper = sc_array_new_data(ranks.data(), sizeof(int), num_old_elements);
-  sc_array* sc_array_old_indices_wrapper = sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_old_elements);
+  sc_array* sc_array_old_ranks_wrapper = sc_array_new_data(old_ranks.data(), sizeof(int), num_old_elements);
+  sc_array* sc_array_old_indices_wrapper = sc_array_new_data(old_indices.data(), sizeof(t8_locidx_t), num_old_elements);
 
   sc_array* sc_array_new_ranks_wrapper = sc_array_new_data(new_ranks.data(), sizeof(int), num_new_elements);
   sc_array* sc_array_new_indices_wrapper = sc_array_new_data(new_indices.data(), sizeof(t8_locidx_t), num_new_elements);
@@ -391,32 +400,6 @@ void advection_solver_t::partition() {
   t8_forest_set_user_data(partitioned_forest, forest_user_data);
   t8_forest_unref(&forest);
   forest = partitioned_forest;
-
-  // recompute ghost data and edge information
-  t8_locidx_t num_ghost_elements = t8_forest_get_num_ghosts(forest);
-  t8_locidx_t num_local_elements = t8_forest_get_local_num_elements(forest);
-
-  ranks.resize(num_local_elements + num_ghost_elements);
-  indices.resize(num_local_elements + num_ghost_elements);
-  for (t8_locidx_t i=0; i<num_local_elements; i++) {
-    ranks[i] = rank;
-    indices[i] = i;
-  }
-  sc_array* sc_array_ranks_wrapper = sc_array_new_data(ranks.data(), sizeof(int), num_local_elements + num_ghost_elements);
-  t8_forest_ghost_exchange_data(forest, sc_array_ranks_wrapper);
-  sc_array_destroy(sc_array_ranks_wrapper);
-
-  sc_array* sc_array_indices_wrapper = sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_local_elements + num_ghost_elements);
-  t8_forest_ghost_exchange_data(forest, sc_array_indices_wrapper);
-  sc_array_destroy(sc_array_indices_wrapper);
-
-  device_ranks = ranks;
-  device_indices = indices;
-
-  compute_edge_connectivity();
-  device_face_neighbors = face_neighbors;
-  device_face_normals = face_normals;
-  device_face_area = face_area;
 }
 
 double advection_solver_t::compute_integral() const {
