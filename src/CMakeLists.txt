@@ -1,0 +1,18 @@
+add_executable(t8gpu)
+target_sources(t8gpu PRIVATE
+  main.cu
+  advection_solver.cu
+  shared_device_vector.h
+  shared_device_vector.inl
+  utils/cuda.h
+  utils/profiling.h)
+target_include_directories(t8gpu PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+
+target_compile_options(t8gpu PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+# embed kernel source code debug info in the binary
+target_compile_options(t8gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>)
+set_property(TARGET t8gpu PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
+find_package(T8CODE)
+target_link_libraries(t8gpu PRIVATE T8CODE::T8)

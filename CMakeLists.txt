@@ -1,32 +1,19 @@
 cmake_minimum_required(VERSION 3.16)
 
+project(T8GPU
+  DESCRIPTION "A miniapp to test using t8code meshing capabilities in tandem with GPUs"
+  LANGUAGES C CXX CUDA)
+
+option(T8GPU_BUILD_DOCUMENTATION "Build t8gpu developper documentation" ON)
+
 set(CMAKE_CUDA_ARCHITECTURES 86)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-project(T8CODE_GPU_MINIAPP
-  DESCRIPTION "A miniapp to test using t8code meshing capabilities in tandem with GPUs"
-  LANGUAGES C CXX CUDA)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src)
 
-find_package(T8CODE)
-
-add_executable(miniapp)
-target_sources(miniapp PRIVATE
-  src/main.cu
-  src/advection_solver.cu
-  src/shared_device_vector.h
-  src/shared_device_vector.inl
-  src/utils/cuda.h
-  src/utils/profiling.h)
-target_include_directories(miniapp PRIVATE src)
-
-target_compile_options(miniapp PRIVATE -Wall -Wextra -Wno-unused-parameter)
-
-# embed kernel source code debug info in the binary
-target_compile_options(miniapp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>)
-set_property(TARGET miniapp PROPERTY CUDA_SEPARABLE_COMPILATION ON)
-
-target_link_libraries(miniapp PRIVATE T8CODE::T8)
-
+if(T8GPU_BUILD_DOCUMENTATION)
+  add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/doc)
+endif()
