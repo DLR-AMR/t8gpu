@@ -86,8 +86,6 @@ advection_solver_t::advection_solver_t()
       cmesh(t8_cmesh_new_periodic(comm, dim)),
       scheme(t8_scheme_new_default_cxx()),
       forest(t8_forest_new_uniform(cmesh, scheme, 6, true, comm)),
-      element_variable(t8_forest_get_local_num_elements(forest)),
-      element_volume(t8_forest_get_local_num_elements(forest)),
       delta_t(1.0 * std::pow(0.5, max_level) / sqrt(2.0)) {
   t8_forest_t new_forest;
   t8_forest_init(&new_forest);
@@ -121,8 +119,8 @@ advection_solver_t::advection_solver_t()
   device_ranks = ranks;
   device_indices = indices;
 
-  element_variable.resize(num_local_elements);
-  element_volume.resize(num_local_elements);
+  thrust::host_vector<double> element_variable(num_local_elements);
+  thrust::host_vector<double> element_volume(num_local_elements);
   element_refinement_criteria.resize(num_local_elements);
 
   t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
@@ -196,10 +194,10 @@ __global__ static void adapt_variable_and_volume(double const* __restrict__ vari
 
 void advection_solver_t::adapt() {
   constexpr int thread_block_size = 256;
-  const int fluxes_num_blocks = (element_variable.size() + thread_block_size - 1) / thread_block_size;
+  const int fluxes_num_blocks = (device_element_variable_next.size() + thread_block_size - 1) / thread_block_size;
   compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(device_element_variable_next.get_own(),
                                                                         thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
-                                                                        element_variable.size());
+                                                                        device_element_variable_next.size());
   CUDA_CHECK_LAST_ERROR();
 
   element_refinement_criteria = device_element_refinement_criteria;
@@ -209,8 +207,6 @@ void advection_solver_t::adapt() {
   t8_forest_t adapted_forest;
   t8_forest_init(&adapted_forest);
   t8_forest_set_adapt(adapted_forest, forest, adapt_callback_iteration, false);
-  // TODO: handle repartition of elements
-  // t8_forest_set_partition(adapted_forest, forest, true);
   t8_forest_set_ghost(adapted_forest, true, T8_GHOST_FACES);
   t8_forest_set_balance(adapted_forest, forest, true);
   t8_forest_commit(adapted_forest);
@@ -260,8 +256,6 @@ void advection_solver_t::adapt() {
   element_adapt_data[new_idx] = old_idx;
 
   element_refinement_criteria.resize(num_new_elements);
-  element_variable.resize(num_new_elements);
-  element_volume.resize(num_new_elements);
 
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
   t8_forest_set_user_data(adapted_forest, forest_user_data);
@@ -485,9 +479,9 @@ void advection_solver_t::iterate() {
   CUDA_CHECK_LAST_ERROR();
 }
 
-void advection_solver_t::save_vtk(const std::string& prefix) {
-  element_variable.resize(device_element_variable_next.size());
-  CUDA_CHECK_ERROR(cudaMemcpy(thrust::raw_pointer_cast(element_variable.data()), device_element_variable_next.get_own(), sizeof(double)*element_variable.size(), cudaMemcpyDeviceToHost));
+void advection_solver_t::save_vtk(const std::string& prefix) const {
+  thrust::host_vector<double> element_variable(device_element_variable_next.size());
+  CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element_variable_next.get_own(), sizeof(double)*element_variable.size(), cudaMemcpyDeviceToHost));
 
   t8_vtk_data_field_t vtk_data_field = {};
   vtk_data_field.type = T8_VTK_SCALAR;
