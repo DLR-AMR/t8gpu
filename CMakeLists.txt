@@ -20,6 +20,7 @@ target_sources(miniapp PRIVATE
   src/main.cu
   src/advection_solver.cu
   src/shared_device_vector.h
+  src/shared_device_vector.inl
   src/utils/cuda.h
   src/utils/profiling.h)
 target_include_directories(miniapp PRIVATE src)
