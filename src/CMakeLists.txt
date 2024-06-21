@@ -14,5 +14,5 @@ target_compile_options(t8gpu PRIVATE -Wall -Wextra -Wno-unused-parameter)
 target_compile_options(t8gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>)
 set_property(TARGET t8gpu PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
-find_package(T8CODE)
+find_package(T8CODE REQUIRED)
 target_link_libraries(t8gpu PRIVATE T8CODE::T8)
