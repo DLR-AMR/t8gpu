@@ -37,6 +37,10 @@ class advection_solver_t {
   t8_forest_t forest;
   double delta_t;
 
+  t8_locidx_t num_local_elements;
+  t8_locidx_t num_ghost_elements;
+  t8_locidx_t num_local_faces;
+
   thrust::host_vector<double> element_refinement_criteria;
   thrust::device_vector<double> device_element_refinement_criteria;
 

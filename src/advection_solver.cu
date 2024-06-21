@@ -99,8 +99,8 @@ advection_solver_t::advection_solver_t()
   MPI_Comm_size(MPI_COMM_WORLD, &nb_ranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  t8_locidx_t num_ghost_elements = t8_forest_get_num_ghosts(forest);
-  t8_locidx_t num_local_elements = t8_forest_get_local_num_elements(forest);
+  num_ghost_elements = t8_forest_get_num_ghosts(forest);
+  num_local_elements = t8_forest_get_local_num_elements(forest);
 
   ranks.resize(num_local_elements + num_ghost_elements);
   indices.resize(num_local_elements + num_ghost_elements);
@@ -150,7 +150,7 @@ advection_solver_t::advection_solver_t()
   device_element_variable_next = element_variable;
   device_element_volume = element_volume;
   double* device_element_fluxes_ptr = device_element_fluxes.get_own();
-  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*device_element_fluxes.size()));
+  CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*num_local_elements));
 
   compute_edge_connectivity();
   device_face_neighbors = face_neighbors;
@@ -194,10 +194,10 @@ __global__ static void adapt_variable_and_volume(double const* __restrict__ vari
 
 void advection_solver_t::adapt() {
   constexpr int thread_block_size = 256;
-  const int fluxes_num_blocks = (device_element_variable_next.size() + thread_block_size - 1) / thread_block_size;
+  const int fluxes_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
   compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(device_element_variable_next.get_own(),
                                                                         thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
-                                                                        device_element_variable_next.size());
+                                                                        num_local_elements);
   CUDA_CHECK_LAST_ERROR();
 
   element_refinement_criteria = device_element_refinement_criteria;
@@ -286,6 +286,9 @@ void advection_solver_t::adapt() {
   CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*num_new_elements));
 
   device_element_refinement_criteria.resize(num_new_elements);
+
+  num_ghost_elements = t8_forest_get_num_ghosts(forest);
+  num_local_elements = t8_forest_get_local_num_elements(forest);
 }
 
 void advection_solver_t::compute_ghost_information() {
@@ -394,17 +397,20 @@ void advection_solver_t::partition() {
   t8_forest_set_user_data(partitioned_forest, forest_user_data);
   t8_forest_unref(&forest);
   forest = partitioned_forest;
+
+  num_ghost_elements = t8_forest_get_num_ghosts(forest);
+  num_local_elements = t8_forest_get_local_num_elements(forest);
 }
 
 double advection_solver_t::compute_integral() const {
   double local_integral = 0.0;
   double const* mem = device_element_variable_next.get_own();
-  thrust::host_vector<double> variable(device_element_variable_next.size());
+  thrust::host_vector<double> variable(num_local_elements);
   CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(double)*device_element_variable_next.size(), cudaMemcpyDeviceToHost));
-  thrust::host_vector<double> volume(device_element_volume.size());
+  thrust::host_vector<double> volume(num_local_elements);
   CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), device_element_volume.get_own(), sizeof(double)*device_element_volume.size(), cudaMemcpyDeviceToHost));
 
-  for (size_t i=0; i<device_element_variable_next.size(); i++) {
+  for (t8_locidx_t i=0; i<num_local_elements; i++) {
     local_integral += volume[i] * variable[i];
   }
   double global_integral;
@@ -457,7 +463,7 @@ void advection_solver_t::iterate() {
   cudaDeviceSynchronize();
   MPI_Barrier(MPI_COMM_WORLD);
   constexpr int thread_block_size = 256;
-  const int fluxes_num_blocks = (device_face_area.size() + thread_block_size - 1) / thread_block_size;
+  const int fluxes_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
   compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
 							   device_element_variable_prev.get_all(),
 							   device_element_fluxes.get_all(),
@@ -466,7 +472,7 @@ void advection_solver_t::iterate() {
 							   thrust::raw_pointer_cast(device_face_neighbors.data()),
 							   thrust::raw_pointer_cast(device_ranks.data()),
 							   thrust::raw_pointer_cast(device_indices.data()),
-							   device_face_area.size());
+							   num_local_faces);
   CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(MPI_COMM_WORLD);
@@ -474,13 +480,12 @@ void advection_solver_t::iterate() {
   const int euler_num_blocks = (t8_forest_get_local_num_elements(forest) + thread_block_size - 1) / thread_block_size;
   explicit_euler_time_step<<<euler_num_blocks, thread_block_size>>>(
       device_element_variable_prev.get_own(), device_element_variable_next.get_own(),
-      device_element_volume.get_own(), device_element_fluxes.get_own(), delta_t,
-      device_element_variable_next.size());
+      device_element_volume.get_own(), device_element_fluxes.get_own(), delta_t, num_local_elements);
   CUDA_CHECK_LAST_ERROR();
 }
 
 void advection_solver_t::save_vtk(const std::string& prefix) const {
-  thrust::host_vector<double> element_variable(device_element_variable_next.size());
+  thrust::host_vector<double> element_variable(num_local_elements);
   CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element_variable_next.get_own(), sizeof(double)*element_variable.size(), cudaMemcpyDeviceToHost));
 
   t8_vtk_data_field_t vtk_data_field = {};
@@ -549,4 +554,6 @@ void advection_solver_t::compute_edge_connectivity() {
       element_idx++;
     }
   }
+
+  num_local_faces = face_area.size();
 }
