@@ -81,8 +81,8 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
   return 0;
 }
 
-advection_solver_t::advection_solver_t()
-    : comm(sc_MPI_COMM_WORLD),
+advection_solver_t::advection_solver_t(sc_MPI_Comm comm)
+    : comm(comm),
       cmesh(t8_cmesh_new_periodic(comm, dim)),
       scheme(t8_scheme_new_default_cxx()),
       forest(t8_forest_new_uniform(cmesh, scheme, 6, true, comm)),
@@ -96,8 +96,8 @@ advection_solver_t::advection_solver_t()
   t8_forest_commit(new_forest);
   forest = new_forest;
 
-  MPI_Comm_size(MPI_COMM_WORLD, &nb_ranks);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(comm, &nb_ranks);
+  MPI_Comm_rank(comm, &rank);
 
   num_ghost_elements = t8_forest_get_num_ghosts(forest);
   num_local_elements = t8_forest_get_local_num_elements(forest);
@@ -385,7 +385,7 @@ void advection_solver_t::partition() {
 							   device_element_volume.get_all(),
 							   num_new_elements);
   cudaDeviceSynchronize();
-  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Barrier(comm);
 
   device_element_variable_next = std::move(device_new_element_variable);
   device_element_variable_prev.resize(num_new_elements);
@@ -414,7 +414,7 @@ double advection_solver_t::compute_integral() const {
     local_integral += volume[i] * variable[i];
   }
   double global_integral;
-  MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, comm);
   return global_integral;
 }
 
@@ -461,7 +461,7 @@ void advection_solver_t::iterate() {
   CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*device_element_fluxes.size()));
 
   cudaDeviceSynchronize();
-  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Barrier(comm);
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
   compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
@@ -475,7 +475,7 @@ void advection_solver_t::iterate() {
 							   num_local_faces);
   CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
-  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Barrier(comm);
 
   const int euler_num_blocks = (t8_forest_get_local_num_elements(forest) + thread_block_size - 1) / thread_block_size;
   explicit_euler_time_step<<<euler_num_blocks, thread_block_size>>>(

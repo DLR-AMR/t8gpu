@@ -17,7 +17,7 @@ class advection_solver_t {
   static constexpr t8_locidx_t min_level = 3;
   static constexpr t8_locidx_t max_level = 7;
 
-  advection_solver_t();
+  advection_solver_t(sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
   ~advection_solver_t();
 
   void iterate();
