@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
   t8_init(SC_LP_PRODUCTION);
 
   {
-    t8gpu::advection_solver_t advection_solver;
+    t8gpu::AdvectionSolver advection_solver;
     advection_solver.save_vtk("advection_step_00000");
 
     for (size_t i = 0; i < 100; i++) {

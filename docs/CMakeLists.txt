@@ -8,7 +8,7 @@ if(DOXYGEN_FOUND)
 
   doxygen_add_docs(documentation
     ${PROJECT_SOURCE_DIR}
-    ALL  # does not seem to work
+    ALL
     COMMENT "Generate Doxygen HTML documentation")
 
 else()

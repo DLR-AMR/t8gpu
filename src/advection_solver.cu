@@ -22,7 +22,7 @@ int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t
 
   double b = 0.02;
 
-  if (element_level < t8gpu::advection_solver_t::max_level) {
+  if (element_level < t8gpu::AdvectionSolver::max_level) {
     double center[3];
     t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
@@ -30,7 +30,7 @@ int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t
 
     if (std::abs(variable) < b) return 1;
   }
-  if (element_level > t8gpu::advection_solver_t::min_level && is_family) {
+  if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
     double center[] = {0.0, 0.0, 0.0};
     double current_element_center[] = {0.0, 0.0, 0.0};
     for (size_t i = 0; i < 4; i++) {
@@ -57,7 +57,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
   double b = 1.0;
   double h = std::pow(0.5, element_level);
 
-  if (element_level < t8gpu::advection_solver_t::max_level) {
+  if (element_level < t8gpu::AdvectionSolver::max_level) {
     double center[3];
     t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
@@ -67,7 +67,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
       return 1;
     }
   }
-  if (element_level > t8gpu::advection_solver_t::min_level && is_family) {
+  if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
     double variable = 0.0;
     for (size_t i = 0; i < 4; i++) {
       variable += (*forest_user_data->element_refinement_criteria)[lelement_id + i] / 4.0;
@@ -81,7 +81,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
   return 0;
 }
 
-t8gpu::advection_solver_t::advection_solver_t(sc_MPI_Comm comm)
+t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
     : comm(comm),
       cmesh(t8_cmesh_new_periodic(comm, dim)),
       scheme(t8_scheme_new_default_cxx()),
@@ -192,7 +192,7 @@ __global__ static void adapt_variable_and_volume(double const* __restrict__ vari
   }
 }
 
-void t8gpu::advection_solver_t::adapt() {
+void t8gpu::AdvectionSolver::adapt() {
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
   compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(device_element_variable_next.get_own(),
@@ -291,7 +291,7 @@ void t8gpu::advection_solver_t::adapt() {
   num_local_elements = t8_forest_get_local_num_elements(forest);
 }
 
-void t8gpu::advection_solver_t::compute_ghost_information() {
+void t8gpu::AdvectionSolver::compute_ghost_information() {
   t8_locidx_t num_ghost_elements {t8_forest_get_num_ghosts(forest)};
   t8_locidx_t num_local_elements {t8_forest_get_local_num_elements(forest)};
 
@@ -329,7 +329,7 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
   new_volume[i] = old_volume[ranks[i]][indices[i]];
 }
 
-void t8gpu::advection_solver_t::partition() {
+void t8gpu::AdvectionSolver::partition() {
   t8_forest_ref(forest);
   t8_forest_t partitioned_forest {};
   t8_forest_init(&partitioned_forest);
@@ -372,8 +372,8 @@ void t8gpu::advection_solver_t::partition() {
   thrust::device_vector<int> device_new_ranks = new_ranks;
   thrust::device_vector<t8_locidx_t> device_new_indices = new_indices;
 
-  t8gpu::shared_device_vector<double> device_new_element_variable(num_new_elements);
-  t8gpu::shared_device_vector<double> device_new_element_volume(num_new_elements);
+  t8gpu::SharedDeviceVector<double> device_new_element_variable(num_new_elements);
+  t8gpu::SharedDeviceVector<double> device_new_element_volume(num_new_elements);
 
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
@@ -402,7 +402,7 @@ void t8gpu::advection_solver_t::partition() {
   num_local_elements = t8_forest_get_local_num_elements(forest);
 }
 
-double t8gpu::advection_solver_t::compute_integral() const {
+double t8gpu::AdvectionSolver::compute_integral() const {
   double local_integral = 0.0;
   double const* mem {device_element_variable_next.get_own()};
   thrust::host_vector<double> variable(num_local_elements);
@@ -418,7 +418,7 @@ double t8gpu::advection_solver_t::compute_integral() const {
   return global_integral;
 }
 
-t8gpu::advection_solver_t::~advection_solver_t() {
+t8gpu::AdvectionSolver::~AdvectionSolver() {
   forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest))};
   free(forest_user_data);
 
@@ -454,7 +454,7 @@ __global__ static void explicit_euler_time_step(double const* __restrict__ varia
   variable_next[i] = variable_prev[i] + delta_t / volume[i] * fluxes[i];
 }
 
-void t8gpu::advection_solver_t::iterate() {
+void t8gpu::AdvectionSolver::iterate() {
   std::swap(device_element_variable_next, device_element_variable_prev);
 
   double* device_element_fluxes_ptr {device_element_fluxes.get_own()};
@@ -484,7 +484,7 @@ void t8gpu::advection_solver_t::iterate() {
   CUDA_CHECK_LAST_ERROR();
 }
 
-void t8gpu::advection_solver_t::save_vtk(const std::string& prefix) const {
+void t8gpu::AdvectionSolver::save_vtk(const std::string& prefix) const {
   thrust::host_vector<double> element_variable(num_local_elements);
   CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element_variable_next.get_own(), sizeof(double)*element_variable.size(), cudaMemcpyDeviceToHost));
 
@@ -495,7 +495,7 @@ void t8gpu::advection_solver_t::save_vtk(const std::string& prefix) const {
   t8_forest_write_vtk_ext(forest, prefix.c_str(), 1, 1, 1, 1, 0, 0, 0, 1, &vtk_data_field);
 }
 
-void t8gpu::advection_solver_t::compute_edge_connectivity() {
+void t8gpu::AdvectionSolver::compute_edge_connectivity() {
   face_neighbors.clear();
   face_normals.clear();
   face_area.clear();

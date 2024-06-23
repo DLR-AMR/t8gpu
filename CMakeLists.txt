@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(T8GPU
-  DESCRIPTION "A miniapp to test using t8code meshing capabilities in tandem with GPUs"
+  DESCRIPTION "A miniapp to test t8code meshing capabilities with GPUs"
   LANGUAGES C CXX CUDA)
 
 option(T8GPU_BUILD_DOCUMENTATION "Build t8gpu developper documentation" ON)

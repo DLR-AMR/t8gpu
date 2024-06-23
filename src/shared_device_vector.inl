@@ -1,7 +1,7 @@
 #include <shared_device_vector.h>
 
 template<typename T>
-inline t8gpu::shared_device_vector<T>::shared_device_vector(size_t size) : size_(size), capacity_(size) {
+inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(size_t size) : size_(size), capacity_(size) {
   MPI_Comm_size(MPI_COMM_WORLD, &nb_ranks_);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
 
@@ -16,7 +16,7 @@ inline t8gpu::shared_device_vector<T>::shared_device_vector(size_t size) : size_
   } else {
     handles_[rank_].need_open_ipc = false;
   }
-  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(shared_device_vector<T>::handle_t), MPI_BYTE, MPI_COMM_WORLD);
+  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(SharedDeviceVector<T>::handle_t), MPI_BYTE, MPI_COMM_WORLD);
 
   for (int i=0; i<nb_ranks_; i++) {
     if (i != rank_ && handles_[i].need_open_ipc) {
@@ -27,7 +27,7 @@ inline t8gpu::shared_device_vector<T>::shared_device_vector(size_t size) : size_
 }
 
 template<typename T>
-inline t8gpu::shared_device_vector<T>::~shared_device_vector() {
+inline t8gpu::SharedDeviceVector<T>::~SharedDeviceVector() {
   for (int i=0; i<nb_ranks_; i++) {
     if (arrays_[i] != nullptr) {
       if (i == rank_) {
@@ -40,7 +40,7 @@ inline t8gpu::shared_device_vector<T>::~shared_device_vector() {
 }
 
 template<typename T>
-inline t8gpu::shared_device_vector<T>::shared_device_vector(shared_device_vector<T>&& other) : rank_(other.rank_),
+inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(SharedDeviceVector<T>&& other) : rank_(other.rank_),
 											       nb_ranks_(other.nb_ranks_),
 											       size_(other.size_),
 											       capacity_(other.capacity_),
@@ -53,8 +53,8 @@ inline t8gpu::shared_device_vector<T>::shared_device_vector(shared_device_vector
 }
 
 template<typename T>
-inline t8gpu::shared_device_vector<T>& t8gpu::shared_device_vector<T>::operator=(shared_device_vector&& other) {
-  this->~shared_device_vector();
+inline t8gpu::SharedDeviceVector<T>& t8gpu::SharedDeviceVector<T>::operator=(SharedDeviceVector&& other) {
+  this->~SharedDeviceVector();
   rank_ = other.rank_;
   nb_ranks_ = other.nb_ranks_;
   size_ = other.size_;
@@ -70,7 +70,7 @@ inline t8gpu::shared_device_vector<T>& t8gpu::shared_device_vector<T>::operator=
 }
 
 template<typename T>
-inline void t8gpu::shared_device_vector<T>::resize(size_t new_size) {
+inline void t8gpu::SharedDeviceVector<T>::resize(size_t new_size) {
   if (new_size <= capacity_) {
     size_ = new_size;
     handles_[rank_].need_open_ipc = false;
@@ -88,7 +88,7 @@ inline void t8gpu::shared_device_vector<T>::resize(size_t new_size) {
     CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&(handles_[rank_].handle), arrays_[rank_]));
     handles_[rank_].need_open_ipc = true;
   }
-  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(shared_device_vector<T>::handle_t), MPI_BYTE, MPI_COMM_WORLD);
+  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(SharedDeviceVector<T>::handle_t), MPI_BYTE, MPI_COMM_WORLD);
   for (int i=0; i<nb_ranks_; i++) {
     if (i != rank_ && handles_[i].need_open_ipc) {
       if (arrays_[i] != nullptr) {
@@ -101,38 +101,38 @@ inline void t8gpu::shared_device_vector<T>::resize(size_t new_size) {
 }
 
 template<typename T>
-inline const t8gpu::shared_device_vector<T>& t8gpu::shared_device_vector<T>::operator=(const thrust::host_vector<T>& other) {
+inline const t8gpu::SharedDeviceVector<T>& t8gpu::SharedDeviceVector<T>::operator=(const thrust::host_vector<T>& other) {
   this->resize(other.size());
   CUDA_CHECK_ERROR(cudaMemcpy(arrays_[rank_], thrust::raw_pointer_cast(other.data()), sizeof(T)*size_, cudaMemcpyHostToDevice));
   return *this;
 }
 
 template<typename T>
-inline const t8gpu::shared_device_vector<T>& t8gpu::shared_device_vector<T>::operator=(const thrust::device_vector<T>& other) {
+inline const t8gpu::SharedDeviceVector<T>& t8gpu::SharedDeviceVector<T>::operator=(const thrust::device_vector<T>& other) {
   this->resize(other.size());
   CUDA_CHECK_ERROR(cudaMemcpy(arrays_[rank_], thrust::raw_pointer_cast(other.data()), sizeof(T)*size_, cudaMemcpyDeviceToDevice));
   return *this;
 }
 template<typename T>
-[[nodiscard]] inline size_t t8gpu::shared_device_vector<T>::size() const { return size_; }
+[[nodiscard]] inline size_t t8gpu::SharedDeviceVector<T>::size() const { return size_; }
 
 template<typename T>
-inline void t8gpu::shared_device_vector<T>::clear() { size_ = 0; }
+inline void t8gpu::SharedDeviceVector<T>::clear() { size_ = 0; }
 
 template<typename T>
-[[nodiscard]] inline T* t8gpu::shared_device_vector<T>::get_own() { return arrays_[rank_]; }
+[[nodiscard]] inline T* t8gpu::SharedDeviceVector<T>::get_own() { return arrays_[rank_]; }
 
 template<typename T>
-[[nodiscard]] inline T** t8gpu::shared_device_vector<T>::get_all() { return thrust::raw_pointer_cast(device_arrays_.data()); }
+[[nodiscard]] inline T** t8gpu::SharedDeviceVector<T>::get_all() { return thrust::raw_pointer_cast(device_arrays_.data()); }
 
 template<typename T>
-[[nodiscard]] inline T const* t8gpu::shared_device_vector<T>::get_own() const { return arrays_[rank_]; }
+[[nodiscard]] inline T const* t8gpu::SharedDeviceVector<T>::get_own() const { return arrays_[rank_]; }
 
 template<typename T>
-[[nodiscard]] inline T const* const* t8gpu::shared_device_vector<T>::get_all() const { return thrust::raw_pointer_cast(device_arrays_.data()); }
+[[nodiscard]] inline T const* const* t8gpu::SharedDeviceVector<T>::get_all() const { return thrust::raw_pointer_cast(device_arrays_.data()); }
 
 template<typename T>
-inline void t8gpu::shared_device_vector<T>::swap(shared_device_vector<T>& a, shared_device_vector<T>& b) {
+inline void t8gpu::SharedDeviceVector<T>::swap(SharedDeviceVector<T>& a, SharedDeviceVector<T>& b) {
   std::swap(a.size_, b.size_);
   std::swap(a.capacity_, b.capacity_);
   std::swap(a.handles_, b.handles_);
@@ -141,6 +141,6 @@ inline void t8gpu::shared_device_vector<T>::swap(shared_device_vector<T>& a, sha
 }
 
 template<typename T>
-void std::swap(t8gpu::shared_device_vector<T>& a, t8gpu::shared_device_vector<T>& b) {
-  t8gpu::shared_device_vector<T>::swap(a, b);
+void std::swap(t8gpu::SharedDeviceVector<T>& a, t8gpu::SharedDeviceVector<T>& b) {
+  t8gpu::SharedDeviceVector<T>::swap(a, b);
 }
