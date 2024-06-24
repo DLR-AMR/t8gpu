@@ -56,14 +56,13 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
 
   t8_locidx_t element_level {ts->t8_element_level(elements[0])};
 
+  t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
+
   double b = 1.0;
   double h = std::pow(0.5, element_level);
 
   if (element_level < t8gpu::AdvectionSolver::max_level) {
-    double center[3];
-    t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
-
-    double variable = (*forest_user_data->element_refinement_criteria)[lelement_id];
+    double variable = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
 
     if (std::abs(variable) < b * h) {
       return 1;
@@ -72,7 +71,7 @@ int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_loc
   if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
     double variable = 0.0;
     for (size_t i = 0; i < 4; i++) {
-      variable += (*forest_user_data->element_refinement_criteria)[lelement_id + i] / 4.0;
+      variable += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / 4.0;
     }
 
     if (std::abs(variable) > (2 * h) * b) {
