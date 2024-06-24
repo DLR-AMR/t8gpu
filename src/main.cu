@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
     for (size_t i = 0; i < 100; i++) {
       advection_solver.adapt();
       advection_solver.partition();
-      advection_solver.compute_ghost_information();
+      advection_solver.compute_connectivity_information();
       advection_solver.iterate();
 
       char buffer[256];

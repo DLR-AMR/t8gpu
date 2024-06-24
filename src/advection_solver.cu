@@ -297,7 +297,7 @@ void t8gpu::AdvectionSolver::adapt() {
   num_local_elements = t8_forest_get_local_num_elements(forest);
 }
 
-void t8gpu::AdvectionSolver::compute_ghost_information() {
+void t8gpu::AdvectionSolver::compute_connectivity_information() {
   t8_locidx_t num_ghost_elements {t8_forest_get_num_ghosts(forest)};
   t8_locidx_t num_local_elements {t8_forest_get_local_num_elements(forest)};
 

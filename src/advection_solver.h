@@ -62,18 +62,20 @@ namespace t8gpu {
     /// to construct an up to date ghost layer.
     void partition();
 
-    /// @brief Ghost layer computation member function
+    /// @brief Ghost layer and connectivity information computation
+    ///        member function
     ///
-    /// This function creates the necessary ghost layer needed by the
-    /// `iterate` member function. Upon creating of the class, it is
-    /// unnecessary to call this member function as the ghost layer is
-    /// already computed in the constructor for the initial
-    /// mesh. However, this function may be used before the `iterate`
-    /// member function if the mesh has been modified with either (or
-    /// both) `adapt`, `partition` member functions after the last
-    /// call to `compute_ghost_information` or the initial
-    /// construction of the class.
-    void compute_ghost_information();
+    /// This function creates the necessary ghost layer and
+    /// connectivity information needed by the `iterate` member
+    /// function. Upon creating of the class, it is unnecessary to
+    /// call this member function as the ghost layer is already
+    /// computed in the constructor for the initial mesh. However,
+    /// this function may be used before the `iterate` member function
+    /// if the mesh has been modified with either (or both) `adapt`,
+    /// `partition` member functions after the last call to
+    /// `compute_ghost_information` or the initial construction of the
+    /// class.
+    void compute_connectivity_information();
 
     /// @brief Save current quantity of interest to vkt format
     ///
