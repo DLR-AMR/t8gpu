@@ -1,9 +1,9 @@
 #include <shared_device_vector.h>
 
 template<typename T>
-inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(size_t size) : size_(size), capacity_(size) {
-  MPI_Comm_size(MPI_COMM_WORLD, &nb_ranks_);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
+inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(size_t size, sc_MPI_Comm comm) : size_(size), comm_(comm), capacity_(size) {
+  MPI_Comm_size(comm_, &nb_ranks_);
+  MPI_Comm_rank(comm_, &rank_);
 
   handles_.resize(nb_ranks_);
   arrays_.resize(nb_ranks_);
@@ -16,7 +16,7 @@ inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(size_t size) : size_(siz
   } else {
     handles_[rank_].need_open_ipc = false;
   }
-  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(SharedDeviceVector<T>::handle_t), MPI_BYTE, MPI_COMM_WORLD);
+  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(SharedDeviceVector<T>::handle_t), MPI_BYTE, comm_);
 
   for (int i=0; i<nb_ranks_; i++) {
     if (i != rank_ && handles_[i].need_open_ipc) {
@@ -88,7 +88,7 @@ inline void t8gpu::SharedDeviceVector<T>::resize(size_t new_size) {
     CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&(handles_[rank_].handle), arrays_[rank_]));
     handles_[rank_].need_open_ipc = true;
   }
-  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(SharedDeviceVector<T>::handle_t), MPI_BYTE, MPI_COMM_WORLD);
+  MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, handles_.data(), sizeof(SharedDeviceVector<T>::handle_t), MPI_BYTE, comm_);
   for (int i=0; i<nb_ranks_; i++) {
     if (i != rank_ && handles_[i].need_open_ipc) {
       if (arrays_[i] != nullptr) {

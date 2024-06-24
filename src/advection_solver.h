@@ -25,7 +25,6 @@ namespace t8gpu {
     /// @brief Constructor of the advection solver class
     ///
     /// @param [in]         comm specifies the MPI communicator to use
-    /// @return             instance object of the AdvectionSolver class
     ///
     /// This constructor initializes create a simple mesh and initializes
     /// all of its data members

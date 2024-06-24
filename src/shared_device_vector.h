@@ -32,8 +32,9 @@ namespace t8gpu {
     /// @brief Constructor of the shared device array
     ///
     /// @param [in]         size size of the GPU allocation
+    /// @param [in]         comm MPI communicator used
     /// @return             instance object of the vector class
-    inline SharedDeviceVector(size_t size = 0);
+    inline SharedDeviceVector(size_t size = 0, sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
 
     /// @brief Destrutor of the shared device vector class
     ///
@@ -139,6 +140,7 @@ namespace t8gpu {
     static inline void swap(SharedDeviceVector<T>& a, SharedDeviceVector<T>& b);
 
   private:
+    sc_MPI_Comm comm_;
     int rank_;
     int nb_ranks_;
     size_t size_;
