@@ -225,19 +225,43 @@ void t8gpu::AdvectionSolver::adapt() {
   thrust::host_vector<double> adapted_element_volume(num_new_elements);
   thrust::host_vector<t8_locidx_t> element_adapt_data(num_new_elements + 1);
 
+  thrust::host_vector<t8_locidx_t> old_levels(num_old_elements);
+  thrust::host_vector<t8_locidx_t> new_levels(num_new_elements);
+
+  t8_locidx_t num_old_local_trees = {t8_forest_get_num_local_trees(forest)};
+  t8_locidx_t num_new_local_trees = {t8_forest_get_num_local_trees(forest)};
+
+  t8_locidx_t current_idx = 0;
+  for (t8_locidx_t tree_idx = 0; tree_idx < num_old_local_trees; tree_idx++) {
+    t8_eclass_t old_tree_class {t8_forest_get_tree_class(forest, tree_idx)};
+    t8_eclass_scheme_c* old_scheme = {t8_forest_get_eclass_scheme(forest, old_tree_class)};
+
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(forest, tree_idx)};
+
+    for (t8_locidx_t elem_idx = 0; elem_idx < num_elements_in_tree; elem_idx++) {
+      t8_element_t const* element {t8_forest_get_element_in_tree(forest, tree_idx, elem_idx)};
+      old_levels[current_idx] = old_scheme->t8_element_level(element);
+      current_idx++;
+    }
+  }
+
+  current_idx = 0;
+  for (t8_locidx_t tree_idx = 0; tree_idx < num_new_local_trees; tree_idx++) {
+    t8_eclass_t new_tree_class {t8_forest_get_tree_class(adapted_forest, tree_idx)};
+    t8_eclass_scheme_c* new_scheme = {t8_forest_get_eclass_scheme(adapted_forest, new_tree_class)};
+
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(adapted_forest, tree_idx)};
+
+    for (t8_locidx_t elem_idx = 0; elem_idx < num_elements_in_tree; elem_idx++) {
+      t8_element_t const* element {t8_forest_get_element_in_tree(adapted_forest, tree_idx, elem_idx)};
+      new_levels[current_idx] = new_scheme->t8_element_level(element);
+      current_idx++;
+    }
+  }
+
   while (old_idx < num_old_elements && new_idx < num_new_elements) {
-    t8_locidx_t old_tree {}, new_tree {};
-    t8_element_t* old_element {t8_forest_get_element(forest, old_idx, &old_tree)};
-    t8_element_t* new_element {t8_forest_get_element(adapted_forest, new_idx, &new_tree)};
-
-    t8_eclass_t old_class {t8_forest_get_eclass(forest, old_tree)};
-    t8_eclass_t new_class {t8_forest_get_eclass(adapted_forest, new_tree)};
-
-    t8_eclass_scheme_c* old_eclass_scheme {t8_forest_get_eclass_scheme(forest, old_class)};
-    t8_eclass_scheme_c* new_eclass_scheme {t8_forest_get_eclass_scheme(adapted_forest, new_class)};
-
-    int old_level {old_eclass_scheme->t8_element_level(old_element)};
-    int new_level {new_eclass_scheme->t8_element_level(new_element)};
+    int old_level = old_levels[old_idx];
+    int new_level = new_levels[new_idx];
 
     if (old_level < new_level) {  // refined
       for (size_t i = 0; i < 4; i++) {
