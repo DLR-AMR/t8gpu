@@ -8,6 +8,7 @@
 #include <utils/cuda.h>
 #include <utils/profiling.h>
 
+#include <cassert>
 #include <cmath>
 #include <iostream>
 #include <t8_schemes/t8_default/t8_default_cxx.hxx>
@@ -51,6 +52,7 @@ int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t
 int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
                              const int is_family, const int num_elements, t8_element_t* elements[]) {
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest_from));
+  assert(forest_user_data != nullptr);
 
   t8_locidx_t element_level {ts->t8_element_level(elements[0])};
 
@@ -159,6 +161,8 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
 
   // TODO: remove allocation out of RAII paradigm
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
+  assert(forest_user_data != nullptr);
+
   forest_user_data->element_refinement_criteria = &element_refinement_criteria;
   t8_forest_set_user_data(forest, forest_user_data);
 }
@@ -203,6 +207,7 @@ void t8gpu::AdvectionSolver::adapt() {
   element_refinement_criteria = device_element_refinement_criteria;
 
   t8_forest_ref(forest);
+  assert(t8_forest_is_committed(forest));
 
   t8_forest_t adapted_forest {};
   t8_forest_init(&adapted_forest);
@@ -258,6 +263,8 @@ void t8gpu::AdvectionSolver::adapt() {
   element_refinement_criteria.resize(num_new_elements);
 
   forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest))};
+  assert(forest_user_data != nullptr);
+
   t8_forest_set_user_data(adapted_forest, forest_user_data);
   t8_forest_unref(&forest);
 
@@ -330,6 +337,7 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
 }
 
 void t8gpu::AdvectionSolver::partition() {
+  assert(t8_forest_is_committed(forest));
   t8_forest_ref(forest);
   t8_forest_t partitioned_forest {};
   t8_forest_init(&partitioned_forest);
@@ -500,6 +508,7 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
   face_normals.clear();
   face_area.clear();
 
+  assert(t8_forest_is_committed(forest));
   t8_locidx_t num_local_elements {t8_forest_get_local_num_elements(forest)};
 
   t8_locidx_t num_local_trees {t8_forest_get_num_local_trees(forest)};
