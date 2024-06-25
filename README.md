@@ -1,4 +1,6 @@
-# Build
+## Introduction
+
+## Build
 
 ```
 cmake .. -DCMAKE_BUILD_TYPE=Debug/RelWithDebInfo \
@@ -7,3 +9,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug/RelWithDebInfo \
 	 -DT8CODE_ROOT=path/to/t8code/install
 cmake . --build -j
 ```
+
+## Documentation
+
+## License and contributing

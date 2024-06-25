@@ -42,10 +42,10 @@ __global__ static void explicit_euler_time_step(double const* __restrict__ varia
 
 t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
     : comm(comm),
-      cmesh(t8_cmesh_new_periodic(comm, dim)),
+      cmesh(t8_cmesh_new_periodic_hybrid(comm)),
       scheme(t8_scheme_new_default_cxx()),
       forest(t8_forest_new_uniform(cmesh, scheme, 6, true, comm)),
-      delta_t(1.0 * std::pow(0.5, max_level) / sqrt(2.0)) {
+      delta_t(0.5 * std::pow(0.5, max_level) / sqrt(2.0)) {
   t8_forest_t new_forest {};
   t8_forest_init(&new_forest);
   t8_forest_set_adapt(new_forest, forest, adapt_callback_initialization, true);
