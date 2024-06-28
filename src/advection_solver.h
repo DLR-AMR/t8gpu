@@ -126,10 +126,12 @@ namespace t8gpu {
     /*! enum of all variables associated to elements */
     enum VariableName {
       u_prev = 0, /*! previous variable */
-      u_next = 1, /*! next variable */
-      fluxes = 2, /*! flux contributions */
-      volume = 3, /*! volume */
-      nb_element_variables = 4,
+      u_1    = 1, /*! first SSP-RK intermediate state */
+      u_2    = 2, /*! second SSP-RK intermediate state */
+      u_next = 3, /*! next variable */
+      fluxes = 4, /*! flux contributions */
+      volume = 5, /*! volume */
+      nb_element_variables = 6,
     };
 
     /*! collection of all shared variables associated to elements */
@@ -139,6 +141,7 @@ namespace t8gpu {
     thrust::device_vector<double> device_element_refinement_criteria;
 
     void compute_edge_connectivity();
+    void compute_fluxes(VariableName u);
   };
 } // namespace t8gpu
 #endif  // ADVECTION_SOLVER_H
