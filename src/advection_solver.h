@@ -108,15 +108,13 @@ namespace t8gpu {
     t8_locidx_t num_ghost_elements;
     t8_locidx_t num_local_faces;
 
-    thrust::host_vector<double> element_refinement_criteria;
-    thrust::device_vector<double> device_element_refinement_criteria;
-
     thrust::host_vector<int> ranks;
     thrust::host_vector<t8_locidx_t> indices;
 
     thrust::device_vector<int> device_ranks;
     thrust::device_vector<t8_locidx_t> device_indices;
 
+    // host and device face connectivity data
     thrust::host_vector<t8_locidx_t> face_neighbors;
     thrust::host_vector<double> face_normals;
     thrust::host_vector<double> face_area;
@@ -125,10 +123,20 @@ namespace t8gpu {
     thrust::device_vector<double> device_face_normals;
     thrust::device_vector<double> device_face_area;
 
-    t8gpu::SharedDeviceVector<double> device_element_variable_prev;
-    t8gpu::SharedDeviceVector<double> device_element_variable_next;
-    t8gpu::SharedDeviceVector<double> device_element_fluxes;
-    t8gpu::SharedDeviceVector<double> device_element_volume;
+    /*! enum of all variables associated to elements */
+    enum VariableName {
+      u_prev = 0, /*! previous variable */
+      u_next = 1, /*! next variable */
+      fluxes = 2, /*! flux contributions */
+      volume = 3, /*! volume */
+      nb_element_variables = 4,
+    };
+
+    /*! collection of all shared variables associated to elements */
+    std::array<t8gpu::SharedDeviceVector<double>, nb_element_variables> device_element;
+
+    thrust::host_vector<double> element_refinement_criteria;
+    thrust::device_vector<double> device_element_refinement_criteria;
 
     void compute_edge_connectivity();
   };
