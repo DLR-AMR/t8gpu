@@ -75,14 +75,13 @@ inline void t8gpu::SharedDeviceVector<T>::resize(size_t new_size) {
     size_ = new_size;
     handles_[rank_].need_open_ipc = false;
   } else {
+    T8GPU_CUDA_CHECK_ERROR(cudaFree(arrays_[rank_]));
+
     capacity_ = new_size + new_size / 2;
+    size_ = new_size;
 
     T* new_allocation {};
     T8GPU_CUDA_CHECK_ERROR(cudaMalloc(&new_allocation, sizeof(T)*capacity_));
-    T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(new_allocation, arrays_[rank_], sizeof(T)*size_, cudaMemcpyDeviceToDevice));
-    size_ = new_size;
-
-    T8GPU_CUDA_CHECK_ERROR(cudaFree(arrays_[rank_]));
     arrays_[rank_] = new_allocation;
 
     T8GPU_CUDA_CHECK_ERROR(cudaIpcGetMemHandle(&(handles_[rank_].handle), arrays_[rank_]));

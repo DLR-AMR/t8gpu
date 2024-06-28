@@ -26,6 +26,17 @@ namespace t8gpu {
   /// rank's device allocations. This implies a better use of the GPU
   /// memory but requires more synhronization between each ranks GPU
   /// kernel launches.
+  ///
+  /// @warning Contrary to std::vector, when resizing an array, we do
+  ///          not copy from the previous allocation to the next, thus
+  ///          the data in the vector after a resize has occured
+  ///          should not be read. This is the case because a resize
+  ///          is due to a balance/repartition operations that do not
+  ///          preserve the linear ordering of the elements, and thus
+  ///          a simple copy from the previous forest to the next does
+  ///          not suffice. To interpolate between two allocation, you
+  ///          need to create a intermediary vector and move use
+  ///          std::move on it.
   template<typename T>
   class SharedDeviceVector {
   public:
