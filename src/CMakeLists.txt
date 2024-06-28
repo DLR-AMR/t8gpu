@@ -2,8 +2,10 @@ add_executable(t8gpu)
 target_sources(t8gpu PRIVATE
   main.cu
   advection_solver.cu
-  shared_device_vector.h
   shared_device_vector.inl
+  shared_device_vector.h
+  timestepping/ssp_runge_kutta.cu
+  timestepping/ssp_runge_kutta.h
   utils/cuda.h
   utils/profiling.h)
 target_include_directories(t8gpu PRIVATE ${CMAKE_CURRENT_LIST_DIR})

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <iostream>
 #include <t8_schemes/t8_default/t8_default_cxx.hxx>
+#include <timestepping/ssp_runge_kutta.h>
 
 struct forest_user_data_t {
   thrust::host_vector<double>* element_refinement_criteria;
@@ -36,15 +37,6 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
 
 __global__ static void kernel_compute_fluxes(double** __restrict__ variables, double** __restrict__ fluxes, double const* __restrict__ normal,
                                       double const* __restrict__ area, int const* e_idx, int* rank, t8_locidx_t* indices, int nb_edges);
-
-__global__ static void SSP_3RK_step1(double const* __restrict__ u_prev, double* __restrict__ u_1,
-				     double const* __restrict__ volume, double* __restrict__ fluxes, double delta_t, int nb_elements);
-
-__global__ static void SSP_3RK_step2(double const* __restrict__ u_prev, double* __restrict__ u_1, double* __restrict__ u_2,
-				     double const* __restrict__ volume, double* __restrict__ fluxes, double delta_t, int nb_elements);
-
-__global__ static void SSP_3RK_step3(double const* __restrict__ u_prev, double* __restrict__ u_2, double* __restrict__ u_next,
-				     double const* __restrict__ volume, double* __restrict__ fluxes, double delta_t, int nb_elements);
 
 t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
     : comm(comm),
@@ -150,28 +142,25 @@ void t8gpu::AdvectionSolver::iterate() {
 
   constexpr int thread_block_size = 256;
   const int SSP_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
-  SSP_3RK_step1<<<SSP_num_blocks, thread_block_size>>>(
+  t8gpu::timestepping::SSP_3RK_step1<<<SSP_num_blocks, thread_block_size>>>(
       device_element[u_prev].get_own(), device_element[u_1].get_own(),
       device_element[volume].get_own(), device_element[fluxes].get_own(), delta_t, num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(comm);
 
   compute_fluxes(u_1);
 
-  SSP_3RK_step2<<<SSP_num_blocks, thread_block_size>>>(
+  t8gpu::timestepping::SSP_3RK_step2<<<SSP_num_blocks, thread_block_size>>>(
 						       device_element[u_prev].get_own(), device_element[u_1].get_own(), device_element[u_2].get_own(),
       device_element[volume].get_own(), device_element[fluxes].get_own(), delta_t, num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
-<<<<<<< HEAD
-
-  compute_fluxes();
-=======
   cudaDeviceSynchronize();
   MPI_Barrier(comm);
 
   compute_fluxes(u_2);
->>>>>>> 912c3b2 (fixup! Switch timestepping scheme to 3rd order SSP-RK and added compute_fluxes private member function)
 
-  SSP_3RK_step3<<<SSP_num_blocks, thread_block_size>>>(
+  t8gpu::timestepping::SSP_3RK_step3<<<SSP_num_blocks, thread_block_size>>>(
 						       device_element[u_prev].get_own(), device_element[u_2].get_own(), device_element[u_next].get_own(),
       device_element[volume].get_own(), device_element[fluxes].get_own(), delta_t, num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
@@ -500,11 +489,6 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
 }
 
 void t8gpu::AdvectionSolver::compute_fluxes(VariableName u) {
-  double* device_element_fluxes_ptr {device_element[fluxes].get_own()};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*device_element[fluxes].size()));
-  cudaDeviceSynchronize();
-  MPI_Barrier(comm);
-
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
   kernel_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
@@ -643,31 +627,4 @@ __global__ static void kernel_compute_fluxes(double** __restrict__ variables, do
 
   atomicAdd(&fluxes[rank[e_idx[2 * i]]][indices[e_idx[2 * i]]], -flux);
   atomicAdd(&fluxes[rank[e_idx[2 * i + 1]]][indices[e_idx[2 * i + 1]]], flux);
-}
-
-__global__ static void SSP_3RK_step1(double const* __restrict__ u_prev, double* __restrict__ u_1,
-				     double const* __restrict__ volume, double* __restrict__ fluxes, double delta_t, int nb_elements) {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (i >= nb_elements) return;
-
-  u_1[i] = u_prev[i] + delta_t / volume[i] * fluxes[i];
-}
-
-__global__ static void SSP_3RK_step2(double const* __restrict__ u_prev, double* __restrict__ u_1, double* __restrict__ u_2,
-				     double const* __restrict__ volume, double* __restrict__ fluxes, double delta_t, int nb_elements) {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (i >= nb_elements) return;
-
-  u_2[i] = 3.0/4.0*u_prev[i] + 1.0/4.0*u_1[i] + 1.0/4.0*delta_t / volume[i] * fluxes[i];
-}
-
-__global__ static void SSP_3RK_step3(double const* __restrict__ u_prev, double* __restrict__ u_2, double* __restrict__ u_next,
-				     double const* __restrict__ volume, double* __restrict__ fluxes, double delta_t, int nb_elements) {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (i >= nb_elements) return;
-
-  u_next[i] = 1.0/3.0*u_prev[i] + 2.0/3.0*u_2[i] + 2.0/3.0*delta_t / volume[i] * fluxes[i];
 }
