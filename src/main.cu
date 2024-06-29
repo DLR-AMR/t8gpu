@@ -12,19 +12,23 @@ int main(int argc, char* argv[]) {
   t8_init(SC_LP_PRODUCTION);
 
   {
-    t8gpu::AdvectionSolver advection_solver;
-    advection_solver.save_vtk("advection_step_00000");
+    t8gpu::AdvectionSolver advection_solver {};
 
-    for (size_t i = 0; i < 100; i++) {
-      advection_solver.adapt();
-      advection_solver.partition();
-      advection_solver.compute_connectivity_information();
+    size_t i = 0;
+    for (; i < 10'000; i++) {
+      if (i % 10 == 0) {
+	advection_solver.adapt();
+	advection_solver.partition();
+	advection_solver.compute_connectivity_information();
+      }
       advection_solver.iterate();
 
-      char buffer[256];
-      std::snprintf(buffer, sizeof(buffer), "advection_step_%05zu", i + 1);
-      std::string prefix {buffer};
-      advection_solver.save_vtk(prefix);
+      if (i % 200 == 0) {
+	char buffer[256];
+	std::snprintf(buffer, sizeof(buffer), "advection_step_%05zu", i + 1);
+	std::string prefix {buffer};
+	advection_solver.save_vtk(prefix);
+      }
     }
   }
 

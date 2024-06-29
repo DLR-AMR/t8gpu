@@ -69,10 +69,9 @@ __global__ static void kernel_compute_fluxes(double** __restrict__ rho,
 
 t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
     : comm(comm),
-      // cmesh(t8_cmesh_new_periodic_hybrid(comm)),
       cmesh(t8_cmesh_new_periodic(comm, 2)),
       scheme(t8_scheme_new_default_cxx()),
-      forest(t8_forest_new_uniform(cmesh, scheme, max_level, true, comm)),
+      forest(t8_forest_new_uniform(cmesh, scheme, 7, true, comm)),
       delta_t(0.2 * std::pow(0.5, max_level)) {
   t8_forest_t new_forest {};
   t8_forest_init(&new_forest);
@@ -289,13 +288,53 @@ void t8gpu::AdvectionSolver::iterate() {
   T8GPU_CUDA_CHECK_LAST_ERROR();
 }
 
+__global__ void estimate_gradient(double const* const* __restrict__ rho,
+				  double** __restrict__ rho_gradient,
+				  double const* __restrict__ normal,
+				  double const* __restrict__ area,
+				  int const* e_idx, int* rank,
+				  t8_locidx_t* indices, int nb_edges) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= nb_edges) return;
+
+  int l_rank  = rank[e_idx[2 * i]];
+  int l_index = indices[e_idx[2 * i]];
+
+  int r_rank  = rank[e_idx[2 * i + 1]];
+  int r_index = indices[e_idx[2 * i + 1]];
+
+  double rho_l    = rho[l_rank][l_index];
+  double rho_r    = rho[r_rank][r_index];
+
+  double gradient = abs(rho_r - rho_l);
+
+  atomicAdd(&rho_gradient[l_rank][l_index], gradient);
+  atomicAdd(&rho_gradient[r_rank][r_index], gradient);
+}
+
 void t8gpu::AdvectionSolver::adapt() {
   constexpr int thread_block_size = 256;
+  const int gradient_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
+  estimate_gradient<<<gradient_num_blocks, thread_block_size>>>(
+	device_element[rho_next].get_all(),
+	device_element[rho_fluxes].get_all(),
+	thrust::raw_pointer_cast(device_face_normals.data()),
+	thrust::raw_pointer_cast(device_face_area.data()),
+	thrust::raw_pointer_cast(device_face_neighbors.data()),
+	thrust::raw_pointer_cast(device_ranks.data()),
+	thrust::raw_pointer_cast(device_indices.data()),
+	num_local_faces);
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(comm);
+
+  // constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
-  compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(device_element[rho_v1_next].get_own(),
-									device_element[rho_v2_next].get_own(),
-                                                                        thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
-                                                                        num_local_elements);
+  compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(
+	device_element[rho_fluxes].get_own(),
+	device_element[volume].get_own(),
+	thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
+	num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
   element_refinement_criteria = device_element_refinement_criteria;
@@ -673,32 +712,32 @@ void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
 
 static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id,
 					 t8_eclass_scheme_c* ts, const int is_family, const int num_elements, t8_element_t* elements[]) {
-  t8_locidx_t element_level {ts->t8_element_level(elements[0])};
+  // t8_locidx_t element_level {ts->t8_element_level(elements[0])};
 
-  double b = 0.02;
+  // double b = 0.02;
 
-  if (element_level < t8gpu::AdvectionSolver::max_level) {
-    double center[3];
-    t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
+  // if (element_level < t8gpu::AdvectionSolver::max_level) {
+  //   double center[3];
+  //   t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
-    double variable = sqrt((0.5 - center[0]) * (0.5 - center[0]) + (0.5 - center[1]) * (0.5 - center[1])) - 0.25;
+  //   double variable = sqrt((0.5 - center[0]) * (0.5 - center[0]) + (0.5 - center[1]) * (0.5 - center[1])) - 0.25;
 
-    if (std::abs(variable) < b) return 1;
-  }
-  if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
-    double center[] = {0.0, 0.0, 0.0};
-    double current_element_center[] = {0.0, 0.0, 0.0};
-    for (size_t i = 0; i < 4; i++) {
-      t8_forest_element_centroid(forest_from, which_tree, elements[i], current_element_center);
-      for (size_t j = 0; j < 3; j++) {
-        center[j] += current_element_center[j] / 4.0;
-      }
-    }
+  //   if (std::abs(variable) < b) return 1;
+  // }
+  // if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
+  //   double center[] = {0.0, 0.0, 0.0};
+  //   double current_element_center[] = {0.0, 0.0, 0.0};
+  //   for (size_t i = 0; i < 4; i++) {
+  //     t8_forest_element_centroid(forest_from, which_tree, elements[i], current_element_center);
+  //     for (size_t j = 0; j < 3; j++) {
+  //       center[j] += current_element_center[j] / 4.0;
+  //     }
+  //   }
 
-    double variable = sqrt((0.5 - center[0]) * (0.5 - center[0]) + (0.5 - center[1]) * (0.5 - center[1])) - 0.25;
+  //   double variable = sqrt((0.5 - center[0]) * (0.5 - center[0]) + (0.5 - center[1]) * (0.5 - center[1])) - 0.25;
 
-    if (std::abs(variable) > b) return -1;
-  }
+  //   if (std::abs(variable) > b) return -1;
+  // }
 
   return 0;
 }
@@ -712,23 +751,23 @@ static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from,
 
   t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
 
-  double b = 1.0;
-  double h = std::pow(0.5, element_level);
+  double b = 10.0;
+  // double h = std::pow(0.5, element_level);
 
   if (element_level < t8gpu::AdvectionSolver::max_level) {
-    double variable = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
+    double criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
 
-    if (std::abs(variable) < b * h) {
+    if (criteria > b) {
       return 1;
     }
   }
   if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
-    double variable = 0.0;
+    double criteria = 0.0;
     for (size_t i = 0; i < 4; i++) {
-      variable += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / 4.0;
+      criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / 4.0;
     }
 
-    if (std::abs(variable) > (2 * h) * b) {
+    if (criteria < b) {
       return -1;
     }
   }
@@ -736,14 +775,14 @@ static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from,
   return 0;
 }
 
-__global__ static void compute_refinement_criteria(double const* __restrict__ rho_v1,
-						   double const* __restrict__ rho_v2,
+__global__ static void compute_refinement_criteria(double const* __restrict__ fluxes_rho,
+						   double const* __restrict__ volume,
 						   double* __restrict__ criteria, int nb_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements) return;
 
-  criteria[i] = rho_v1[i] * rho_v2[i] + rho_v2[i] * rho_v2[i];
+  criteria[i] = fluxes_rho[i] / sqrt(volume[i]);
 }
 
 __global__ static void adapt_variables_and_volume(double const* __restrict__ rho_old,

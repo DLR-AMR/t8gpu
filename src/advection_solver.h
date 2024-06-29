@@ -19,8 +19,8 @@ namespace t8gpu {
   class AdvectionSolver {
   public:
     static constexpr size_t dim = 2; /*! dimension of the domain */
-    static constexpr t8_locidx_t min_level = 9; /*! minimum refinement level */
-    static constexpr t8_locidx_t max_level = 9; /*! maximum refinement level */
+    static constexpr t8_locidx_t min_level = 3; /*! minimum refinement level */
+    static constexpr t8_locidx_t max_level = 10; /*! maximum refinement level */
 
     static constexpr double gamma = 1.4; /*! ratio of specific heats */
 
