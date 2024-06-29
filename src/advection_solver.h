@@ -19,8 +19,10 @@ namespace t8gpu {
   class AdvectionSolver {
   public:
     static constexpr size_t dim = 2; /*! dimension of the domain */
-    static constexpr t8_locidx_t min_level = 3; /*! minimum refinement level */
-    static constexpr t8_locidx_t max_level = 7; /*! maximum refinement level */
+    static constexpr t8_locidx_t min_level = 9; /*! minimum refinement level */
+    static constexpr t8_locidx_t max_level = 9; /*! maximum refinement level */
+
+    static constexpr double gamma = 1.4; /*! ratio of specific heats */
 
     /// @brief Constructor of the advection solver class
     ///
@@ -125,14 +127,39 @@ namespace t8gpu {
 
     /*! enum of all variables associated to elements */
     enum VariableName {
-      u_prev = 0, /*! previous variable */
-      u_1    = 1, /*! first SSP-RK intermediate state */
-      u_2    = 2, /*! second SSP-RK intermediate state */
-      u_next = 3, /*! next variable */
-      fluxes = 4, /*! flux contributions */
-      volume = 5, /*! volume */
-      nb_element_variables = 6,
+      rho_0         = 0, /*! previous variable */
+      rho_v1_0      = 1, /*! previous variable */
+      rho_v2_0      = 2, /*! previous variable */
+      rho_e_0       = 3, /*! previous variable */
+      rho_1         = 4, /*! first SSP-RK intermediate state */
+      rho_v1_1      = 5, /*! first SSP-RK intermediate state */
+      rho_v2_1      = 6, /*! first SSP-RK intermediate state */
+      rho_e_1       = 7, /*! first SSP-RK intermediate state */
+      rho_2         = 8, /*! second SSP-RK intermediate state */
+      rho_v1_2      = 9, /*! second SSP-RK intermediate state */
+      rho_v2_2      = 10, /*! second SSP-RK intermediate state */
+      rho_e_2       = 11, /*! second SSP-RK intermediate state */
+      rho_3         = 12, /*! next variable */
+      rho_v1_3      = 13, /*! next variable */
+      rho_v2_3      = 14, /*! next variable */
+      rho_e_3       = 15, /*! next variable */
+      rho_fluxes    = 16, /*! flux contributions */
+      rho_v1_fluxes = 17, /*! flux contributions */
+      rho_v2_fluxes = 18, /*! flux contributions */
+      rho_e_fluxes  = 19, /*! flux contributions */
+      volume        = 20, /*! volume */
+      nb_element_variables = 21,
     };
+
+    VariableName rho_prev;
+    VariableName rho_v1_prev;
+    VariableName rho_v2_prev;
+    VariableName rho_e_prev;
+
+    VariableName rho_next;
+    VariableName rho_v1_next;
+    VariableName rho_v2_next;
+    VariableName rho_e_next;
 
     /*! collection of all shared variables associated to elements */
     std::array<t8gpu::SharedDeviceVector<double>, nb_element_variables> device_element;
@@ -141,7 +168,10 @@ namespace t8gpu {
     thrust::device_vector<double> device_element_refinement_criteria;
 
     void compute_edge_connectivity();
-    void compute_fluxes(VariableName u);
+    void compute_fluxes(VariableName rho,
+			VariableName rho_v1,
+			VariableName rho_v2,
+			VariableName rho_e);
   };
 } // namespace t8gpu
 #endif  // ADVECTION_SOLVER_H
