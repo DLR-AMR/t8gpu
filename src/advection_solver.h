@@ -162,7 +162,7 @@ namespace t8gpu {
     VariableName rho_e_next;
 
     /*! collection of all shared variables associated to elements */
-    std::array<t8gpu::SharedDeviceVector<double>, nb_element_variables> device_element;
+    t8gpu::SharedDeviceVector<std::array<double, nb_element_variables>> device_element;
 
     thrust::host_vector<double> element_refinement_criteria;
     thrust::device_vector<double> device_element_refinement_criteria;

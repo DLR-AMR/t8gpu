@@ -162,23 +162,23 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
   }
 
   // resize shared and owned element variables
-  for (size_t i=0; i<nb_element_variables; i++)
-    device_element[i].resize(num_local_elements);
+  device_element.resize(num_local_elements);
 
   element_refinement_criteria.resize(num_local_elements);
   device_element_refinement_criteria.resize(num_local_elements);
 
   // copy new shared element variables
-  device_element[rho_next] = element_rho;
-  device_element[rho_v1_next] = element_rho_v1;
-  device_element[rho_v2_next] = element_rho_v2;
-  device_element[rho_e_next] = element_rho_e;
+  device_element.copy(rho_next, element_rho);
+  device_element.copy(rho_v1_next, element_rho_v1);
+  device_element.copy(rho_v2_next, element_rho_v2);
+  device_element.copy(rho_e_next, element_rho_e);
 
-  device_element[volume] = element_volume;
+  // device_element[volume] = element_volume;
+  device_element.copy(volume, element_volume);
 
   // fill fluxes device element variable
-  double* device_element_fluxes_ptr {device_element[rho_fluxes].get_own()};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, sizeof(double)*num_local_elements));
+  double* device_element_fluxes_ptr {device_element.get_own(rho_fluxes)};
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, 4*sizeof(double)*num_local_elements));
 
   compute_edge_connectivity();
   device_face_neighbors = face_neighbors;
@@ -215,19 +215,19 @@ void t8gpu::AdvectionSolver::iterate() {
   constexpr int thread_block_size = 256;
   const int SSP_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
   t8gpu::timestepping::SSP_3RK_step1<<<SSP_num_blocks, thread_block_size>>>(
-      device_element[rho_prev].get_own(),
-      device_element[rho_v1_prev].get_own(),
-      device_element[rho_v2_prev].get_own(),
-      device_element[rho_e_prev].get_own(),
-      device_element[rho_1].get_own(),
-      device_element[rho_v1_1].get_own(),
-      device_element[rho_v2_1].get_own(),
-      device_element[rho_e_1].get_own(),
-      device_element[volume].get_own(),
-      device_element[rho_fluxes].get_own(),
-      device_element[rho_v1_fluxes].get_own(),
-      device_element[rho_v2_fluxes].get_own(),
-      device_element[rho_e_fluxes].get_own(),
+      device_element.get_own(rho_prev),
+      device_element.get_own(rho_v1_prev),
+      device_element.get_own(rho_v2_prev),
+      device_element.get_own(rho_e_prev),
+      device_element.get_own(rho_1),
+      device_element.get_own(rho_v1_1),
+      device_element.get_own(rho_v2_1),
+      device_element.get_own(rho_e_1),
+      device_element.get_own(volume),
+      device_element.get_own(rho_fluxes),
+      device_element.get_own(rho_v1_fluxes),
+      device_element.get_own(rho_v2_fluxes),
+      device_element.get_own(rho_e_fluxes),
       delta_t, num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
@@ -239,23 +239,23 @@ void t8gpu::AdvectionSolver::iterate() {
 		 rho_e_1);
 
   t8gpu::timestepping::SSP_3RK_step2<<<SSP_num_blocks, thread_block_size>>>(
-      device_element[rho_prev].get_own(),
-      device_element[rho_v1_prev].get_own(),
-      device_element[rho_v2_prev].get_own(),
-      device_element[rho_e_prev].get_own(),
-      device_element[rho_1].get_own(),
-      device_element[rho_v1_1].get_own(),
-      device_element[rho_v2_1].get_own(),
-      device_element[rho_e_1].get_own(),
-      device_element[rho_2].get_own(),
-      device_element[rho_v1_2].get_own(),
-      device_element[rho_v2_2].get_own(),
-      device_element[rho_e_2].get_own(),
-      device_element[volume].get_own(),
-      device_element[rho_fluxes].get_own(),
-      device_element[rho_v1_fluxes].get_own(),
-      device_element[rho_v2_fluxes].get_own(),
-      device_element[rho_e_fluxes].get_own(),
+      device_element.get_own(rho_prev),
+      device_element.get_own(rho_v1_prev),
+      device_element.get_own(rho_v2_prev),
+      device_element.get_own(rho_e_prev),
+      device_element.get_own(rho_1),
+      device_element.get_own(rho_v1_1),
+      device_element.get_own(rho_v2_1),
+      device_element.get_own(rho_e_1),
+      device_element.get_own(rho_2),
+      device_element.get_own(rho_v1_2),
+      device_element.get_own(rho_v2_2),
+      device_element.get_own(rho_e_2),
+      device_element.get_own(volume),
+      device_element.get_own(rho_fluxes),
+      device_element.get_own(rho_v1_fluxes),
+      device_element.get_own(rho_v2_fluxes),
+      device_element.get_own(rho_e_fluxes),
       delta_t, num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
@@ -267,23 +267,23 @@ void t8gpu::AdvectionSolver::iterate() {
 		 rho_e_2);
 
   t8gpu::timestepping::SSP_3RK_step3<<<SSP_num_blocks, thread_block_size>>>(
-      device_element[rho_prev].get_own(),
-      device_element[rho_v1_prev].get_own(),
-      device_element[rho_v2_prev].get_own(),
-      device_element[rho_e_prev].get_own(),
-      device_element[rho_2].get_own(),
-      device_element[rho_v1_2].get_own(),
-      device_element[rho_v2_2].get_own(),
-      device_element[rho_e_2].get_own(),
-      device_element[rho_next].get_own(),
-      device_element[rho_v1_next].get_own(),
-      device_element[rho_v2_next].get_own(),
-      device_element[rho_e_next].get_own(),
-      device_element[volume].get_own(),
-      device_element[rho_fluxes].get_own(),
-      device_element[rho_v1_fluxes].get_own(),
-      device_element[rho_v2_fluxes].get_own(),
-      device_element[rho_e_fluxes].get_own(),
+      device_element.get_own(rho_prev),
+      device_element.get_own(rho_v1_prev),
+      device_element.get_own(rho_v2_prev),
+      device_element.get_own(rho_e_prev),
+      device_element.get_own(rho_2),
+      device_element.get_own(rho_v1_2),
+      device_element.get_own(rho_v2_2),
+      device_element.get_own(rho_e_2),
+      device_element.get_own(rho_next),
+      device_element.get_own(rho_v1_next),
+      device_element.get_own(rho_v2_next),
+      device_element.get_own(rho_e_next),
+      device_element.get_own(volume),
+      device_element.get_own(rho_fluxes),
+      device_element.get_own(rho_v1_fluxes),
+      device_element.get_own(rho_v2_fluxes),
+      device_element.get_own(rho_e_fluxes),
       delta_t, num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 }
@@ -316,8 +316,8 @@ void t8gpu::AdvectionSolver::adapt() {
   constexpr int thread_block_size = 256;
   const int gradient_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
   estimate_gradient<<<gradient_num_blocks, thread_block_size>>>(
-	device_element[rho_next].get_all(),
-	device_element[rho_fluxes].get_all(),
+	device_element.get_all(rho_next),
+	device_element.get_all(rho_fluxes),
 	thrust::raw_pointer_cast(device_face_normals.data()),
 	thrust::raw_pointer_cast(device_face_area.data()),
 	thrust::raw_pointer_cast(device_face_neighbors.data()),
@@ -328,11 +328,10 @@ void t8gpu::AdvectionSolver::adapt() {
   cudaDeviceSynchronize();
   MPI_Barrier(comm);
 
-  // constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
   compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(
-	device_element[rho_fluxes].get_own(),
-	device_element[volume].get_own(),
+	device_element.get_own(rho_fluxes),
+	device_element.get_own(volume),
 	thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
 	num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
@@ -435,11 +434,11 @@ void t8gpu::AdvectionSolver::adapt() {
       cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size() * sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
   const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
   adapt_variables_and_volume<<<adapt_num_blocks, thread_block_size>>>(
-      device_element[rho_next].get_own(),
-      device_element[rho_v1_next].get_own(),
-      device_element[rho_v2_next].get_own(),
-      device_element[rho_e_next].get_own(),
-      device_element[volume].get_own(),
+      device_element.get_own(rho_next),
+      device_element.get_own(rho_v1_next),
+      device_element.get_own(rho_v2_next),
+      device_element.get_own(rho_e_next),
+      device_element.get_own(volume),
       thrust::raw_pointer_cast(device_element_rho_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v1_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v2_next_adapted.data()),
@@ -450,26 +449,22 @@ void t8gpu::AdvectionSolver::adapt() {
   T8GPU_CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
 
   // resize shared and owned element variables
-  for (size_t i=0; i<nb_element_variables; i++)
-    device_element[i].resize(num_new_elements);
+  device_element.resize(num_new_elements);
+
   element_refinement_criteria.resize(num_new_elements);
   device_element_refinement_criteria.resize(num_new_elements);
 
   // fill fluxes device element variable
-  double* device_element_rho_fluxes_ptr {device_element[rho_fluxes].get_own()};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, sizeof(double)*num_new_elements));
-  double* device_element_rho_v1_fluxes_ptr {device_element[rho_v1_fluxes].get_own()};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_v1_fluxes_ptr, 0, sizeof(double)*num_new_elements));
-  double* device_element_rho_v2_fluxes_ptr {device_element[rho_v2_fluxes].get_own()};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_v2_fluxes_ptr, 0, sizeof(double)*num_new_elements));
-  double* device_element_rho_e_fluxes_ptr {device_element[rho_e_fluxes].get_own()};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_e_fluxes_ptr, 0, sizeof(double)*num_new_elements));
+  double* device_element_rho_fluxes_ptr {device_element.get_own(rho_fluxes)};
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 4*sizeof(double)*num_new_elements));
 
-  device_element[rho_next] = std::move(device_element_rho_next_adapted);
-  device_element[rho_v1_next] = std::move(device_element_rho_v1_next_adapted);
-  device_element[rho_v2_next] = std::move(device_element_rho_v2_next_adapted);
-  device_element[rho_e_next] = std::move(device_element_rho_e_next_adapted);
-  device_element[volume] = std::move(device_element_volume_adapted);
+  // TODO add copy with rvalue reference
+  device_element.copy(rho_next, std::move(device_element_rho_next_adapted));
+  device_element.copy(rho_v1_next, std::move(device_element_rho_v1_next_adapted));
+  device_element.copy(rho_v2_next, std::move(device_element_rho_v2_next_adapted));
+  device_element.copy(rho_e_next, std::move(device_element_rho_e_next_adapted));
+  device_element.copy(volume, std::move(device_element_volume_adapted));
+
 
   forest = adapted_forest;
 
@@ -521,41 +516,44 @@ void t8gpu::AdvectionSolver::partition() {
   thrust::device_vector<int> device_new_ranks = new_ranks;
   thrust::device_vector<t8_locidx_t> device_new_indices = new_indices;
 
-  t8gpu::SharedDeviceVector<double> device_new_element_rho(num_new_elements);
-  t8gpu::SharedDeviceVector<double> device_new_element_rho_v1(num_new_elements);
-  t8gpu::SharedDeviceVector<double> device_new_element_rho_v2(num_new_elements);
-  t8gpu::SharedDeviceVector<double> device_new_element_rho_e(num_new_elements);
-  t8gpu::SharedDeviceVector<double> device_new_element_volume(num_new_elements);
+  thrust::device_vector<double> device_new_element_rho(num_new_elements);
+  thrust::device_vector<double> device_new_element_rho_v1(num_new_elements);
+  thrust::device_vector<double> device_new_element_rho_v2(num_new_elements);
+  thrust::device_vector<double> device_new_element_rho_e(num_new_elements);
+  thrust::device_vector<double> device_new_element_volume(num_new_elements);
 
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
   partition_data<<<fluxes_num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_new_ranks.data()),
 							   thrust::raw_pointer_cast(device_new_indices.data()),
-							   device_new_element_rho.get_own(),
-							   device_new_element_rho_v1.get_own(),
-							   device_new_element_rho_v2.get_own(),
-							   device_new_element_rho_e.get_own(),
-							   device_new_element_volume.get_own(),
-							   device_element[rho_next].get_all(),
-							   device_element[rho_v1_next].get_all(),
-							   device_element[rho_v2_next].get_all(),
-							   device_element[rho_e_next].get_all(),
-							   device_element[volume].get_all(),
+							   thrust::raw_pointer_cast(device_new_element_rho.data()),
+							   thrust::raw_pointer_cast(device_new_element_rho_v1.data()),
+							   thrust::raw_pointer_cast(device_new_element_rho_v2.data()),
+							   thrust::raw_pointer_cast(device_new_element_rho_e.data()),
+							   thrust::raw_pointer_cast(device_new_element_volume.data()),
+							   device_element.get_all(rho_next),
+							   device_element.get_all(rho_v1_next),
+							   device_element.get_all(rho_v2_next),
+							   device_element.get_all(rho_e_next),
+							   device_element.get_all(volume),
 							   num_new_elements);
   cudaDeviceSynchronize();
   MPI_Barrier(comm);
 
   // resize shared and own element variables
-  for(size_t i=0; i<nb_element_variables; i++)
-    device_element[i].resize(num_new_elements);
+  device_element.resize(num_new_elements);
+
   device_element_refinement_criteria.resize(num_new_elements);
 
   // copy new shared element variables
-  device_element[rho_next]    = std::move(device_new_element_rho);
-  device_element[rho_v1_next] = std::move(device_new_element_rho_v1);
-  device_element[rho_v2_next] = std::move(device_new_element_rho_v2);
-  device_element[rho_e_next]  = std::move(device_new_element_rho_e);
-  device_element[volume]      = std::move(device_new_element_volume);
+  device_element.copy(rho_next, std::move(device_new_element_rho));
+  device_element.copy(rho_v1_next, std::move(device_new_element_rho_v1));
+  device_element.copy(rho_v2_next, std::move(device_new_element_rho_v2));
+  device_element.copy(rho_e_next, std::move(device_new_element_rho_e));
+  device_element.copy(volume, std::move(device_new_element_volume));
+
+  double* device_element_rho_fluxes_ptr {device_element.get_own(rho_fluxes)};
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 4*sizeof(double)*num_new_elements));
 
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
   t8_forest_set_user_data(partitioned_forest, forest_user_data);
@@ -595,7 +593,7 @@ void t8gpu::AdvectionSolver::compute_connectivity_information() {
 
 void t8gpu::AdvectionSolver::save_vtk(const std::string& prefix) const {
   thrust::host_vector<double> element_variable(num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element[rho_next].get_own(), sizeof(double)*element_variable.size(), cudaMemcpyDeviceToHost));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element.get_own(rho_next), sizeof(double)*element_variable.size(), cudaMemcpyDeviceToHost));
 
   t8_vtk_data_field_t vtk_data_field {};
   vtk_data_field.type = T8_VTK_SCALAR;
@@ -606,11 +604,11 @@ void t8gpu::AdvectionSolver::save_vtk(const std::string& prefix) const {
 
 double t8gpu::AdvectionSolver::compute_integral() const {
   double local_integral = 0.0;
-  double const* mem {device_element[rho_next].get_own()};
+  double const* mem {device_element.get_own(rho_next)};
   thrust::host_vector<double> variable(num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(double)*device_element[rho_next].size(), cudaMemcpyDeviceToHost));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(double)*device_element.size(), cudaMemcpyDeviceToHost));
   thrust::host_vector<double> volume(num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), device_element[VariableName::volume].get_own(), sizeof(double)*device_element[VariableName::volume].size(), cudaMemcpyDeviceToHost));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), device_element.get_own(VariableName::volume), sizeof(double)*device_element.size(), cudaMemcpyDeviceToHost));
 
   for (t8_locidx_t i=0; i<num_local_elements; i++) {
     local_integral += volume[i] * variable[i];
@@ -691,14 +689,14 @@ void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
   kernel_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
-								  device_element[rho].get_all(),
-								  device_element[rho_v1].get_all(),
-								  device_element[rho_v2].get_all(),
-								  device_element[rho_e].get_all(),
-								  device_element[rho_fluxes].get_all(),
-								  device_element[rho_v1_fluxes].get_all(),
-								  device_element[rho_v2_fluxes].get_all(),
-								  device_element[rho_e_fluxes].get_all(),
+								  device_element.get_all(rho),
+								  device_element.get_all(rho_v1),
+								  device_element.get_all(rho_v2),
+								  device_element.get_all(rho_e),
+								  device_element.get_all(rho_fluxes),
+								  device_element.get_all(rho_v1_fluxes),
+								  device_element.get_all(rho_v2_fluxes),
+								  device_element.get_all(rho_e_fluxes),
 								  thrust::raw_pointer_cast(device_face_normals.data()),
 								  thrust::raw_pointer_cast(device_face_area.data()),
 								  thrust::raw_pointer_cast(device_face_neighbors.data()),
@@ -752,7 +750,6 @@ static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from,
   t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
 
   double b = 10.0;
-  // double h = std::pow(0.5, element_level);
 
   if (element_level < t8gpu::AdvectionSolver::max_level) {
     double criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
