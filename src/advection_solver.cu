@@ -54,18 +54,42 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
 			       double const*const* __restrict__ old_volume,
 			       int num_new_elements);
 
-__global__ static void kernel_compute_fluxes(double** __restrict__ rho,
-					     double** __restrict__ rho_v1,
-					     double** __restrict__ rho_v2,
-					     double** __restrict__ rho_e,
-					     double** __restrict__ rho_fluxes,
-					     double** __restrict__ rho_v1_fluxes,
-					     double** __restrict__ rho_v2_fluxes,
-					     double** __restrict__ rho_e_fluxes,
-					     double const* __restrict__ normal,
-					     double const* __restrict__ area,
-					     int const* e_idx, int* rank,
-					     t8_locidx_t* indices, int nb_edges);
+__global__ static void hll_compute_fluxes(double** __restrict__ rho,
+					  double** __restrict__ rho_v1,
+					  double** __restrict__ rho_v2,
+					  double** __restrict__ rho_e,
+					  double** __restrict__ rho_fluxes,
+					  double** __restrict__ rho_v1_fluxes,
+					  double** __restrict__ rho_v2_fluxes,
+					  double** __restrict__ rho_e_fluxes,
+					  double const* __restrict__ normal,
+					  double const* __restrict__ area,
+					  int const* e_idx, int* rank,
+					  t8_locidx_t* indices, int nb_edges);
+
+__device__ static void kepes_compute_flux(double u_L[5],
+					  double u_R[5],
+					  double F_star[5],
+					  double& uHat,
+					  double& vHat,
+					  double& wHat,
+					  double& aHat,
+					  double& rhoHat,
+					  double& HHat,
+					  double& p1Hat);
+
+__global__ static void kepes_compute_fluxes(double** __restrict__ rho,
+					    double** __restrict__ rho_v1,
+					    double** __restrict__ rho_v2,
+					    double** __restrict__ rho_e,
+					    double** __restrict__ rho_fluxes,
+					    double** __restrict__ rho_v1_fluxes,
+					    double** __restrict__ rho_v2_fluxes,
+					    double** __restrict__ rho_e_fluxes,
+					    double const* __restrict__ normal,
+					    double const* __restrict__ area,
+					    int const* e_idx, int* rank,
+					    t8_locidx_t* indices, int nb_edges);
 
 t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
     : comm(comm),
@@ -688,21 +712,21 @@ void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
 					    VariableName rho_e) {
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
-  kernel_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
-								  device_element.get_all(rho),
-								  device_element.get_all(rho_v1),
-								  device_element.get_all(rho_v2),
-								  device_element.get_all(rho_e),
-								  device_element.get_all(rho_fluxes),
-								  device_element.get_all(rho_v1_fluxes),
-								  device_element.get_all(rho_v2_fluxes),
-								  device_element.get_all(rho_e_fluxes),
-								  thrust::raw_pointer_cast(device_face_normals.data()),
-								  thrust::raw_pointer_cast(device_face_area.data()),
-								  thrust::raw_pointer_cast(device_face_neighbors.data()),
-								  thrust::raw_pointer_cast(device_ranks.data()),
-								  thrust::raw_pointer_cast(device_indices.data()),
-								  num_local_faces);
+  kepes_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
+								 device_element.get_all(rho),
+								 device_element.get_all(rho_v1),
+								 device_element.get_all(rho_v2),
+								 device_element.get_all(rho_e),
+								 device_element.get_all(rho_fluxes),
+								 device_element.get_all(rho_v1_fluxes),
+								 device_element.get_all(rho_v2_fluxes),
+								 device_element.get_all(rho_e_fluxes),
+								 thrust::raw_pointer_cast(device_face_normals.data()),
+								 thrust::raw_pointer_cast(device_face_area.data()),
+								 thrust::raw_pointer_cast(device_face_neighbors.data()),
+								 thrust::raw_pointer_cast(device_ranks.data()),
+								 thrust::raw_pointer_cast(device_indices.data()),
+								 num_local_faces);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(comm);
@@ -841,18 +865,18 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
   new_volume[i] = old_volume[ranks[i]][indices[i]];
 }
 
-__global__ static void kernel_compute_fluxes(double** __restrict__ rho,
-					     double** __restrict__ rho_v1,
-					     double** __restrict__ rho_v2,
-					     double** __restrict__ rho_e,
-					     double** __restrict__ rho_fluxes,
-					     double** __restrict__ rho_v1_fluxes,
-					     double** __restrict__ rho_v2_fluxes,
-					     double** __restrict__ rho_e_fluxes,
-					     double const* __restrict__ normal,
-					     double const* __restrict__ area,
-					     int const* e_idx, int* rank,
-					     t8_locidx_t* indices, int nb_edges) {
+__global__ static void hll_compute_fluxes(double** __restrict__ rho,
+					  double** __restrict__ rho_v1,
+					  double** __restrict__ rho_v2,
+					  double** __restrict__ rho_e,
+					  double** __restrict__ rho_fluxes,
+					  double** __restrict__ rho_v1_fluxes,
+					  double** __restrict__ rho_v2_fluxes,
+					  double** __restrict__ rho_e_fluxes,
+					  double const* __restrict__ normal,
+					  double const* __restrict__ area,
+					  int const* e_idx, int* rank,
+					  t8_locidx_t* indices, int nb_edges) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= nb_edges) return;
 
@@ -929,6 +953,253 @@ __global__ static void kernel_compute_fluxes(double** __restrict__ rho,
   double rho_v1_flux = face_surface*((S_r_clamp*F_l[1]-S_l_clamp*F_r[1])+S_r_clamp*S_l_clamp*(rho_v1_r-rho_v1_l))/(S_r_clamp-S_l_clamp);
   double rho_v2_flux = face_surface*((S_r_clamp*F_l[2]-S_l_clamp*F_r[2])+S_r_clamp*S_l_clamp*(rho_v2_r-rho_v2_l))/(S_r_clamp-S_l_clamp);
   double rho_e_flux  = face_surface*((S_r_clamp*F_l[3]-S_l_clamp*F_r[3])+S_r_clamp*S_l_clamp*(rho_e_r-rho_e_l))/(S_r_clamp-S_l_clamp);
+
+  // rotate back
+  double rho_vx_flux = nx*rho_v1_flux - ny*rho_v2_flux;
+  double rho_vy_flux = ny*rho_v1_flux + nx*rho_v2_flux;
+
+  atomicAdd(&rho_fluxes[l_rank][l_index], -rho_flux);
+  atomicAdd(&rho_fluxes[r_rank][r_index],  rho_flux);
+
+  atomicAdd(&rho_v1_fluxes[l_rank][l_index], -rho_vx_flux);
+  atomicAdd(&rho_v1_fluxes[r_rank][r_index],  rho_vx_flux);
+
+  atomicAdd(&rho_v2_fluxes[l_rank][l_index], -rho_vy_flux);
+  atomicAdd(&rho_v2_fluxes[r_rank][r_index],  rho_vy_flux);
+
+  atomicAdd(&rho_e_fluxes[l_rank][l_index], -rho_e_flux);
+  atomicAdd(&rho_e_fluxes[r_rank][r_index],  rho_e_flux);
+}
+
+__device__ static double ln_mean(double aL, double aR) {
+  double Xi = aR/aL;
+  double u = (Xi*(Xi-2.0)+1.0)/(Xi*(Xi+2.0)+1.0);
+
+  double eps = 1.0e-4;
+  if (u < eps) {
+    return (aL+aR)*52.50/(105.0 + u*(35.0 + u*(21.0 + u*15.0)));
+  } else {
+    return (aR-aL)/log(Xi);
+  }
+}
+
+__device__ static void kepes_compute_flux(double u_L[5],
+					  double u_R[5],
+					  double F_star[5],
+					  double& uHat,
+					  double& vHat,
+					  double& wHat,
+					  double& aHat,
+					  double& rhoHat,
+					  double& HHat,
+					  double& p1Hat) {
+  double kappa = 1.4;
+  double kappaM1 = kappa - 1.0;
+  double sKappaM1 = 1.0/kappaM1;
+
+  double sRho_L = 1.0/u_L[0];
+  double velU_L = sRho_L*u_L[1];
+  double velV_L = sRho_L*u_L[2];
+  double velW_L = sRho_L*u_L[3];
+
+  double sRho_R = 1.0/u_R[0];
+  double velU_R = sRho_R*u_R[1];
+  double velV_R = sRho_R*u_R[2];
+  double velW_R = sRho_R*u_R[3];
+
+  double Vel2s2_L = 0.5*(velU_L*velU_L+velV_L*velV_L+velW_L*velW_L);
+  double Vel2s2_R = 0.5*(velU_R*velU_R+velV_R*velV_R+velW_R*velW_R);
+
+  double p_L = kappaM1*(u_L[4] - u_L[0]*Vel2s2_L);
+  double p_R = kappaM1*(u_R[4] - u_R[0]*Vel2s2_R);
+
+  double beta_L = 0.5*u_L[0]/p_L;
+  double beta_R = 0.5*u_R[0]/p_R;
+
+  double rho_MEAN  = 0.5*(u_L[0]+u_R[0]);
+  rhoHat    = ln_mean(u_L[0],u_R[0]);
+  double beta_MEAN = 0.5*(beta_L+beta_R);
+  double beta_Hat  = ln_mean(beta_L,beta_R);
+
+  uHat      = 0.5*(velU_L+velU_R);
+  vHat      = 0.5*(velV_L+velV_R);
+  wHat      = 0.5*(velW_L+velW_R);
+  aHat      = sqrt(kappa*0.5*(p_L+p_R)/rhoHat);
+  HHat      = kappa/(2.0*kappaM1*beta_Hat) + 0.5*(velU_L*velU_R+velV_L*velV_R+velW_L*velW_R);
+  p1Hat     = 0.5*rho_MEAN/beta_MEAN;
+  double Vel2_M    = Vel2s2_L+Vel2s2_R;
+
+  double qHat      = uHat;
+  F_star[0] = rhoHat*qHat;
+  F_star[1] = F_star[0]*uHat + p1Hat;
+  F_star[2] = F_star[0]*vHat;
+  F_star[3] = F_star[0]*wHat;
+  F_star[4] = F_star[0]*0.5*(sKappaM1/beta_Hat - Vel2_M) + uHat*F_star[1] + vHat*F_star[2] + wHat*F_star[3];
+}
+
+__device__ static void kepes_compute_diffusion_matrix(double u_L[5],
+						      double u_R[5],
+						      double F_star[5],
+						      double RHat[5][5],
+						      double DHat[5]) {
+
+  double uHat;
+  double vHat;
+  double wHat;
+  double aHat;
+  double rhoHat;
+  double hHat;
+  double p1Hat;
+
+  double kappa = 1.4;
+  double kappaM1 = kappa - 1.0;
+
+  kepes_compute_flux(u_L,
+		     u_R,
+		     F_star,
+		     uHat,
+		     vHat,
+		     wHat,
+		     aHat,
+		     rhoHat,
+		     hHat,
+		     p1Hat);
+
+  double R_hat[5][5] = {
+    {           1.0,                                     1.0,  0.0,  0.0,            1.0},
+    {     uHat-aHat,                                    uHat,  0.0,  0.0,      uHat+aHat},
+    {          vHat,                                    vHat,  1.0,  0.0,           vHat},
+    {          wHat,                                    wHat,  0.0,  1.0,           wHat},
+    {hHat-uHat*aHat, 0.5*(uHat*uHat + vHat*vHat + wHat*wHat), vHat, wHat, hHat+uHat*aHat}
+  };
+
+  for (size_t i=0; i<5; i++)
+    for (size_t j=0; j<5; j++)
+      RHat[i][j] = R_hat[i][j];
+
+  DHat[0] = 0.5*abs(uHat-aHat)*rhoHat/kappa;
+  DHat[1] = abs(uHat)*(kappaM1/kappa)*rhoHat;
+  DHat[2] = abs(uHat)*p1Hat;
+  DHat[3] = DHat[2];
+  DHat[4] = 0.5*abs(uHat+aHat)*rhoHat/kappa;
+
+}
+
+__global__ static void kepes_compute_fluxes(double** __restrict__ rho,
+					    double** __restrict__ rho_v1,
+					    double** __restrict__ rho_v2,
+					    double** __restrict__ rho_e,
+					    double** __restrict__ rho_fluxes,
+					    double** __restrict__ rho_v1_fluxes,
+					    double** __restrict__ rho_v2_fluxes,
+					    double** __restrict__ rho_e_fluxes,
+					    double const* __restrict__ normal,
+					    double const* __restrict__ area,
+					    int const* e_idx, int* rank,
+					    t8_locidx_t* indices, int nb_edges) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= nb_edges) return;
+
+  double face_surface = area[i];
+
+  int l_rank  = rank[e_idx[2 * i]];
+  int l_index = indices[e_idx[2 * i]];
+
+  int r_rank  = rank[e_idx[2 * i + 1]];
+  int r_index = indices[e_idx[2 * i + 1]];
+
+  double nx = normal[2*i];
+  double ny = normal[2*i+1];
+
+  double rho_l    = rho[l_rank][l_index];
+  double rho_vx_l = rho_v1[l_rank][l_index];
+  double rho_vy_l = rho_v2[l_rank][l_index];
+  double rho_e_l  = rho_e[l_rank][l_index];
+
+  double rho_r    = rho[r_rank][r_index];
+  double rho_vx_r = rho_v1[r_rank][r_index];
+  double rho_vy_r = rho_v2[r_rank][r_index];
+  double rho_e_r  = rho_e[r_rank][r_index];
+
+  // rotate from (x,y) basis to local basis (n,t)
+  double rho_v1_l =  nx*rho_vx_l + ny*rho_vy_l;
+  double rho_v2_l = -ny*rho_vx_l + nx*rho_vy_l;
+
+  double rho_v1_r =  nx*rho_vx_r + ny*rho_vy_r;
+  double rho_v2_r = -ny*rho_vx_r + nx*rho_vy_r;
+
+  double u_L[5] = {rho_l, rho_v1_l, rho_v2_l, 0.0, rho_e_l};
+  double u_R[5] = {rho_r, rho_v1_r, rho_v2_r, 0.0, rho_e_r};
+
+  double F_star[5];
+
+  double RHat[5][5];
+  double DHat[5];
+
+  kepes_compute_diffusion_matrix(u_L,
+				 u_R,
+				 F_star,
+				 RHat,
+				 DHat);
+
+  double kappa = 1.4;
+  double kappaM1 = kappa - 1.0;
+
+  double sRho_L = 1.0/u_L[0];
+  double sRho_R = 1.0/u_R[0];
+
+  double Vel_L[3] = {u_L[1]*sRho_L, u_L[2]*sRho_L, u_L[3]*sRho_L};
+  double Vel_R[3] = {u_R[1]*sRho_R, u_R[2]*sRho_R, u_R[3]*sRho_R};
+
+  double p_L = kappaM1*(u_L[4]-0.5*(u_L[1]*Vel_L[0] + u_L[2]*Vel_L[1] + u_L[3]*Vel_L[2]));
+  double p_R = kappaM1*(u_R[4]-0.5*(u_R[1]*Vel_R[0] + u_R[2]*Vel_R[1] + u_R[3]*Vel_R[2]));
+
+  double sL =  log(p_L) - kappa*log(u_L[0]);
+  double sR =  log(p_R) - kappa*log(u_R[0]);
+
+  double rho_pL = u_L[0]/p_L;
+  double rho_pR = u_R[0]/p_R;
+
+  double vL[5];
+  double vR[5];
+  double vJump[5];
+  double diss[5];
+
+  vL[0] =  (kappa-sL)/(kappaM1) - 0.5*rho_pL*(Vel_L[0]*Vel_L[0] + Vel_L[1]*Vel_L[1] + Vel_L[2]*Vel_L[2]);
+  vR[0] =  (kappa-sR)/(kappaM1) - 0.5*rho_pR*(Vel_R[0]*Vel_R[0] + Vel_R[1]*Vel_R[1] + Vel_R[2]*Vel_R[2]);
+
+  vL[1] = rho_pL*Vel_L[0];
+  vR[1] = rho_pR*Vel_R[0];
+
+  vL[2] = rho_pL*Vel_L[1];
+  vR[2] = rho_pR*Vel_R[1];
+
+  vL[3] = rho_pL*Vel_L[2];
+  vR[3] = rho_pR*Vel_R[2];
+
+  vR[4] = -rho_pR;
+  vL[4] = -rho_pL;
+
+  for (size_t k=0; k<5; k++) {
+    vJump[k] = vR[k] - vL[k];
+  }
+  for (size_t k=0; k<5; k++) {
+    diss[k]  = DHat[k]*(RHat[0][k]*vJump[0] + RHat[1][k]*vJump[1] + RHat[2][k]*vJump[2] + RHat[3][k]*vJump[3] + RHat[4][k]*vJump[4]);
+  }
+
+  double diss_[5];
+  for (size_t k=0; k<5; k++)
+    diss_[k] = RHat[k][0]*diss[0] + RHat[k][1]*diss[1] + RHat[k][2]*diss[2] + RHat[k][3]*diss[3] + RHat[k][4]*diss[4];
+
+  // Compute entropy stable numerical flux
+  double F[5];
+  for (size_t k=0; k<5; k++)
+    F[k] = F_star[k] - 0.5*diss_[k];
+
+  double rho_flux    = face_surface*F[0];
+  double rho_v1_flux = face_surface*F[1];
+  double rho_v2_flux = face_surface*F[2];
+  double rho_e_flux  = face_surface*F[4];
 
   // rotate back
   double rho_vx_flux = nx*rho_v1_flux - ny*rho_v2_flux;
