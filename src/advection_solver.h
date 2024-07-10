@@ -18,12 +18,13 @@ namespace t8gpu {
   ///
   class AdvectionSolver {
   public:
+    using float_type = float;
     static constexpr size_t dim = 2; /*! dimension of the domain */
     static constexpr t8_locidx_t min_level = 3; /*! minimum refinement level */
     static constexpr t8_locidx_t max_level = 10; /*! maximum refinement level */
 
-    static constexpr double gamma = 1.4; /*! ratio of specific heats */
-    static constexpr double cfl   = 0.7;
+    static constexpr float_type gamma = 1.4; /*! ratio of specific heats */
+    static constexpr float_type cfl   = 0.7;
 
     /// @brief Constructor of the advection solver class
     ///
@@ -46,7 +47,7 @@ namespace t8gpu {
     ///  the last mesh refinement/repartitioning in order to have an
     ///  up to date ghost information. It is the responsability of the
     ///  user to do so
-    void iterate(double timestep);
+    void iterate(float_type timestep);
 
     /// @brief Adapt member function
     ///
@@ -96,7 +97,7 @@ namespace t8gpu {
     /// This member function computes the total integral on the domain
     /// of the quantity of interest. It can be used for sanity check
     /// in Debug mode to assert the conservativity of the scheme.
-    [[nodiscard]] double compute_integral() const;
+    [[nodiscard]] float_type compute_integral() const;
 
     /// @brief compute the timestep accoring to the CFL condition
     ///
@@ -106,7 +107,7 @@ namespace t8gpu {
     /// the CFL condition and using maximum wave speed estimates. This
     /// function uses the last wave speed estimates (so the ones
     /// computed at the last step of the last timestepping)
-    [[nodiscard]] double compute_timestep() const;
+    [[nodiscard]] float_type compute_timestep() const;
   private:
     sc_MPI_Comm comm;
     int rank;
@@ -127,13 +128,13 @@ namespace t8gpu {
 
     // host and device face connectivity data
     thrust::host_vector<t8_locidx_t> face_neighbors;
-    thrust::host_vector<double> face_normals;
-    thrust::host_vector<double> face_area;
+    thrust::host_vector<float_type> face_normals;
+    thrust::host_vector<float_type> face_area;
 
     thrust::device_vector<t8_locidx_t> device_face_neighbors;
-    thrust::device_vector<double> device_face_normals;
-    thrust::device_vector<double> device_face_area;
-    thrust::device_vector<double> device_face_speed_estimate;
+    thrust::device_vector<float_type> device_face_normals;
+    thrust::device_vector<float_type> device_face_area;
+    thrust::device_vector<float_type> device_face_speed_estimate;
 
     /*! enum of all variables associated to elements */
     enum VariableName {
@@ -172,16 +173,19 @@ namespace t8gpu {
     VariableName rho_e_next;
 
     /*! collection of all shared variables associated to elements */
-    t8gpu::SharedDeviceVector<std::array<double, nb_element_variables>> device_element;
+    t8gpu::SharedDeviceVector<std::array<float_type, nb_element_variables>> device_element;
 
-    thrust::host_vector<double> element_refinement_criteria;
-    thrust::device_vector<double> device_element_refinement_criteria;
+    thrust::host_vector<float_type> element_refinement_criteria;
+    thrust::device_vector<float_type> device_element_refinement_criteria;
 
     void compute_edge_connectivity();
     void compute_fluxes(VariableName rho,
 			VariableName rho_v1,
 			VariableName rho_v2,
 			VariableName rho_e);
+
+    template<typename ft = float_type>
+    void save_vtk_impl(const std::string& prefix) const;
   };
 } // namespace t8gpu
 #endif  // ADVECTION_SOLVER_H

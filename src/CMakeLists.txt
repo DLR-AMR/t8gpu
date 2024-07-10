@@ -4,7 +4,7 @@ target_sources(t8gpu PRIVATE
   advection_solver.cu
   shared_device_vector.inl
   shared_device_vector.h
-  timestepping/ssp_runge_kutta.cu
+  timestepping/ssp_runge_kutta.inl
   timestepping/ssp_runge_kutta.h
   utils/cuda.h
   utils/profiling.h)
