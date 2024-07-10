@@ -23,6 +23,7 @@ namespace t8gpu {
     static constexpr t8_locidx_t max_level = 10; /*! maximum refinement level */
 
     static constexpr double gamma = 1.4; /*! ratio of specific heats */
+    static constexpr double cfl   = 0.7;
 
     /// @brief Constructor of the advection solver class
     ///
@@ -45,7 +46,7 @@ namespace t8gpu {
     ///  the last mesh refinement/repartitioning in order to have an
     ///  up to date ghost information. It is the responsability of the
     ///  user to do so
-    void iterate();
+    void iterate(double timestep);
 
     /// @brief Adapt member function
     ///
@@ -97,6 +98,15 @@ namespace t8gpu {
     /// in Debug mode to assert the conservativity of the scheme.
     [[nodiscard]] double compute_integral() const;
 
+    /// @brief compute the timestep accoring to the CFL condition
+    ///
+    /// @return timestep
+    ///
+    /// This member function returns the maximum timestep according to
+    /// the CFL condition and using maximum wave speed estimates. This
+    /// function uses the last wave speed estimates (so the ones
+    /// computed at the last step of the last timestepping)
+    [[nodiscard]] double compute_timestep() const;
   private:
     sc_MPI_Comm comm;
     int rank;
@@ -104,7 +114,6 @@ namespace t8gpu {
     t8_scheme_cxx_t* scheme;
     t8_cmesh_t cmesh;
     t8_forest_t forest;
-    double delta_t;
 
     t8_locidx_t num_local_elements;
     t8_locidx_t num_ghost_elements;
@@ -124,6 +133,7 @@ namespace t8gpu {
     thrust::device_vector<t8_locidx_t> device_face_neighbors;
     thrust::device_vector<double> device_face_normals;
     thrust::device_vector<double> device_face_area;
+    thrust::device_vector<double> device_face_speed_estimate;
 
     /*! enum of all variables associated to elements */
     enum VariableName {

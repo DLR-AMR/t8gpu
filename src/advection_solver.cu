@@ -11,6 +11,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <t8_schemes/t8_default/t8_default_cxx.hxx>
 #include <timestepping/ssp_runge_kutta.h>
 
@@ -62,21 +63,11 @@ __global__ static void hll_compute_fluxes(double** __restrict__ rho,
 					  double** __restrict__ rho_v1_fluxes,
 					  double** __restrict__ rho_v2_fluxes,
 					  double** __restrict__ rho_e_fluxes,
+					  double* __restrict__ speed_estimate,
 					  double const* __restrict__ normal,
 					  double const* __restrict__ area,
 					  int const* e_idx, int* rank,
 					  t8_locidx_t* indices, int nb_edges);
-
-__device__ static void kepes_compute_flux(double u_L[5],
-					  double u_R[5],
-					  double F_star[5],
-					  double& uHat,
-					  double& vHat,
-					  double& wHat,
-					  double& aHat,
-					  double& rhoHat,
-					  double& HHat,
-					  double& p1Hat);
 
 __global__ static void kepes_compute_fluxes(double** __restrict__ rho,
 					    double** __restrict__ rho_v1,
@@ -86,6 +77,7 @@ __global__ static void kepes_compute_fluxes(double** __restrict__ rho,
 					    double** __restrict__ rho_v1_fluxes,
 					    double** __restrict__ rho_v2_fluxes,
 					    double** __restrict__ rho_e_fluxes,
+					    double* __restrict__ speed_estimates,
 					    double const* __restrict__ normal,
 					    double const* __restrict__ area,
 					    int const* e_idx, int* rank,
@@ -95,8 +87,7 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
     : comm(comm),
       cmesh(t8_cmesh_new_periodic(comm, 2)),
       scheme(t8_scheme_new_default_cxx()),
-      forest(t8_forest_new_uniform(cmesh, scheme, 7, true, comm)),
-      delta_t(0.2 * std::pow(0.5, max_level)) {
+      forest(t8_forest_new_uniform(cmesh, scheme, 7, true, comm)) {
   t8_forest_t new_forest {};
   t8_forest_init(&new_forest);
   t8_forest_set_adapt(new_forest, forest, adapt_callback_initialization, true);
@@ -208,6 +199,10 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
   device_face_neighbors = face_neighbors;
   device_face_normals = face_normals;
   device_face_area = face_area;
+  device_face_speed_estimate.resize(device_face_area.size());
+  thrust::fill(device_face_speed_estimate.begin(),
+	       device_face_speed_estimate.end(),
+	       std::numeric_limits<double>::infinity());
 
   // TODO: remove allocation out of RAII paradigm
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
@@ -225,7 +220,7 @@ t8gpu::AdvectionSolver::~AdvectionSolver() {
   t8_cmesh_destroy(&cmesh);
 }
 
-void t8gpu::AdvectionSolver::iterate() {
+void t8gpu::AdvectionSolver::iterate(double delta_t) {
   std::swap(rho_prev, rho_next);
   std::swap(rho_v1_prev, rho_v1_next);
   std::swap(rho_v2_prev, rho_v2_next);
@@ -613,6 +608,7 @@ void t8gpu::AdvectionSolver::compute_connectivity_information() {
   device_face_neighbors = face_neighbors;
   device_face_normals = face_normals;
   device_face_area = face_area;
+  device_face_speed_estimate.resize(face_area.size());
 }
 
 void t8gpu::AdvectionSolver::save_vtk(const std::string& prefix) const {
@@ -640,6 +636,16 @@ double t8gpu::AdvectionSolver::compute_integral() const {
   double global_integral {};
   MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, comm);
   return global_integral;
+}
+
+double t8gpu::AdvectionSolver::compute_timestep() const {
+  double local_speed_estimate = thrust::reduce(device_face_speed_estimate.begin(),
+					       device_face_speed_estimate.end(),
+					       0.0, thrust::maximum<double>());
+  double global_speed_estimate {};
+  MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_DOUBLE, MPI_MAX, comm);
+
+  return  cfl*std::pow(0.5, max_level)/global_speed_estimate;
 }
 
 void t8gpu::AdvectionSolver::compute_edge_connectivity() {
@@ -721,6 +727,7 @@ void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
 								 device_element.get_all(rho_v1_fluxes),
 								 device_element.get_all(rho_v2_fluxes),
 								 device_element.get_all(rho_e_fluxes),
+								 thrust::raw_pointer_cast(device_face_speed_estimate.data()),
 								 thrust::raw_pointer_cast(device_face_normals.data()),
 								 thrust::raw_pointer_cast(device_face_area.data()),
 								 thrust::raw_pointer_cast(device_face_neighbors.data()),
@@ -873,6 +880,7 @@ __global__ static void hll_compute_fluxes(double** __restrict__ rho,
 					  double** __restrict__ rho_v1_fluxes,
 					  double** __restrict__ rho_v2_fluxes,
 					  double** __restrict__ rho_e_fluxes,
+					  double* __restrict__ speed_estimate,
 					  double const* __restrict__ normal,
 					  double const* __restrict__ area,
 					  int const* e_idx, int* rank,
@@ -934,7 +942,7 @@ __global__ static void hll_compute_fluxes(double** __restrict__ rho,
   double S_l = min(v1_roe-c_roe, v1_l-c_l);
   double S_r = max(v1_roe+c_roe, v1_r+c_r);
 
-  // double x_wave_speeds[i,j-1] = max(-S_l, S_r);
+  speed_estimate[i] = max(-S_l, S_r);
 
   double F_l[4] = {rho_v1_l,
     rho_v1_l*rho_v1_l/rho_l + p_l,
@@ -1041,15 +1049,16 @@ __device__ static void kepes_compute_diffusion_matrix(double u_L[5],
 						      double u_R[5],
 						      double F_star[5],
 						      double RHat[5][5],
-						      double DHat[5]) {
+						      double DHat[5],
+						      double& uHat,
+						      double& vHat,
+						      double& wHat,
+						      double& aHat,
+						      double& rhoHat,
+						      double& hHat,
+						      double& p1Hat) {
 
-  double uHat;
-  double vHat;
-  double wHat;
-  double aHat;
-  double rhoHat;
-  double hHat;
-  double p1Hat;
+
 
   double kappa = 1.4;
   double kappaM1 = kappa - 1.0;
@@ -1093,6 +1102,7 @@ __global__ static void kepes_compute_fluxes(double** __restrict__ rho,
 					    double** __restrict__ rho_v1_fluxes,
 					    double** __restrict__ rho_v2_fluxes,
 					    double** __restrict__ rho_e_fluxes,
+					    double* __restrict__ speed_estimate,
 					    double const* __restrict__ normal,
 					    double const* __restrict__ area,
 					    int const* e_idx, int* rank,
@@ -1136,11 +1146,28 @@ __global__ static void kepes_compute_fluxes(double** __restrict__ rho,
   double RHat[5][5];
   double DHat[5];
 
+  double uHat;
+  double vHat;
+  double wHat;
+  double aHat;
+  double rhoHat;
+  double hHat;
+  double p1Hat;
   kepes_compute_diffusion_matrix(u_L,
 				 u_R,
 				 F_star,
 				 RHat,
-				 DHat);
+				 DHat,
+				 uHat,
+				 vHat,
+				 wHat,
+				 aHat,
+				 rhoHat,
+				 hHat,
+				 p1Hat);
+
+  speed_estimate[i] = abs(uHat) + aHat;
+
 
   double kappa = 1.4;
   double kappaM1 = kappa - 1.0;
