@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
 
     size_t i = 0;
     double t = 0;
-    double delta_t = 0;
+    t8gpu::AdvectionSolver::float_type delta_t = 0;
     double t_max = 0.75;
     for (; t < t_max; t += delta_t, i++) {
       if (rank == 0)

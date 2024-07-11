@@ -23,8 +23,8 @@ namespace t8gpu {
     static constexpr t8_locidx_t min_level = 3; /*! minimum refinement level */
     static constexpr t8_locidx_t max_level = 10; /*! maximum refinement level */
 
-    static constexpr float_type gamma = 1.4; /*! ratio of specific heats */
-    static constexpr float_type cfl   = 0.7;
+    static constexpr float_type gamma = float_type{1.4}; /*! ratio of specific heats */
+    static constexpr float_type cfl   = float_type{0.7};
 
     /// @brief Constructor of the advection solver class
     ///

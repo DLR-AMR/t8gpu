@@ -10,7 +10,7 @@ target_sources(t8gpu PRIVATE
   utils/profiling.h)
 target_include_directories(t8gpu PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
-target_compile_options(t8gpu PRIVATE -Wall -Wextra -Wno-unused-parameter)
+target_compile_options(t8gpu PRIVATE -Wall -Wextra -Wno-unused-parameter -Wconversion)
 
 # embed kernel source code debug info in the binary
 target_compile_options(t8gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>)

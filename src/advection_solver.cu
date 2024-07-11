@@ -155,8 +155,7 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
       double center[3];
       t8_forest_element_centroid(forest, tree_idx, element, center);
 
-      double sigma = 0.05/sqrt(2.0);
-      double gamma = 1.4;
+      float_type sigma = float_type{0.05}/sqrt(float_type{2.0});
 
       double x = center[0]-0.5;
       double y = center[1]-0.5;
@@ -172,10 +171,10 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
       element_rho[element_idx]    = rho;
       element_rho_v1[element_idx] = rho_v1;
       element_rho_v2[element_idx] = rho_v2;
-      element_rho_e[element_idx]  = 2.0/(gamma-1.0) + 0.5*(rho_v1 * rho_v1 + rho_v2 * rho_v2) / rho;
+      element_rho_e[element_idx]  = float_type{2.0}/(gamma-float_type{1.0}) + float_type{0.5}*(rho_v1 * rho_v1 + rho_v2 * rho_v2) / rho;
 
 
-      element_volume[element_idx] = t8_forest_element_volume(forest, tree_idx, element);
+      element_volume[element_idx] = static_cast<float_type>(t8_forest_element_volume(forest, tree_idx, element));
 
       element_idx++;
     }
@@ -680,8 +679,8 @@ float_type t8gpu::AdvectionSolver::compute_integral() const {
 
 float_type t8gpu::AdvectionSolver::compute_timestep() const {
   float_type local_speed_estimate = thrust::reduce(device_face_speed_estimate.begin(),
-					       device_face_speed_estimate.end(),
-					       0.0, thrust::maximum<float_type>());
+						   device_face_speed_estimate.end(),
+						   float_type{0.0}, thrust::maximum<float_type>());
   float_type global_speed_estimate {};
   if constexpr (std::is_same<float_type, double>::value) {
     MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_DOUBLE, MPI_MAX, comm);
@@ -689,7 +688,7 @@ float_type t8gpu::AdvectionSolver::compute_timestep() const {
     MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_FLOAT, MPI_MAX, comm);
   }
 
-  return  cfl*std::pow(0.5, max_level)/global_speed_estimate;
+  return  cfl*static_cast<float_type>(std::pow(static_cast<float_type>(0.5), max_level))/global_speed_estimate;
 }
 
 void t8gpu::AdvectionSolver::compute_edge_connectivity() {
@@ -729,7 +728,7 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
 	    t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
 	    face_normals.push_back(static_cast<float_type>(face_normal[0]));
 	    face_normals.push_back(static_cast<float_type>(face_normal[1]));
-	    face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx) / static_cast<float_type>(num_neighbors));
+	    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) / static_cast<float_type>(num_neighbors));
 	  }
 	}
 
@@ -742,7 +741,7 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
 	  t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
 	  face_normals.push_back(static_cast<float_type>(face_normal[0]));
 	  face_normals.push_back(static_cast<float_type>(face_normal[1]));
-	  face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx));
+	  face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)));
         }
 	neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
         T8_FREE(neighbors);
@@ -755,7 +754,7 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
     }
   }
 
-  num_local_faces = face_area.size();
+  num_local_faces = static_cast<t8_locidx_t>(face_area.size());
 }
 
 void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
@@ -838,7 +837,7 @@ static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from,
   if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
     float_type criteria = 0.0;
     for (size_t i = 0; i < 4; i++) {
-      criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / 4.0;
+      criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / float_type{4.0};
     }
 
     if (criteria < b) {
