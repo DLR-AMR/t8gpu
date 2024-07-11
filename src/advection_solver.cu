@@ -10,7 +10,7 @@
 #include <t8_forest/t8_forest_io.h>
 #include <t8_forest/t8_forest_iterate.h>
 #include <t8_forest/t8_forest_partition.h>
-#include <t8_schemes/t8_default/t8_default_cxx.hxx>
+#include <t8_schemes/t8_default/t8_default.hxx>
 
 #include <cassert>
 #include <cmath>
