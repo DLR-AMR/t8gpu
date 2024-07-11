@@ -744,7 +744,9 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
 	  face_normals.push_back(static_cast<float_type>(face_normal[1]));
 	  face_area.push_back(t8_forest_element_face_area(forest, tree_idx, element, face_idx));
         }
+	neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
         T8_FREE(neighbors);
+
         T8_FREE(dual_faces);
         T8_FREE(neighbor_ids);
       }
