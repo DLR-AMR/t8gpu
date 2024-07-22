@@ -109,32 +109,30 @@ namespace t8gpu {
     /// computed at the last step of the last timestepping)
     [[nodiscard]] float_type compute_timestep() const;
   private:
-    sc_MPI_Comm comm;
-    int rank;
-    int nb_ranks;
-    t8_scheme_cxx_t* scheme;
-    t8_cmesh_t cmesh;
-    t8_forest_t forest;
+    sc_MPI_Comm      m_comm;
+    int              m_rank;
+    int              m_nb_ranks;
+    t8_scheme_cxx_t* m_scheme;
+    t8_cmesh_t       m_cmesh;
+    t8_forest_t      m_forest;
 
-    t8_locidx_t num_local_elements;
-    t8_locidx_t num_ghost_elements;
-    t8_locidx_t num_local_faces;
+    t8_locidx_t m_num_local_elements;
+    t8_locidx_t m_num_ghost_elements;
+    t8_locidx_t m_num_local_faces;
 
-    thrust::host_vector<int> ranks;
-    thrust::host_vector<t8_locidx_t> indices;
-
-    thrust::device_vector<int> device_ranks;
-    thrust::device_vector<t8_locidx_t> device_indices;
+    thrust::host_vector<int>           m_ranks;
+    thrust::device_vector<int>         m_device_ranks;
+    thrust::host_vector<t8_locidx_t>   m_indices;
+    thrust::device_vector<t8_locidx_t> m_device_indices;
 
     // host and device face connectivity data
-    thrust::host_vector<t8_locidx_t> face_neighbors;
-    thrust::host_vector<float_type> face_normals;
-    thrust::host_vector<float_type> face_area;
-
-    thrust::device_vector<t8_locidx_t> device_face_neighbors;
-    thrust::device_vector<float_type> device_face_normals;
-    thrust::device_vector<float_type> device_face_area;
-    thrust::device_vector<float_type> device_face_speed_estimate;
+    thrust::host_vector<t8_locidx_t>   m_face_neighbors;
+    thrust::device_vector<t8_locidx_t> m_device_face_neighbors;
+    thrust::host_vector<float_type>    m_face_normals;
+    thrust::device_vector<float_type>  m_device_face_normals;
+    thrust::host_vector<float_type>    m_face_area;
+    thrust::device_vector<float_type>  m_device_face_area;
+    thrust::device_vector<float_type>  m_device_face_speed_estimate;
 
     /*! enum of all variables associated to elements */
     enum VariableName {
@@ -173,10 +171,10 @@ namespace t8gpu {
     VariableName rho_e_next;
 
     /*! collection of all shared variables associated to elements */
-    t8gpu::SharedDeviceVector<std::array<float_type, nb_element_variables>> device_element;
+    t8gpu::SharedDeviceVector<std::array<float_type, nb_element_variables>> m_device_element;
 
-    thrust::host_vector<float_type> element_refinement_criteria;
-    thrust::device_vector<float_type> device_element_refinement_criteria;
+    thrust::host_vector<float_type>   m_element_refinement_criteria;
+    thrust::device_vector<float_type> m_device_element_refinement_criteria;
 
     void compute_edge_connectivity();
     void compute_fluxes(VariableName rho,

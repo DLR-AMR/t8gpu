@@ -89,21 +89,21 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
 					    t8_locidx_t* indices, int nb_edges);
 
 t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
-    : comm(comm),
-      cmesh(t8_cmesh_new_periodic(comm, 2)),
-      scheme(t8_scheme_new_default_cxx()),
-      forest(t8_forest_new_uniform(cmesh, scheme, 7, true, comm)) {
+    : m_comm(comm),
+      m_cmesh(t8_cmesh_new_periodic(m_comm, 2)),
+      m_scheme(t8_scheme_new_default_cxx()),
+      m_forest(t8_forest_new_uniform(m_cmesh, m_scheme, 7, true, m_comm)) {
   t8_forest_t new_forest {};
   t8_forest_init(&new_forest);
-  t8_forest_set_adapt(new_forest, forest, adapt_callback_initialization, true);
+  t8_forest_set_adapt(new_forest, m_forest, adapt_callback_initialization, true);
   t8_forest_set_ghost(new_forest, true, T8_GHOST_FACES);
-  t8_forest_set_balance(new_forest, forest, false);
-  t8_forest_set_partition(new_forest, forest, true);
+  t8_forest_set_balance(new_forest, m_forest, false);
+  t8_forest_set_partition(new_forest, m_forest, true);
   t8_forest_commit(new_forest);
-  forest = new_forest;
+  m_forest = new_forest;
 
-  MPI_Comm_size(comm, &nb_ranks);
-  MPI_Comm_rank(comm, &rank);
+  MPI_Comm_size(m_comm, &m_nb_ranks);
+  MPI_Comm_rank(m_comm, &m_rank);
 
   rho_prev    = rho_0;
   rho_v1_prev = rho_v1_0;
@@ -115,45 +115,45 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
   rho_v2_next = rho_v2_3;
   rho_e_next  = rho_e_3;
 
-  num_ghost_elements = t8_forest_get_num_ghosts(forest);
-  num_local_elements = t8_forest_get_local_num_elements(forest);
+  m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 
-  ranks.resize(num_local_elements + num_ghost_elements);
-  indices.resize(num_local_elements + num_ghost_elements);
-  for (t8_locidx_t i=0; i<num_local_elements; i++) {
-    ranks[i] = rank;
-    indices[i] = i;
+  m_ranks.resize(m_num_local_elements + m_num_ghost_elements);
+  m_indices.resize(m_num_local_elements + m_num_ghost_elements);
+  for (t8_locidx_t i=0; i<m_num_local_elements; i++) {
+    m_ranks[i] = m_rank;
+    m_indices[i] = i;
   }
-  sc_array* sc_array_ranks_wrapper {sc_array_new_data(ranks.data(), sizeof(int), num_local_elements + num_ghost_elements)};
-  t8_forest_ghost_exchange_data(forest, sc_array_ranks_wrapper);
+  sc_array* sc_array_ranks_wrapper {sc_array_new_data(m_ranks.data(), sizeof(int), m_num_local_elements + m_num_ghost_elements)};
+  t8_forest_ghost_exchange_data(m_forest, sc_array_ranks_wrapper);
   sc_array_destroy(sc_array_ranks_wrapper);
 
-  sc_array* sc_array_indices_wrapper {sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_local_elements + num_ghost_elements)};
-  t8_forest_ghost_exchange_data(forest, sc_array_indices_wrapper);
+  sc_array* sc_array_indices_wrapper {sc_array_new_data(m_indices.data(), sizeof(t8_locidx_t), m_num_local_elements + m_num_ghost_elements)};
+  t8_forest_ghost_exchange_data(m_forest, sc_array_indices_wrapper);
   sc_array_destroy(sc_array_indices_wrapper);
 
-  device_ranks = ranks;
-  device_indices = indices;
+  m_device_ranks = m_ranks;
+  m_device_indices = m_indices;
 
-  thrust::host_vector<float_type> element_rho(num_local_elements);
-  thrust::host_vector<float_type> element_rho_v1(num_local_elements);
-  thrust::host_vector<float_type> element_rho_v2(num_local_elements);
-  thrust::host_vector<float_type> element_rho_e(num_local_elements);
+  thrust::host_vector<float_type> element_rho(m_num_local_elements);
+  thrust::host_vector<float_type> element_rho_v1(m_num_local_elements);
+  thrust::host_vector<float_type> element_rho_v2(m_num_local_elements);
+  thrust::host_vector<float_type> element_rho_e(m_num_local_elements);
 
-  thrust::host_vector<float_type> element_volume(num_local_elements);
+  thrust::host_vector<float_type> element_volume(m_num_local_elements);
 
-  t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
+  t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(m_forest);
   t8_locidx_t element_idx = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t tree_class {t8_forest_get_tree_class(forest, tree_idx)};
-    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(forest, tree_class)};
+    t8_eclass_t tree_class {t8_forest_get_tree_class(m_forest, tree_idx)};
+    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(m_forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(m_forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      const t8_element_t* element {t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx)};
+      const t8_element_t* element {t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
 
       double center[3];
-      t8_forest_element_centroid(forest, tree_idx, element, center);
+      t8_forest_element_centroid(m_forest, tree_idx, element, center);
 
       float_type sigma = float_type{0.05}/sqrt(float_type{2.0});
 
@@ -174,54 +174,54 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
       element_rho_e[element_idx]  = float_type{2.0}/(gamma-float_type{1.0}) + float_type{0.5}*(rho_v1 * rho_v1 + rho_v2 * rho_v2) / rho;
 
 
-      element_volume[element_idx] = static_cast<float_type>(t8_forest_element_volume(forest, tree_idx, element));
+      element_volume[element_idx] = static_cast<float_type>(t8_forest_element_volume(m_forest, tree_idx, element));
 
       element_idx++;
     }
   }
 
   // resize shared and owned element variables
-  device_element.resize(num_local_elements);
+  m_device_element.resize(m_num_local_elements);
 
-  element_refinement_criteria.resize(num_local_elements);
-  device_element_refinement_criteria.resize(num_local_elements);
+  m_element_refinement_criteria.resize(m_num_local_elements);
+  m_device_element_refinement_criteria.resize(m_num_local_elements);
 
   // copy new shared element variables
-  device_element.copy(rho_next, element_rho);
-  device_element.copy(rho_v1_next, element_rho_v1);
-  device_element.copy(rho_v2_next, element_rho_v2);
-  device_element.copy(rho_e_next, element_rho_e);
+  m_device_element.copy(rho_next, element_rho);
+  m_device_element.copy(rho_v1_next, element_rho_v1);
+  m_device_element.copy(rho_v2_next, element_rho_v2);
+  m_device_element.copy(rho_e_next, element_rho_e);
 
-  // device_element[volume] = element_volume;
-  device_element.copy(volume, element_volume);
+  // m_device_element[volume] = element_volume;
+  m_device_element.copy(volume, element_volume);
 
   // fill fluxes device element variable
-  float_type* device_element_fluxes_ptr {device_element.get_own(rho_fluxes)};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, 4*sizeof(float_type)*num_local_elements));
+  float_type* device_element_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, 4*sizeof(float_type)*m_num_local_elements));
 
   compute_edge_connectivity();
-  device_face_neighbors = face_neighbors;
-  device_face_normals = face_normals;
-  device_face_area = face_area;
-  device_face_speed_estimate.resize(device_face_area.size());
-  thrust::fill(device_face_speed_estimate.begin(),
-	       device_face_speed_estimate.end(),
+  m_device_face_neighbors = m_face_neighbors;
+  m_device_face_normals = m_face_normals;
+  m_device_face_area = m_face_area;
+  m_device_face_speed_estimate.resize(m_device_face_area.size());
+  thrust::fill(m_device_face_speed_estimate.begin(),
+	       m_device_face_speed_estimate.end(),
 	       std::numeric_limits<float_type>::infinity());
 
   // TODO: remove allocation out of RAII paradigm
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(malloc(sizeof(forest_user_data_t)));
   assert(forest_user_data != nullptr);
 
-  forest_user_data->element_refinement_criteria = &element_refinement_criteria;
-  t8_forest_set_user_data(forest, forest_user_data);
+  forest_user_data->element_refinement_criteria = &m_element_refinement_criteria;
+  t8_forest_set_user_data(m_forest, forest_user_data);
 }
 
 t8gpu::AdvectionSolver::~AdvectionSolver() {
-  forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest))};
+  forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest))};
   free(forest_user_data);
 
-  t8_forest_unref(&forest);
-  t8_cmesh_destroy(&cmesh);
+  t8_forest_unref(&m_forest);
+  t8_cmesh_destroy(&m_cmesh);
 }
 
 void t8gpu::AdvectionSolver::iterate(float_type delta_t) {
@@ -236,25 +236,25 @@ void t8gpu::AdvectionSolver::iterate(float_type delta_t) {
 		 rho_e_prev);
 
   constexpr int thread_block_size = 256;
-  const int SSP_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
+  const int SSP_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
   t8gpu::timestepping::SSP_3RK_step1<<<SSP_num_blocks, thread_block_size>>>(
-      device_element.get_own(rho_prev),
-      device_element.get_own(rho_v1_prev),
-      device_element.get_own(rho_v2_prev),
-      device_element.get_own(rho_e_prev),
-      device_element.get_own(rho_1),
-      device_element.get_own(rho_v1_1),
-      device_element.get_own(rho_v2_1),
-      device_element.get_own(rho_e_1),
-      device_element.get_own(volume),
-      device_element.get_own(rho_fluxes),
-      device_element.get_own(rho_v1_fluxes),
-      device_element.get_own(rho_v2_fluxes),
-      device_element.get_own(rho_e_fluxes),
-      delta_t, num_local_elements);
+      m_device_element.get_own(rho_prev),
+      m_device_element.get_own(rho_v1_prev),
+      m_device_element.get_own(rho_v2_prev),
+      m_device_element.get_own(rho_e_prev),
+      m_device_element.get_own(rho_1),
+      m_device_element.get_own(rho_v1_1),
+      m_device_element.get_own(rho_v2_1),
+      m_device_element.get_own(rho_e_1),
+      m_device_element.get_own(volume),
+      m_device_element.get_own(rho_fluxes),
+      m_device_element.get_own(rho_v1_fluxes),
+      m_device_element.get_own(rho_v2_fluxes),
+      m_device_element.get_own(rho_e_fluxes),
+      delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
-  MPI_Barrier(comm);
+  MPI_Barrier(m_comm);
 
   compute_fluxes(rho_1,
 		 rho_v1_1,
@@ -262,27 +262,27 @@ void t8gpu::AdvectionSolver::iterate(float_type delta_t) {
 		 rho_e_1);
 
   t8gpu::timestepping::SSP_3RK_step2<<<SSP_num_blocks, thread_block_size>>>(
-      device_element.get_own(rho_prev),
-      device_element.get_own(rho_v1_prev),
-      device_element.get_own(rho_v2_prev),
-      device_element.get_own(rho_e_prev),
-      device_element.get_own(rho_1),
-      device_element.get_own(rho_v1_1),
-      device_element.get_own(rho_v2_1),
-      device_element.get_own(rho_e_1),
-      device_element.get_own(rho_2),
-      device_element.get_own(rho_v1_2),
-      device_element.get_own(rho_v2_2),
-      device_element.get_own(rho_e_2),
-      device_element.get_own(volume),
-      device_element.get_own(rho_fluxes),
-      device_element.get_own(rho_v1_fluxes),
-      device_element.get_own(rho_v2_fluxes),
-      device_element.get_own(rho_e_fluxes),
-      delta_t, num_local_elements);
+      m_device_element.get_own(rho_prev),
+      m_device_element.get_own(rho_v1_prev),
+      m_device_element.get_own(rho_v2_prev),
+      m_device_element.get_own(rho_e_prev),
+      m_device_element.get_own(rho_1),
+      m_device_element.get_own(rho_v1_1),
+      m_device_element.get_own(rho_v2_1),
+      m_device_element.get_own(rho_e_1),
+      m_device_element.get_own(rho_2),
+      m_device_element.get_own(rho_v1_2),
+      m_device_element.get_own(rho_v2_2),
+      m_device_element.get_own(rho_e_2),
+      m_device_element.get_own(volume),
+      m_device_element.get_own(rho_fluxes),
+      m_device_element.get_own(rho_v1_fluxes),
+      m_device_element.get_own(rho_v2_fluxes),
+      m_device_element.get_own(rho_e_fluxes),
+      delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
-  MPI_Barrier(comm);
+  MPI_Barrier(m_comm);
 
   compute_fluxes(rho_2,
 		 rho_v1_2,
@@ -290,24 +290,24 @@ void t8gpu::AdvectionSolver::iterate(float_type delta_t) {
 		 rho_e_2);
 
   t8gpu::timestepping::SSP_3RK_step3<<<SSP_num_blocks, thread_block_size>>>(
-      device_element.get_own(rho_prev),
-      device_element.get_own(rho_v1_prev),
-      device_element.get_own(rho_v2_prev),
-      device_element.get_own(rho_e_prev),
-      device_element.get_own(rho_2),
-      device_element.get_own(rho_v1_2),
-      device_element.get_own(rho_v2_2),
-      device_element.get_own(rho_e_2),
-      device_element.get_own(rho_next),
-      device_element.get_own(rho_v1_next),
-      device_element.get_own(rho_v2_next),
-      device_element.get_own(rho_e_next),
-      device_element.get_own(volume),
-      device_element.get_own(rho_fluxes),
-      device_element.get_own(rho_v1_fluxes),
-      device_element.get_own(rho_v2_fluxes),
-      device_element.get_own(rho_e_fluxes),
-      delta_t, num_local_elements);
+      m_device_element.get_own(rho_prev),
+      m_device_element.get_own(rho_v1_prev),
+      m_device_element.get_own(rho_v2_prev),
+      m_device_element.get_own(rho_e_prev),
+      m_device_element.get_own(rho_2),
+      m_device_element.get_own(rho_v1_2),
+      m_device_element.get_own(rho_v2_2),
+      m_device_element.get_own(rho_e_2),
+      m_device_element.get_own(rho_next),
+      m_device_element.get_own(rho_v1_next),
+      m_device_element.get_own(rho_v2_next),
+      m_device_element.get_own(rho_e_next),
+      m_device_element.get_own(volume),
+      m_device_element.get_own(rho_fluxes),
+      m_device_element.get_own(rho_v1_fluxes),
+      m_device_element.get_own(rho_v2_fluxes),
+      m_device_element.get_own(rho_e_fluxes),
+      delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 }
 
@@ -337,45 +337,45 @@ __global__ void estimate_gradient(float_type const* const* __restrict__ rho,
 
 void t8gpu::AdvectionSolver::adapt() {
   constexpr int thread_block_size = 256;
-  const int gradient_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
+  const int gradient_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   estimate_gradient<<<gradient_num_blocks, thread_block_size>>>(
-	device_element.get_all(rho_next),
-	device_element.get_all(rho_fluxes),
-	thrust::raw_pointer_cast(device_face_normals.data()),
-	thrust::raw_pointer_cast(device_face_area.data()),
-	thrust::raw_pointer_cast(device_face_neighbors.data()),
-	thrust::raw_pointer_cast(device_ranks.data()),
-	thrust::raw_pointer_cast(device_indices.data()),
-	num_local_faces);
+	m_device_element.get_all(rho_next),
+	m_device_element.get_all(rho_fluxes),
+	thrust::raw_pointer_cast(m_device_face_normals.data()),
+	thrust::raw_pointer_cast(m_device_face_area.data()),
+	thrust::raw_pointer_cast(m_device_face_neighbors.data()),
+	thrust::raw_pointer_cast(m_device_ranks.data()),
+	thrust::raw_pointer_cast(m_device_indices.data()),
+	m_num_local_faces);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
-  MPI_Barrier(comm);
+  MPI_Barrier(m_comm);
 
-  const int fluxes_num_blocks = (num_local_elements + thread_block_size - 1) / thread_block_size;
+  const int fluxes_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
   compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(
-	device_element.get_own(rho_fluxes),
-	device_element.get_own(volume),
-	thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
-	num_local_elements);
+	m_device_element.get_own(rho_fluxes),
+	m_device_element.get_own(volume),
+	thrust::raw_pointer_cast(m_device_element_refinement_criteria.data()),
+	m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
-  element_refinement_criteria = device_element_refinement_criteria;
+  m_element_refinement_criteria = m_device_element_refinement_criteria;
 
-  t8_forest_ref(forest);
-  assert(t8_forest_is_committed(forest));
+  t8_forest_ref(m_forest);
+  assert(t8_forest_is_committed(m_forest));
 
   t8_forest_t adapted_forest {};
   t8_forest_init(&adapted_forest);
-  t8_forest_set_adapt(adapted_forest, forest, adapt_callback_iteration, false);
+  t8_forest_set_adapt(adapted_forest, m_forest, adapt_callback_iteration, false);
   t8_forest_set_ghost(adapted_forest, true, T8_GHOST_FACES);
-  t8_forest_set_balance(adapted_forest, forest, true);
+  t8_forest_set_balance(adapted_forest, m_forest, true);
   t8_forest_commit(adapted_forest);
 
   t8_locidx_t old_idx = 0;
   t8_locidx_t new_idx = 0;
 
   t8_locidx_t num_new_elements {t8_forest_get_local_num_elements(adapted_forest)};
-  t8_locidx_t num_old_elements {t8_forest_get_local_num_elements(forest)};
+  t8_locidx_t num_old_elements {t8_forest_get_local_num_elements(m_forest)};
 
   thrust::host_vector<float_type> adapted_element_variable(num_new_elements);
   thrust::host_vector<float_type> adapted_element_volume(num_new_elements);
@@ -384,18 +384,18 @@ void t8gpu::AdvectionSolver::adapt() {
   thrust::host_vector<t8_locidx_t> old_levels(num_old_elements);
   thrust::host_vector<t8_locidx_t> new_levels(num_new_elements);
 
-  t8_locidx_t num_old_local_trees = {t8_forest_get_num_local_trees(forest)};
-  t8_locidx_t num_new_local_trees = {t8_forest_get_num_local_trees(forest)};
+  t8_locidx_t num_old_local_trees = {t8_forest_get_num_local_trees(m_forest)};
+  t8_locidx_t num_new_local_trees = {t8_forest_get_num_local_trees(m_forest)};
 
   t8_locidx_t current_idx = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_old_local_trees; tree_idx++) {
-    t8_eclass_t old_tree_class {t8_forest_get_tree_class(forest, tree_idx)};
-    t8_eclass_scheme_c* old_scheme = {t8_forest_get_eclass_scheme(forest, old_tree_class)};
+    t8_eclass_t old_tree_class {t8_forest_get_tree_class(m_forest, tree_idx)};
+    t8_eclass_scheme_c* old_scheme = {t8_forest_get_eclass_scheme(m_forest, old_tree_class)};
 
-    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(m_forest, tree_idx)};
 
     for (t8_locidx_t elem_idx = 0; elem_idx < num_elements_in_tree; elem_idx++) {
-      t8_element_t const* element {t8_forest_get_element_in_tree(forest, tree_idx, elem_idx)};
+      t8_element_t const* element {t8_forest_get_element_in_tree(m_forest, tree_idx, elem_idx)};
       old_levels[current_idx] = old_scheme->t8_element_level(element);
       current_idx++;
     }
@@ -439,11 +439,11 @@ void t8gpu::AdvectionSolver::adapt() {
   }
   element_adapt_data[new_idx] = old_idx;
 
-  forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest))};
+  forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest))};
   assert(forest_user_data != nullptr);
 
   t8_forest_set_user_data(adapted_forest, forest_user_data);
-  t8_forest_unref(&forest);
+  t8_forest_unref(&m_forest);
 
   thrust::device_vector<float_type> device_element_rho_next_adapted(num_new_elements);
   thrust::device_vector<float_type> device_element_rho_v1_next_adapted(num_new_elements);
@@ -457,11 +457,11 @@ void t8gpu::AdvectionSolver::adapt() {
       cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size() * sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
   const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
   adapt_variables_and_volume<<<adapt_num_blocks, thread_block_size>>>(
-      device_element.get_own(rho_next),
-      device_element.get_own(rho_v1_next),
-      device_element.get_own(rho_v2_next),
-      device_element.get_own(rho_e_next),
-      device_element.get_own(volume),
+      m_device_element.get_own(rho_next),
+      m_device_element.get_own(rho_v1_next),
+      m_device_element.get_own(rho_v2_next),
+      m_device_element.get_own(rho_e_next),
+      m_device_element.get_own(volume),
       thrust::raw_pointer_cast(device_element_rho_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v1_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v2_next_adapted.data()),
@@ -472,45 +472,45 @@ void t8gpu::AdvectionSolver::adapt() {
   T8GPU_CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
 
   // resize shared and owned element variables
-  device_element.resize(num_new_elements);
+  m_device_element.resize(num_new_elements);
 
-  element_refinement_criteria.resize(num_new_elements);
-  device_element_refinement_criteria.resize(num_new_elements);
+  m_element_refinement_criteria.resize(num_new_elements);
+  m_device_element_refinement_criteria.resize(num_new_elements);
 
   // fill fluxes device element variable
-  float_type* device_element_rho_fluxes_ptr {device_element.get_own(rho_fluxes)};
+  float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 4*sizeof(float_type)*num_new_elements));
 
   // TODO add copy with rvalue reference
-  device_element.copy(rho_next, std::move(device_element_rho_next_adapted));
-  device_element.copy(rho_v1_next, std::move(device_element_rho_v1_next_adapted));
-  device_element.copy(rho_v2_next, std::move(device_element_rho_v2_next_adapted));
-  device_element.copy(rho_e_next, std::move(device_element_rho_e_next_adapted));
-  device_element.copy(volume, std::move(device_element_volume_adapted));
+  m_device_element.copy(rho_next, std::move(device_element_rho_next_adapted));
+  m_device_element.copy(rho_v1_next, std::move(device_element_rho_v1_next_adapted));
+  m_device_element.copy(rho_v2_next, std::move(device_element_rho_v2_next_adapted));
+  m_device_element.copy(rho_e_next, std::move(device_element_rho_e_next_adapted));
+  m_device_element.copy(volume, std::move(device_element_volume_adapted));
 
 
-  forest = adapted_forest;
+  m_forest = adapted_forest;
 
-  num_ghost_elements = t8_forest_get_num_ghosts(forest);
-  num_local_elements = t8_forest_get_local_num_elements(forest);
+  m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
 void t8gpu::AdvectionSolver::partition() {
-  assert(t8_forest_is_committed(forest));
-  t8_forest_ref(forest);
+  assert(t8_forest_is_committed(m_forest));
+  t8_forest_ref(m_forest);
   t8_forest_t partitioned_forest {};
   t8_forest_init(&partitioned_forest);
-  t8_forest_set_partition(partitioned_forest, forest, true);
+  t8_forest_set_partition(partitioned_forest, m_forest, true);
   t8_forest_set_ghost(partitioned_forest, true, T8_GHOST_FACES);
   t8_forest_commit(partitioned_forest);
 
-  t8_locidx_t num_old_elements {t8_forest_get_local_num_elements(forest)};
+  t8_locidx_t num_old_elements {t8_forest_get_local_num_elements(m_forest)};
   t8_locidx_t num_new_elements {t8_forest_get_local_num_elements(partitioned_forest)};
 
   thrust::host_vector<t8_locidx_t> old_ranks(num_old_elements);
   thrust::host_vector<t8_locidx_t> old_indices(num_old_elements);
   for (t8_locidx_t i=0; i<num_old_elements; i++) {
-    old_ranks[i] = rank;
+    old_ranks[i] = m_rank;
     old_indices[i] = i;
   }
 
@@ -523,11 +523,11 @@ void t8gpu::AdvectionSolver::partition() {
   sc_array* sc_array_new_ranks_wrapper {sc_array_new_data(new_ranks.data(), sizeof(int), num_new_elements)};
   sc_array* sc_array_new_indices_wrapper {sc_array_new_data(new_indices.data(), sizeof(t8_locidx_t), num_new_elements)};
 
-  t8_forest_partition_data(forest, partitioned_forest,
+  t8_forest_partition_data(m_forest, partitioned_forest,
 			   sc_array_old_ranks_wrapper,
 			   sc_array_new_ranks_wrapper);
 
-  t8_forest_partition_data(forest, partitioned_forest,
+  t8_forest_partition_data(m_forest, partitioned_forest,
 			   sc_array_old_indices_wrapper,
 			   sc_array_new_indices_wrapper);
 
@@ -554,65 +554,64 @@ void t8gpu::AdvectionSolver::partition() {
 							   thrust::raw_pointer_cast(device_new_element_rho_v2.data()),
 							   thrust::raw_pointer_cast(device_new_element_rho_e.data()),
 							   thrust::raw_pointer_cast(device_new_element_volume.data()),
-							   device_element.get_all(rho_next),
-							   device_element.get_all(rho_v1_next),
-							   device_element.get_all(rho_v2_next),
-							   device_element.get_all(rho_e_next),
-							   device_element.get_all(volume),
+							   m_device_element.get_all(rho_next),
+							   m_device_element.get_all(rho_v1_next),
+							   m_device_element.get_all(rho_v2_next),
+							   m_device_element.get_all(rho_e_next),
+							   m_device_element.get_all(volume),
 							   num_new_elements);
   cudaDeviceSynchronize();
-  MPI_Barrier(comm);
+  MPI_Barrier(m_comm);
 
   // resize shared and own element variables
-  device_element.resize(num_new_elements);
+  m_device_element.resize(num_new_elements);
 
-  device_element_refinement_criteria.resize(num_new_elements);
+  m_device_element_refinement_criteria.resize(num_new_elements);
 
   // copy new shared element variables
-  device_element.copy(rho_next, std::move(device_new_element_rho));
-  device_element.copy(rho_v1_next, std::move(device_new_element_rho_v1));
-  device_element.copy(rho_v2_next, std::move(device_new_element_rho_v2));
-  device_element.copy(rho_e_next, std::move(device_new_element_rho_e));
-  device_element.copy(volume, std::move(device_new_element_volume));
+  m_device_element.copy(rho_next, std::move(device_new_element_rho));
+  m_device_element.copy(rho_v1_next, std::move(device_new_element_rho_v1));
+  m_device_element.copy(rho_v2_next, std::move(device_new_element_rho_v2));
+  m_device_element.copy(rho_e_next, std::move(device_new_element_rho_e));
+  m_device_element.copy(volume, std::move(device_new_element_volume));
 
-  float_type* device_element_rho_fluxes_ptr {device_element.get_own(rho_fluxes)};
+  float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 4*sizeof(float_type)*num_new_elements));
 
-  forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(forest));
+  forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest));
   t8_forest_set_user_data(partitioned_forest, forest_user_data);
-  t8_forest_unref(&forest);
-  forest = partitioned_forest;
+  t8_forest_unref(&m_forest);
+  m_forest = partitioned_forest;
 
-  num_ghost_elements = t8_forest_get_num_ghosts(forest);
-  num_local_elements = t8_forest_get_local_num_elements(forest);
+  m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
+
 }
 
 void t8gpu::AdvectionSolver::compute_connectivity_information() {
-  t8_locidx_t num_ghost_elements {t8_forest_get_num_ghosts(forest)};
-  t8_locidx_t num_local_elements {t8_forest_get_local_num_elements(forest)};
 
-  ranks.resize(num_local_elements + num_ghost_elements);
-  indices.resize(num_local_elements + num_ghost_elements);
-  for (t8_locidx_t i=0; i<num_local_elements; i++) {
-    ranks[i] = rank;
-    indices[i] = i;
+  m_ranks.resize(m_num_local_elements + m_num_ghost_elements);
+  m_indices.resize(m_num_local_elements + m_num_ghost_elements);
+  for (t8_locidx_t i=0; i<m_num_local_elements; i++) {
+    m_ranks[i] = m_rank;
+    m_indices[i] = i;
   }
-  sc_array* sc_array_ranks_wrapper {sc_array_new_data(ranks.data(), sizeof(int), num_local_elements + num_ghost_elements)};
-  t8_forest_ghost_exchange_data(forest, sc_array_ranks_wrapper);
+  sc_array* sc_array_ranks_wrapper {sc_array_new_data(m_ranks.data(), sizeof(int), m_num_local_elements + m_num_ghost_elements)};
+  t8_forest_ghost_exchange_data(m_forest, sc_array_ranks_wrapper);
   sc_array_destroy(sc_array_ranks_wrapper);
 
-  sc_array* sc_array_indices_wrapper {sc_array_new_data(indices.data(), sizeof(t8_locidx_t), num_local_elements + num_ghost_elements)};
-  t8_forest_ghost_exchange_data(forest, sc_array_indices_wrapper);
+  sc_array* sc_array_indices_wrapper {sc_array_new_data(m_indices.data(), sizeof(t8_locidx_t), m_num_local_elements + m_num_ghost_elements)};
+  t8_forest_ghost_exchange_data(m_forest, sc_array_indices_wrapper);
   sc_array_destroy(sc_array_indices_wrapper);
 
-  device_ranks = ranks;
-  device_indices = indices;
+  m_device_ranks = m_ranks;
+  m_device_indices = m_indices;
 
   compute_edge_connectivity();
-  device_face_neighbors = face_neighbors;
-  device_face_normals = face_normals;
-  device_face_area = face_area;
-  device_face_speed_estimate.resize(face_area.size());
+  m_device_face_neighbors = m_face_neighbors;
+  m_device_face_normals = m_face_normals;
+  m_device_face_area = m_face_area;
+  m_device_face_speed_estimate.resize(m_face_area.size());
 }
 
 void t8gpu::AdvectionSolver::save_vtk(const std::string& prefix) const {
@@ -621,15 +620,15 @@ void t8gpu::AdvectionSolver::save_vtk(const std::string& prefix) const {
 
 template<typename ft>
 void t8gpu::AdvectionSolver::save_vtk_impl(const std::string& prefix) const {
-  thrust::host_vector<ft> element_variable(num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), device_element.get_own(rho_next), sizeof(ft)*num_local_elements, cudaMemcpyDeviceToHost));
+  thrust::host_vector<ft> element_variable(m_num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), m_device_element.get_own(rho_next), sizeof(ft)*m_num_local_elements, cudaMemcpyDeviceToHost));
 
   t8_vtk_data_field_t vtk_data_field {};
   vtk_data_field.type = T8_VTK_SCALAR;
   strcpy(vtk_data_field.description, "density");
   if constexpr (std::is_same<ft, double>::value) { // no need for conversion
     vtk_data_field.data = element_variable.data();
-  t8_forest_write_vtk_ext(forest, prefix.c_str(),
+  t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
 			  true,  /* write_treeid */
 			  true,  /* write_mpirank */
 			  true,  /* write_level */
@@ -640,11 +639,11 @@ void t8gpu::AdvectionSolver::save_vtk_impl(const std::string& prefix) const {
 			  1,     /* num_data */
 			  &vtk_data_field);
   } else { // we need to convert to double precision
-    thrust::host_vector<double> double_element_variable(num_local_elements);
-    for (t8_locidx_t i=0; i<num_local_elements; i++)
+    thrust::host_vector<double> double_element_variable(m_num_local_elements);
+    for (t8_locidx_t i=0; i<m_num_local_elements; i++)
       double_element_variable[i] = static_cast<double>(element_variable[i]);
     vtk_data_field.data = double_element_variable.data();
-  t8_forest_write_vtk_ext(forest, prefix.c_str(),
+  t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
 			  true,  /* write_treeid */
 			  true,  /* write_mpirank */
 			  true,  /* write_level */
@@ -659,55 +658,54 @@ void t8gpu::AdvectionSolver::save_vtk_impl(const std::string& prefix) const {
 
 float_type t8gpu::AdvectionSolver::compute_integral() const {
   float_type local_integral = 0.0;
-  float_type const* mem {device_element.get_own(rho_next)};
-  thrust::host_vector<float_type> variable(num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(float_type)*device_element.size(), cudaMemcpyDeviceToHost));
-  thrust::host_vector<float_type> volume(num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), device_element.get_own(VariableName::volume), sizeof(float_type)*device_element.size(), cudaMemcpyDeviceToHost));
+  float_type const* mem {m_device_element.get_own(rho_next)};
+  thrust::host_vector<float_type> variable(m_num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(float_type)*m_device_element.size(), cudaMemcpyDeviceToHost));
+  thrust::host_vector<float_type> volume(m_num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), m_device_element.get_own(VariableName::volume), sizeof(float_type)*m_device_element.size(), cudaMemcpyDeviceToHost));
 
-  for (t8_locidx_t i=0; i<num_local_elements; i++) {
+  for (t8_locidx_t i=0; i<m_num_local_elements; i++) {
     local_integral += volume[i] * variable[i];
   }
   float_type global_integral {};
   if constexpr (std::is_same<float_type, double>::value) {
-    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, comm);
+    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, m_comm);
   } else {
-    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_FLOAT, MPI_SUM, comm);
+    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_FLOAT, MPI_SUM, m_comm);
   }
   return global_integral;
 }
 
 float_type t8gpu::AdvectionSolver::compute_timestep() const {
-  float_type local_speed_estimate = thrust::reduce(device_face_speed_estimate.begin(),
-						   device_face_speed_estimate.end(),
+  float_type local_speed_estimate = thrust::reduce(m_device_face_speed_estimate.begin(),
+						   m_device_face_speed_estimate.end(),
 						   float_type{0.0}, thrust::maximum<float_type>());
   float_type global_speed_estimate {};
   if constexpr (std::is_same<float_type, double>::value) {
-    MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_DOUBLE, MPI_MAX, comm);
+    MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_DOUBLE, MPI_MAX, m_comm);
   } else {
-    MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_FLOAT, MPI_MAX, comm);
+    MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_FLOAT, MPI_MAX, m_comm);
   }
 
   return  cfl*static_cast<float_type>(std::pow(static_cast<float_type>(0.5), max_level))/global_speed_estimate;
 }
 
 void t8gpu::AdvectionSolver::compute_edge_connectivity() {
-  face_neighbors.clear();
-  face_normals.clear();
-  face_area.clear();
+  m_face_neighbors.clear();
+  m_face_normals.clear();
+  m_face_area.clear();
 
-  assert(t8_forest_is_committed(forest));
-  t8_locidx_t num_local_elements {t8_forest_get_local_num_elements(forest)};
+  assert(t8_forest_is_committed(m_forest));
 
-  t8_locidx_t num_local_trees {t8_forest_get_num_local_trees(forest)};
+  t8_locidx_t num_local_trees {t8_forest_get_num_local_trees(m_forest)};
   t8_locidx_t element_idx = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t tree_class = t8_forest_get_tree_class(forest, tree_idx);
-    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(forest, tree_class)};
+    t8_eclass_t tree_class = t8_forest_get_tree_class(m_forest, tree_idx);
+    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(m_forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(m_forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      const t8_element_t* element {t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx)};
+      const t8_element_t* element {t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
 
       t8_locidx_t num_faces {eclass_scheme->t8_element_num_faces(element)};
       for (t8_locidx_t face_idx = 0; face_idx < num_faces; face_idx++) {
@@ -717,31 +715,31 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
         t8_element_t** neighbors {};
         t8_eclass_scheme_c* neigh_scheme {};
 
-        t8_forest_leaf_face_neighbors(forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors, &neighbor_ids, &neigh_scheme,
+        t8_forest_leaf_face_neighbors(m_forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors, &neighbor_ids, &neigh_scheme,
                                       true);
 
 	for (int i=0; i<num_neighbors; i++) {
-	  if (neighbor_ids[i] >= num_local_elements && rank < ranks[neighbor_ids[i]]) {
-	    face_neighbors.push_back(element_idx);
-	    face_neighbors.push_back(neighbor_ids[i]);
+	  if (neighbor_ids[i] >= m_num_local_elements && m_rank < m_ranks[neighbor_ids[i]]) {
+	    m_face_neighbors.push_back(element_idx);
+	    m_face_neighbors.push_back(neighbor_ids[i]);
 	    double face_normal[3];
-	    t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
-	    face_normals.push_back(static_cast<float_type>(face_normal[0]));
-	    face_normals.push_back(static_cast<float_type>(face_normal[1]));
-	    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) / static_cast<float_type>(num_neighbors));
+	    t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
+	    m_face_normals.push_back(static_cast<float_type>(face_normal[0]));
+	    m_face_normals.push_back(static_cast<float_type>(face_normal[1]));
+	    m_face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)) / static_cast<float_type>(num_neighbors));
 	  }
 	}
 
-        if ((num_neighbors == 1) && (neighbor_ids[0] < num_local_elements) &&
+        if ((num_neighbors == 1) && (neighbor_ids[0] < m_num_local_elements) &&
             ((neighbor_ids[0] > element_idx) ||
              (neighbor_ids[0] < element_idx && neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
-	  face_neighbors.push_back(element_idx);
-	  face_neighbors.push_back(neighbor_ids[0]);
+	  m_face_neighbors.push_back(element_idx);
+	  m_face_neighbors.push_back(neighbor_ids[0]);
 	  double face_normal[3];
-	  t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
-	  face_normals.push_back(static_cast<float_type>(face_normal[0]));
-	  face_normals.push_back(static_cast<float_type>(face_normal[1]));
-	  face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)));
+	  t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
+	  m_face_normals.push_back(static_cast<float_type>(face_normal[0]));
+	  m_face_normals.push_back(static_cast<float_type>(face_normal[1]));
+	  m_face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)));
         }
 	neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
         T8_FREE(neighbors);
@@ -754,7 +752,7 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
     }
   }
 
-  num_local_faces = static_cast<t8_locidx_t>(face_area.size());
+  m_num_local_faces = static_cast<t8_locidx_t>(m_face_area.size());
 }
 
 void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
@@ -762,26 +760,26 @@ void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
 					    VariableName rho_v2,
 					    VariableName rho_e) {
   constexpr int thread_block_size = 256;
-  const int fluxes_num_blocks = (num_local_faces + thread_block_size - 1) / thread_block_size;
+  const int fluxes_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   kepes_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
-								 device_element.get_all(rho),
-								 device_element.get_all(rho_v1),
-								 device_element.get_all(rho_v2),
-								 device_element.get_all(rho_e),
-								 device_element.get_all(rho_fluxes),
-								 device_element.get_all(rho_v1_fluxes),
-								 device_element.get_all(rho_v2_fluxes),
-								 device_element.get_all(rho_e_fluxes),
-								 thrust::raw_pointer_cast(device_face_speed_estimate.data()),
-								 thrust::raw_pointer_cast(device_face_normals.data()),
-								 thrust::raw_pointer_cast(device_face_area.data()),
-								 thrust::raw_pointer_cast(device_face_neighbors.data()),
-								 thrust::raw_pointer_cast(device_ranks.data()),
-								 thrust::raw_pointer_cast(device_indices.data()),
-								 num_local_faces);
+								 m_device_element.get_all(rho),
+								 m_device_element.get_all(rho_v1),
+								 m_device_element.get_all(rho_v2),
+								 m_device_element.get_all(rho_e),
+								 m_device_element.get_all(rho_fluxes),
+								 m_device_element.get_all(rho_v1_fluxes),
+								 m_device_element.get_all(rho_v2_fluxes),
+								 m_device_element.get_all(rho_e_fluxes),
+								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()),
+								 thrust::raw_pointer_cast(m_device_face_normals.data()),
+								 thrust::raw_pointer_cast(m_device_face_area.data()),
+								 thrust::raw_pointer_cast(m_device_face_neighbors.data()),
+								 thrust::raw_pointer_cast(m_device_ranks.data()),
+								 thrust::raw_pointer_cast(m_device_indices.data()),
+								 m_num_local_faces);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
-  MPI_Barrier(comm);
+  MPI_Barrier(m_comm);
 }
 
 static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id,
