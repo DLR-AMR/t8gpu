@@ -1,4 +1,4 @@
-#include <advection_solver.h>
+#include <compressible_euler_solver.h>
 #include <utils/cuda.h>
 #include <utils/profiling.h>
 #include <timestepping/ssp_runge_kutta.h>
@@ -11,6 +11,7 @@
 #include <t8_forest/t8_forest_iterate.h>
 #include <t8_forest/t8_forest_partition.h>
 #include <t8_schemes/t8_default/t8_default.hxx>
+#include <t8_element_c_interface.h>
 
 #include <cassert>
 #include <cmath>
@@ -18,7 +19,7 @@
 #include <limits>
 #include <type_traits>
 
-using float_type = t8gpu::AdvectionSolver::float_type;
+using float_type = t8gpu::CompressibleEulerSolver::float_type;
 
 struct forest_user_data_t {
   thrust::host_vector<float_type>* element_refinement_criteria;
@@ -88,11 +89,11 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
 					    int const* e_idx, int* rank,
 					    t8_locidx_t* indices, int nb_edges);
 
-t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
+t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
     : m_comm(comm),
       m_cmesh(t8_cmesh_new_periodic(m_comm, 2)),
       m_scheme(t8_scheme_new_default_cxx()),
-      m_forest(t8_forest_new_uniform(m_cmesh, m_scheme, 7, true, m_comm)) {
+      m_forest(t8_forest_new_uniform(m_cmesh, m_scheme, 6, true, m_comm)) {
   t8_forest_t new_forest {};
   t8_forest_init(&new_forest);
   t8_forest_set_adapt(new_forest, m_forest, adapt_callback_initialization, true);
@@ -216,7 +217,7 @@ t8gpu::AdvectionSolver::AdvectionSolver(sc_MPI_Comm comm)
   t8_forest_set_user_data(m_forest, forest_user_data);
 }
 
-t8gpu::AdvectionSolver::~AdvectionSolver() {
+t8gpu::CompressibleEulerSolver::~CompressibleEulerSolver() {
   forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest))};
   free(forest_user_data);
 
@@ -224,7 +225,7 @@ t8gpu::AdvectionSolver::~AdvectionSolver() {
   t8_cmesh_destroy(&m_cmesh);
 }
 
-void t8gpu::AdvectionSolver::iterate(float_type delta_t) {
+void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
   std::swap(rho_prev, rho_next);
   std::swap(rho_v1_prev, rho_v1_next);
   std::swap(rho_v2_prev, rho_v2_next);
@@ -335,7 +336,7 @@ __global__ void estimate_gradient(float_type const* const* __restrict__ rho,
   atomicAdd(&rho_gradient[r_rank][r_index], gradient);
 }
 
-void t8gpu::AdvectionSolver::adapt() {
+void t8gpu::CompressibleEulerSolver::adapt() {
   constexpr int thread_block_size = 256;
   const int gradient_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   estimate_gradient<<<gradient_num_blocks, thread_block_size>>>(
@@ -495,7 +496,7 @@ void t8gpu::AdvectionSolver::adapt() {
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
-void t8gpu::AdvectionSolver::partition() {
+void t8gpu::CompressibleEulerSolver::partition() {
   assert(t8_forest_is_committed(m_forest));
   t8_forest_ref(m_forest);
   t8_forest_t partitioned_forest {};
@@ -585,11 +586,9 @@ void t8gpu::AdvectionSolver::partition() {
 
   m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
-
 }
 
-void t8gpu::AdvectionSolver::compute_connectivity_information() {
-
+void t8gpu::CompressibleEulerSolver::compute_connectivity_information() {
   m_ranks.resize(m_num_local_elements + m_num_ghost_elements);
   m_indices.resize(m_num_local_elements + m_num_ghost_elements);
   for (t8_locidx_t i=0; i<m_num_local_elements; i++) {
@@ -614,12 +613,12 @@ void t8gpu::AdvectionSolver::compute_connectivity_information() {
   m_device_face_speed_estimate.resize(m_face_area.size());
 }
 
-void t8gpu::AdvectionSolver::save_vtk(const std::string& prefix) const {
+void t8gpu::CompressibleEulerSolver::save_vtk(const std::string& prefix) const {
   save_vtk_impl(prefix);
 }
 
 template<typename ft>
-void t8gpu::AdvectionSolver::save_vtk_impl(const std::string& prefix) const {
+void t8gpu::CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) const {
   thrust::host_vector<ft> element_variable(m_num_local_elements);
   T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), m_device_element.get_own(rho_next), sizeof(ft)*m_num_local_elements, cudaMemcpyDeviceToHost));
 
@@ -656,7 +655,7 @@ void t8gpu::AdvectionSolver::save_vtk_impl(const std::string& prefix) const {
   }
 }
 
-float_type t8gpu::AdvectionSolver::compute_integral() const {
+float_type t8gpu::CompressibleEulerSolver::compute_integral() const {
   float_type local_integral = 0.0;
   float_type const* mem {m_device_element.get_own(rho_next)};
   thrust::host_vector<float_type> variable(m_num_local_elements);
@@ -676,7 +675,7 @@ float_type t8gpu::AdvectionSolver::compute_integral() const {
   return global_integral;
 }
 
-float_type t8gpu::AdvectionSolver::compute_timestep() const {
+float_type t8gpu::CompressibleEulerSolver::compute_timestep() const {
   float_type local_speed_estimate = thrust::reduce(m_device_face_speed_estimate.begin(),
 						   m_device_face_speed_estimate.end(),
 						   float_type{0.0}, thrust::maximum<float_type>());
@@ -690,7 +689,7 @@ float_type t8gpu::AdvectionSolver::compute_timestep() const {
   return  cfl*static_cast<float_type>(std::pow(static_cast<float_type>(0.5), max_level))/global_speed_estimate;
 }
 
-void t8gpu::AdvectionSolver::compute_edge_connectivity() {
+void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
   m_face_neighbors.clear();
   m_face_normals.clear();
   m_face_area.clear();
@@ -755,7 +754,7 @@ void t8gpu::AdvectionSolver::compute_edge_connectivity() {
   m_num_local_faces = static_cast<t8_locidx_t>(m_face_area.size());
 }
 
-void t8gpu::AdvectionSolver::compute_fluxes(VariableName rho,
+void t8gpu::CompressibleEulerSolver::compute_fluxes(VariableName rho,
 					    VariableName rho_v1,
 					    VariableName rho_v2,
 					    VariableName rho_e) {
@@ -788,7 +787,7 @@ static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_
 
   // double b = 0.02;
 
-  // if (element_level < t8gpu::AdvectionSolver::max_level) {
+  // if (element_level < t8gpu::CompressibleEulerSolver::max_level) {
   //   double center[3];
   //   t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
@@ -796,7 +795,7 @@ static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_
 
   //   if (std::abs(variable) < b) return 1;
   // }
-  // if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
+  // if (element_level > t8gpu::CompressibleEulerSolver::min_level && is_family) {
   //   double center[] = {0.0, 0.0, 0.0};
   //   double current_element_center[] = {0.0, 0.0, 0.0};
   //   for (size_t i = 0; i < 4; i++) {
@@ -825,14 +824,14 @@ static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from,
 
   float_type b = static_cast<float_type>(10.0);
 
-  if (element_level < t8gpu::AdvectionSolver::max_level) {
+  if (element_level < t8gpu::CompressibleEulerSolver::max_level) {
     float_type criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
 
     if (criteria > b) {
       return 1;
     }
   }
-  if (element_level > t8gpu::AdvectionSolver::min_level && is_family) {
+  if (element_level > t8gpu::CompressibleEulerSolver::min_level && is_family) {
     float_type criteria = 0.0;
     for (size_t i = 0; i < 4; i++) {
       criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / float_type{4.0};
@@ -950,7 +949,7 @@ __global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= nb_edges) return;
 
-  float_type gamma = t8gpu::AdvectionSolver::gamma;
+  float_type gamma = t8gpu::CompressibleEulerSolver::gamma;
 
   float_type face_surface = area[i];
 
@@ -1075,7 +1074,7 @@ __device__ static void kepes_compute_flux(float_type u_L[5],
 					  float_type& rhoHat,
 					  float_type& HHat,
 					  float_type& p1Hat) {
-  float_type kappa = t8gpu::AdvectionSolver::gamma;
+  float_type kappa = t8gpu::CompressibleEulerSolver::gamma;
   float_type kappaM1 = kappa - nc::one;
   float_type sKappaM1 = nc::one/kappaM1;
 
@@ -1134,7 +1133,7 @@ __device__ static void kepes_compute_diffusion_matrix(float_type u_L[5],
 
 
 
-  float_type kappa = t8gpu::AdvectionSolver::gamma;
+  float_type kappa = t8gpu::CompressibleEulerSolver::gamma;
   float_type kappaM1 = kappa - nc::one;
 
   kepes_compute_flux(u_L,
@@ -1243,7 +1242,7 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
   speed_estimate[i] = abs(uHat) + aHat;
 
 
-  float_type kappa = t8gpu::AdvectionSolver::gamma;
+  float_type kappa = t8gpu::CompressibleEulerSolver::gamma;
   float_type kappaM1 = kappa - nc::one;
 
   float_type sRho_L = nc::one/u_L[0];

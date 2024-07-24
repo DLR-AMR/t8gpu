@@ -1,4 +1,4 @@
-#include <advection_solver.h>
+#include <compressible_euler_solver.h>
 #include <utils/profiling.h>
 
 #include <cstdio>
@@ -16,14 +16,14 @@ int main(int argc, char* argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   {
-    t8gpu::AdvectionSolver advection_solver {};
+    t8gpu::CompressibleEulerSolver advection_solver {};
 
     T8GPU_TIMER_START(iterations);
 
     size_t i = 0;
     double t = 0;
-    t8gpu::AdvectionSolver::float_type delta_t = 0;
-    double t_max = 0.75;
+    t8gpu::CompressibleEulerSolver::float_type delta_t = 0;
+     double t_max = 0.75;
     for (; t < t_max; t += delta_t, i++) {
       if (rank == 0)
 	std::cout << "t:" << t << ", delta_t:" << delta_t << std::endl;

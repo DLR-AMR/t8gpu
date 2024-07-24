@@ -1,7 +1,7 @@
 add_executable(t8gpu)
 target_sources(t8gpu PRIVATE
   main.cu
-  advection_solver.cu
+  compressible_euler_solver.cu
   shared_device_vector.inl
   shared_device_vector.h
   timestepping/ssp_runge_kutta.inl

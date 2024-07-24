@@ -1,8 +1,9 @@
-/// @file advection_solver.h
-/// @brief This header file declares a simple advection solver class
+/// @file compressible_euler_solver.h
+/// @brief This header file declares a simple finite volume solver for
+///        the compressible Euler equations
 
-#ifndef ADVECTION_SOLVER_H
-#define ADVECTION_SOLVER_H
+#ifndef COMPRESSIBLE_EULER_SOLVER_H
+#define COMPRESSIBLE_EULER_SOLVER_H
 
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
@@ -13,15 +14,15 @@
 
 namespace t8gpu {
   ///
-  /// @brief A class that implements a simple upwind finite volume
-  ///        advection solver
+  /// @brief A class that implements a simple finite volume solver for
+  /// the compressible Euler equations
   ///
-  class AdvectionSolver {
+  class CompressibleEulerSolver {
   public:
     using float_type = float;
     static constexpr size_t dim = 2; /*! dimension of the domain */
-    static constexpr t8_locidx_t min_level = 3; /*! minimum refinement level */
-    static constexpr t8_locidx_t max_level = 10; /*! maximum refinement level */
+    static constexpr t8_locidx_t min_level = 6;  /*! minimum refinement level */
+    static constexpr t8_locidx_t max_level = 12; /*! maximum refinement level */
 
     static constexpr float_type gamma = float_type{1.4}; /*! ratio of specific heats */
     static constexpr float_type cfl   = float_type{0.7};
@@ -32,13 +33,13 @@ namespace t8gpu {
     ///
     /// This constructor initializes create a simple mesh and initializes
     /// all of its data members
-    AdvectionSolver(sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
+    CompressibleEulerSolver(sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
 
     /// @brief Destructor of the advection solver class
     ///
     /// This destructor frees all the allocated device and host memory used.
     /// It is important to note that it should be called before MPI_Finalize.
-    ~AdvectionSolver();
+    ~CompressibleEulerSolver();
 
     /// @brief This function does one step of the simulation In order
     ///
@@ -186,4 +187,4 @@ namespace t8gpu {
     void save_vtk_impl(const std::string& prefix) const;
   };
 } // namespace t8gpu
-#endif  // ADVECTION_SOLVER_H
+#endif  // COMPRESSIBLE_EULER_SOLVER_H
