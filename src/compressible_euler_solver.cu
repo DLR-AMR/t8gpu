@@ -174,6 +174,7 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
       element_rho[element_idx]    = rho;
       element_rho_v1[element_idx] = rho_v1;
       element_rho_v2[element_idx] = rho_v2;
+      element_rho_v3[element_idx] = rho_v3;
       element_rho_e[element_idx]  = float_type{2.0}/(gamma-float_type{1.0}) + float_type{0.5}*(rho_v1 * rho_v1 + rho_v2 * rho_v2) / rho;
 
 
@@ -742,6 +743,7 @@ void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
 	    t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
 	    m_face_normals.push_back(static_cast<float_type>(face_normal[0]));
 	    m_face_normals.push_back(static_cast<float_type>(face_normal[1]));
+	    m_face_normals.push_back(static_cast<float_type>(face_normal[2]));
 	    m_face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)) / static_cast<float_type>(num_neighbors));
 	  }
 	}
@@ -755,6 +757,7 @@ void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
 	  t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
 	  m_face_normals.push_back(static_cast<float_type>(face_normal[0]));
 	  m_face_normals.push_back(static_cast<float_type>(face_normal[1]));
+	  m_face_normals.push_back(static_cast<float_type>(face_normal[2]));
 	  m_face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)));
         }
 	neigh_scheme->t8_element_destroy(num_neighbors, neighbors);

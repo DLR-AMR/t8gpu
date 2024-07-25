@@ -56,6 +56,7 @@ __global__ void t8gpu::timestepping::SSP_3RK_step1(float_type const* __restrict_
   rho_fluxes[i]    = 0.0;
   rho_v1_fluxes[i] = 0.0;
   rho_v2_fluxes[i] = 0.0;
+  rho_v3_fluxes[i] = 0.0;
   rho_e_fluxes[i]  = 0.0;
 }
 
@@ -95,6 +96,7 @@ __global__  void t8gpu::timestepping::SSP_3RK_step2(float_type const* __restrict
   rho_fluxes[i]    = 0.0;
   rho_v1_fluxes[i] = 0.0;
   rho_v2_fluxes[i] = 0.0;
+  rho_v3_fluxes[i] = 0.0;
   rho_e_fluxes[i]  = 0.0;
 }
 
@@ -134,5 +136,6 @@ __global__  void t8gpu::timestepping::SSP_3RK_step3(float_type const* __restrict
   rho_fluxes[i]    = 0.0;
   rho_v1_fluxes[i] = 0.0;
   rho_v2_fluxes[i] = 0.0;
+  rho_v3_fluxes[i] = 0.0;
   rho_e_fluxes[i]  = 0.0;
 }
