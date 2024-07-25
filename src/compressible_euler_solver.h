@@ -20,7 +20,7 @@ namespace t8gpu {
   class CompressibleEulerSolver {
   public:
     using float_type = float;
-    static constexpr size_t dim = 2; /*! dimension of the domain */
+    static constexpr size_t dim = 3; /*! dimension of the domain */
     static constexpr t8_locidx_t min_level = 6;  /*! minimum refinement level */
     static constexpr t8_locidx_t max_level = 12; /*! maximum refinement level */
 
@@ -137,38 +137,45 @@ namespace t8gpu {
 
     /*! enum of all variables associated to elements */
     enum VariableName {
-      rho_0         = 0, /*! previous variable */
-      rho_v1_0      = 1, /*! previous variable */
-      rho_v2_0      = 2, /*! previous variable */
-      rho_e_0       = 3, /*! previous variable */
-      rho_1         = 4, /*! first SSP-RK intermediate state */
-      rho_v1_1      = 5, /*! first SSP-RK intermediate state */
-      rho_v2_1      = 6, /*! first SSP-RK intermediate state */
-      rho_e_1       = 7, /*! first SSP-RK intermediate state */
-      rho_2         = 8, /*! second SSP-RK intermediate state */
-      rho_v1_2      = 9, /*! second SSP-RK intermediate state */
-      rho_v2_2      = 10, /*! second SSP-RK intermediate state */
-      rho_e_2       = 11, /*! second SSP-RK intermediate state */
-      rho_3         = 12, /*! next variable */
-      rho_v1_3      = 13, /*! next variable */
-      rho_v2_3      = 14, /*! next variable */
-      rho_e_3       = 15, /*! next variable */
-      rho_fluxes    = 16, /*! flux contributions */
-      rho_v1_fluxes = 17, /*! flux contributions */
-      rho_v2_fluxes = 18, /*! flux contributions */
-      rho_e_fluxes  = 19, /*! flux contributions */
-      volume        = 20, /*! volume */
-      nb_element_variables = 21,
+      rho_0,          /*! previous variable */
+      rho_v1_0,       /*! previous variable */
+      rho_v2_0,       /*! previous variable */
+      rho_v3_0,       /*! previous variable */
+      rho_e_0,        /*! previous variable */
+      rho_1,          /*! first SSP-RK intermediate state */
+      rho_v1_1,       /*! first SSP-RK intermediate state */
+      rho_v2_1,       /*! first SSP-RK intermediate state */
+      rho_v3_1,       /*! first SSP-RK intermediate state */
+      rho_e_1,        /*! first SSP-RK intermediate state */
+      rho_2,          /*! second SSP-RK intermediate state */
+      rho_v1_2,       /*! second SSP-RK intermediate state */
+      rho_v2_2,       /*! second SSP-RK intermediate state */
+      rho_v3_2,       /*! second SSP-RK intermediate state */
+      rho_e_2,        /*! second SSP-RK intermediate state */
+      rho_3,          /*! next variable */
+      rho_v1_3,       /*! next variable */
+      rho_v2_3,       /*! next variable */
+      rho_v3_3,       /*! next variable */
+      rho_e_3,        /*! next variable */
+      rho_fluxes,     /*! flux contributions */
+      rho_v1_fluxes,  /*! flux contributions */
+      rho_v2_fluxes,  /*! flux contributions */
+      rho_v3_fluxes,  /*! flux contributions */
+      rho_e_fluxes,   /*! flux contributions */
+      volume,         /*! volume */
+      nb_element_variables
     };
 
     VariableName rho_prev;
     VariableName rho_v1_prev;
     VariableName rho_v2_prev;
+    VariableName rho_v3_prev;
     VariableName rho_e_prev;
 
     VariableName rho_next;
     VariableName rho_v1_next;
     VariableName rho_v2_next;
+    VariableName rho_v3_next;
     VariableName rho_e_next;
 
     /*! collection of all shared variables associated to elements */
@@ -181,6 +188,7 @@ namespace t8gpu {
     void compute_fluxes(VariableName rho,
 			VariableName rho_v1,
 			VariableName rho_v2,
+			VariableName rho_v3,
 			VariableName rho_e);
 
     template<typename ft = float_type>

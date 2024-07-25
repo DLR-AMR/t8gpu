@@ -91,7 +91,7 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
 
 t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
     : m_comm(comm),
-      m_cmesh(t8_cmesh_new_periodic(m_comm, 2)),
+      m_cmesh(t8_cmesh_new_periodic(m_comm, dim)),
       m_scheme(t8_scheme_new_default_cxx()),
       m_forest(t8_forest_new_uniform(m_cmesh, m_scheme, 6, true, m_comm)) {
   t8_forest_t new_forest {};
