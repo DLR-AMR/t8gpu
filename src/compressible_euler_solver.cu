@@ -78,10 +78,12 @@ __global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
 __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
 					    float_type** __restrict__ rho_v1,
 					    float_type** __restrict__ rho_v2,
+					    float_type** __restrict__ rho_v3,
 					    float_type** __restrict__ rho_e,
 					    float_type** __restrict__ rho_fluxes,
 					    float_type** __restrict__ rho_v1_fluxes,
 					    float_type** __restrict__ rho_v2_fluxes,
+					    float_type** __restrict__ rho_v3_fluxes,
 					    float_type** __restrict__ rho_e_fluxes,
 					    float_type* __restrict__ speed_estimates,
 					    float_type const* __restrict__ normal,
@@ -298,25 +300,30 @@ void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
   compute_fluxes(rho_2,
 		 rho_v1_2,
 		 rho_v2_2,
+		 rho_v3_2,
 		 rho_e_2);
 
   t8gpu::timestepping::SSP_3RK_step3<<<SSP_num_blocks, thread_block_size>>>(
       m_device_element.get_own(rho_prev),
       m_device_element.get_own(rho_v1_prev),
       m_device_element.get_own(rho_v2_prev),
+      m_device_element.get_own(rho_v3_prev),
       m_device_element.get_own(rho_e_prev),
       m_device_element.get_own(rho_2),
       m_device_element.get_own(rho_v1_2),
       m_device_element.get_own(rho_v2_2),
+      m_device_element.get_own(rho_v3_2),
       m_device_element.get_own(rho_e_2),
       m_device_element.get_own(rho_next),
       m_device_element.get_own(rho_v1_next),
       m_device_element.get_own(rho_v2_next),
+      m_device_element.get_own(rho_v3_next),
       m_device_element.get_own(rho_e_next),
       m_device_element.get_own(volume),
       m_device_element.get_own(rho_fluxes),
       m_device_element.get_own(rho_v1_fluxes),
       m_device_element.get_own(rho_v2_fluxes),
+      m_device_element.get_own(rho_v3_fluxes),
       m_device_element.get_own(rho_e_fluxes),
       delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
@@ -767,6 +774,7 @@ void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
 void t8gpu::CompressibleEulerSolver::compute_fluxes(VariableName rho,
 					    VariableName rho_v1,
 					    VariableName rho_v2,
+					    VariableName rho_v3,
 					    VariableName rho_e) {
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
@@ -774,10 +782,12 @@ void t8gpu::CompressibleEulerSolver::compute_fluxes(VariableName rho,
 								 m_device_element.get_all(rho),
 								 m_device_element.get_all(rho_v1),
 								 m_device_element.get_all(rho_v2),
+								 m_device_element.get_all(rho_v3),
 								 m_device_element.get_all(rho_e),
 								 m_device_element.get_all(rho_fluxes),
 								 m_device_element.get_all(rho_v1_fluxes),
 								 m_device_element.get_all(rho_v2_fluxes),
+								 m_device_element.get_all(rho_v3_fluxes),
 								 m_device_element.get_all(rho_e_fluxes),
 								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()),
 								 thrust::raw_pointer_cast(m_device_face_normals.data()),
@@ -1180,10 +1190,12 @@ __device__ static void kepes_compute_diffusion_matrix(float_type u_L[5],
 __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
 					    float_type** __restrict__ rho_v1,
 					    float_type** __restrict__ rho_v2,
+					    float_type** __restrict__ rho_v3,
 					    float_type** __restrict__ rho_e,
 					    float_type** __restrict__ rho_fluxes,
 					    float_type** __restrict__ rho_v1_fluxes,
 					    float_type** __restrict__ rho_v2_fluxes,
+					    float_type** __restrict__ rho_v3_fluxes,
 					    float_type** __restrict__ rho_e_fluxes,
 					    float_type* __restrict__ speed_estimate,
 					    float_type const* __restrict__ normal,
@@ -1201,28 +1213,57 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
   int r_rank  = rank[e_idx[2 * i + 1]];
   int r_index = indices[e_idx[2 * i + 1]];
 
-  float_type nx = normal[2*i];
-  float_type ny = normal[2*i+1];
+  float_type nx = normal[3*i];
+  float_type ny = normal[3*i+1];
+  float_type nz = normal[3*i+2];
 
   float_type rho_l    = rho[l_rank][l_index];
   float_type rho_vx_l = rho_v1[l_rank][l_index];
   float_type rho_vy_l = rho_v2[l_rank][l_index];
+  float_type rho_vz_l = rho_v3[l_rank][l_index];
   float_type rho_e_l  = rho_e[l_rank][l_index];
 
   float_type rho_r    = rho[r_rank][r_index];
   float_type rho_vx_r = rho_v1[r_rank][r_index];
   float_type rho_vy_r = rho_v2[r_rank][r_index];
+  float_type rho_vz_r = rho_v3[r_rank][r_index];
   float_type rho_e_r  = rho_e[r_rank][r_index];
 
-  // rotate from (x,y) basis to local basis (n,t)
-  float_type rho_v1_l =  nx*rho_vx_l + ny*rho_vy_l;
-  float_type rho_v2_l = -ny*rho_vx_l + nx*rho_vy_l;
+  float_type n[3] = {nx, ny, nz};
 
-  float_type rho_v1_r =  nx*rho_vx_r + ny*rho_vy_r;
-  float_type rho_v2_r = -ny*rho_vx_r + nx*rho_vy_r;
+  // We set the first tangential to be a vector different than the normal.
+  float_type t1[3] = {ny, nz, -nx};
 
-  float_type u_L[5] = {rho_l, rho_v1_l, rho_v2_l, nc::zero, rho_e_l};
-  float_type u_R[5] = {rho_r, rho_v1_r, rho_v2_r, nc::zero, rho_e_r};
+  float_type dot_product = n[0]*t1[0] + n[1]*t1[1] + n[2]*t1[2];
+
+  // We then project back to the tangential plane.
+  t1[0] -= dot_product*n[0];
+  t1[1] -= dot_product*n[1];
+  t1[2] -= dot_product*n[2];
+
+  // The last basis vector is the cross product of the first two.
+  float_type t2[3] = {
+    n[1]*t1[2]-n[2]*t1[1],
+    n[2]*t1[0]-n[0]*t1[2],
+    n[0]*t1[1]-n[1]*t1[0]
+  };
+
+  // rotate from (x,y,z) basis to local basis (n,t1,t2)
+  float_type u_L[5] = {
+    rho_l,
+    rho_vx_l*n[0] + rho_vy_l*n[1] + rho_vz_l*n[2],
+    rho_vx_l*t1[0] + rho_vy_l*t1[1] + rho_vz_l*t1[2],
+    rho_vx_l*t2[0] + rho_vy_l*t2[1] + rho_vz_l*t2[2],
+    rho_e_l
+  };
+
+  float_type u_R[5] = {
+    rho_r,
+    rho_vx_r*n[0] + rho_vy_r*n[1] + rho_vz_r*n[2],
+    rho_vx_r*t1[0] + rho_vy_r*t1[1] + rho_vz_r*t1[2],
+    rho_vx_r*t2[0] + rho_vy_r*t2[1] + rho_vz_r*t2[2],
+    rho_e_r
+  };
 
   float_type F_star[5];
 
@@ -1309,11 +1350,13 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
   float_type rho_flux    = face_surface*F[0];
   float_type rho_v1_flux = face_surface*F[1];
   float_type rho_v2_flux = face_surface*F[2];
+  float_type rho_v3_flux = face_surface*F[3];
   float_type rho_e_flux  = face_surface*F[4];
 
-  // rotate back
-  float_type rho_vx_flux = nx*rho_v1_flux - ny*rho_v2_flux;
-  float_type rho_vy_flux = ny*rho_v1_flux + nx*rho_v2_flux;
+  // rotate back from (n,t1,t2) to (x,y,z) basis.
+  float_type rho_vx_flux = rho_v1_flux*n[0] + rho_v2_flux*t1[0] * rho_v3_flux*t2[0];
+  float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] * rho_v3_flux*t2[1];
+  float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] * rho_v3_flux*t2[2];
 
   atomicAdd(&rho_fluxes[l_rank][l_index], -rho_flux);
   atomicAdd(&rho_fluxes[r_rank][r_index],  rho_flux);
@@ -1323,6 +1366,9 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
 
   atomicAdd(&rho_v2_fluxes[l_rank][l_index], -rho_vy_flux);
   atomicAdd(&rho_v2_fluxes[r_rank][r_index],  rho_vy_flux);
+
+  atomicAdd(&rho_v3_fluxes[l_rank][l_index], -rho_vz_flux);
+  atomicAdd(&rho_v3_fluxes[r_rank][r_index],  rho_vz_flux);
 
   atomicAdd(&rho_e_fluxes[l_rank][l_index], -rho_e_flux);
   atomicAdd(&rho_e_fluxes[r_rank][r_index],  rho_e_flux);
