@@ -229,11 +229,13 @@ void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
   std::swap(rho_prev, rho_next);
   std::swap(rho_v1_prev, rho_v1_next);
   std::swap(rho_v2_prev, rho_v2_next);
+  std::swap(rho_v3_prev, rho_v3_next);
   std::swap(rho_e_prev, rho_e_next);
 
   compute_fluxes(rho_prev,
 		 rho_v1_prev,
 		 rho_v2_prev,
+		 rho_v3_prev,
 		 rho_e_prev);
 
   constexpr int thread_block_size = 256;
@@ -242,15 +244,18 @@ void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
       m_device_element.get_own(rho_prev),
       m_device_element.get_own(rho_v1_prev),
       m_device_element.get_own(rho_v2_prev),
+      m_device_element.get_own(rho_v3_prev),
       m_device_element.get_own(rho_e_prev),
       m_device_element.get_own(rho_1),
       m_device_element.get_own(rho_v1_1),
       m_device_element.get_own(rho_v2_1),
+      m_device_element.get_own(rho_v3_1),
       m_device_element.get_own(rho_e_1),
       m_device_element.get_own(volume),
       m_device_element.get_own(rho_fluxes),
       m_device_element.get_own(rho_v1_fluxes),
       m_device_element.get_own(rho_v2_fluxes),
+      m_device_element.get_own(rho_v3_fluxes),
       m_device_element.get_own(rho_e_fluxes),
       delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
@@ -260,25 +265,30 @@ void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
   compute_fluxes(rho_1,
 		 rho_v1_1,
 		 rho_v2_1,
+		 rho_v3_1,
 		 rho_e_1);
 
   t8gpu::timestepping::SSP_3RK_step2<<<SSP_num_blocks, thread_block_size>>>(
       m_device_element.get_own(rho_prev),
       m_device_element.get_own(rho_v1_prev),
       m_device_element.get_own(rho_v2_prev),
+      m_device_element.get_own(rho_v3_prev),
       m_device_element.get_own(rho_e_prev),
       m_device_element.get_own(rho_1),
       m_device_element.get_own(rho_v1_1),
       m_device_element.get_own(rho_v2_1),
+      m_device_element.get_own(rho_v3_1),
       m_device_element.get_own(rho_e_1),
       m_device_element.get_own(rho_2),
       m_device_element.get_own(rho_v1_2),
       m_device_element.get_own(rho_v2_2),
+      m_device_element.get_own(rho_v3_2),
       m_device_element.get_own(rho_e_2),
       m_device_element.get_own(volume),
       m_device_element.get_own(rho_fluxes),
       m_device_element.get_own(rho_v1_fluxes),
       m_device_element.get_own(rho_v2_fluxes),
+      m_device_element.get_own(rho_v3_fluxes),
       m_device_element.get_own(rho_e_fluxes),
       delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
