@@ -38,11 +38,13 @@ __global__ static void compute_refinement_criteria(float_type const* __restrict_
 __global__ static void adapt_variables_and_volume(float_type const* __restrict__ rho_old,
 						  float_type const* __restrict__ rho_v1_old,
 						  float_type const* __restrict__ rho_v2_old,
+						  float_type const* __restrict__ rho_v3_old,
 						  float_type const* __restrict__ rho_e_old,
 						  float_type const* __restrict__ volume_old,
 						  float_type* __restrict__ rho_new,
 						  float_type* __restrict__ rho_v1_new,
 						  float_type* __restrict__ rho_v2_new,
+						  float_type* __restrict__ rho_v3_new,
 						  float_type* __restrict__ rho_e_new,
 						  float_type* __restrict__ volume_new,
 						  t8_locidx_t* adapt_data,
@@ -52,11 +54,13 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
 			       float_type* __restrict__ new_rho,
 			       float_type* __restrict__ new_rho_v1,
 			       float_type* __restrict__ new_rho_v2,
+			       float_type* __restrict__ new_rho_v3,
 			       float_type* __restrict__ new_rho_e,
 			       float_type* __restrict__ new_volume,
 			       float_type const*const* __restrict__ old_rho,
 			       float_type const*const* __restrict__ old_rho_v1,
 			       float_type const*const* __restrict__ old_rho_v2,
+			       float_type const*const* __restrict__ old_rho_v3,
 			       float_type const*const* __restrict__ old_rho_e,
 			       float_type const*const* __restrict__ old_volume,
 			       int num_new_elements);
@@ -111,11 +115,13 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   rho_prev    = rho_0;
   rho_v1_prev = rho_v1_0;
   rho_v2_prev = rho_v2_0;
+  rho_v3_prev = rho_v3_0;
   rho_e_prev  = rho_e_0;
 
   rho_next    = rho_3;
   rho_v1_next = rho_v1_3;
   rho_v2_next = rho_v2_3;
+  rho_v3_next = rho_v3_3;
   rho_e_next  = rho_e_3;
 
   m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
@@ -141,6 +147,7 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   thrust::host_vector<float_type> element_rho(m_num_local_elements);
   thrust::host_vector<float_type> element_rho_v1(m_num_local_elements);
   thrust::host_vector<float_type> element_rho_v2(m_num_local_elements);
+  thrust::host_vector<float_type> element_rho_v3(m_num_local_elements);
   thrust::host_vector<float_type> element_rho_e(m_num_local_elements);
 
   thrust::host_vector<float_type> element_volume(m_num_local_elements);
@@ -170,6 +177,7 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
 
       float_type rho_v1 = rho*v1;
       float_type rho_v2 = rho*v2;
+      float_type rho_v3 = static_cast<float_type>(0.0);
 
       element_rho[element_idx]    = rho;
       element_rho_v1[element_idx] = rho_v1;
@@ -194,6 +202,7 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   m_device_element.copy(rho_next, element_rho);
   m_device_element.copy(rho_v1_next, element_rho_v1);
   m_device_element.copy(rho_v2_next, element_rho_v2);
+  m_device_element.copy(rho_v3_next, element_rho_v3);
   m_device_element.copy(rho_e_next, element_rho_e);
 
   // m_device_element[volume] = element_volume;
@@ -201,7 +210,7 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
 
   // fill fluxes device element variable
   float_type* device_element_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, 4*sizeof(float_type)*m_num_local_elements));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, 5*sizeof(float_type)*m_num_local_elements));
 
   compute_edge_connectivity();
   m_device_face_neighbors = m_face_neighbors;
@@ -467,6 +476,7 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   thrust::device_vector<float_type> device_element_rho_next_adapted(num_new_elements);
   thrust::device_vector<float_type> device_element_rho_v1_next_adapted(num_new_elements);
   thrust::device_vector<float_type> device_element_rho_v2_next_adapted(num_new_elements);
+  thrust::device_vector<float_type> device_element_rho_v3_next_adapted(num_new_elements);
   thrust::device_vector<float_type> device_element_rho_e_next_adapted(num_new_elements);
 
   thrust::device_vector<float_type> device_element_volume_adapted(num_new_elements);
@@ -479,11 +489,13 @@ void t8gpu::CompressibleEulerSolver::adapt() {
       m_device_element.get_own(rho_next),
       m_device_element.get_own(rho_v1_next),
       m_device_element.get_own(rho_v2_next),
+      m_device_element.get_own(rho_v3_next),
       m_device_element.get_own(rho_e_next),
       m_device_element.get_own(volume),
       thrust::raw_pointer_cast(device_element_rho_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v1_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v2_next_adapted.data()),
+      thrust::raw_pointer_cast(device_element_rho_v3_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_e_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_volume_adapted.data()),
       device_element_adapt_data, num_new_elements);
@@ -498,15 +510,15 @@ void t8gpu::CompressibleEulerSolver::adapt() {
 
   // fill fluxes device element variable
   float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 4*sizeof(float_type)*num_new_elements));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements));
 
   // TODO add copy with rvalue reference
   m_device_element.copy(rho_next, std::move(device_element_rho_next_adapted));
   m_device_element.copy(rho_v1_next, std::move(device_element_rho_v1_next_adapted));
   m_device_element.copy(rho_v2_next, std::move(device_element_rho_v2_next_adapted));
+  m_device_element.copy(rho_v3_next, std::move(device_element_rho_v3_next_adapted));
   m_device_element.copy(rho_e_next, std::move(device_element_rho_e_next_adapted));
   m_device_element.copy(volume, std::move(device_element_volume_adapted));
-
 
   m_forest = adapted_forest;
 
@@ -561,6 +573,7 @@ void t8gpu::CompressibleEulerSolver::partition() {
   thrust::device_vector<float_type> device_new_element_rho(num_new_elements);
   thrust::device_vector<float_type> device_new_element_rho_v1(num_new_elements);
   thrust::device_vector<float_type> device_new_element_rho_v2(num_new_elements);
+  thrust::device_vector<float_type> device_new_element_rho_v3(num_new_elements);
   thrust::device_vector<float_type> device_new_element_rho_e(num_new_elements);
   thrust::device_vector<float_type> device_new_element_volume(num_new_elements);
 
@@ -571,11 +584,13 @@ void t8gpu::CompressibleEulerSolver::partition() {
 							   thrust::raw_pointer_cast(device_new_element_rho.data()),
 							   thrust::raw_pointer_cast(device_new_element_rho_v1.data()),
 							   thrust::raw_pointer_cast(device_new_element_rho_v2.data()),
+							   thrust::raw_pointer_cast(device_new_element_rho_v3.data()),
 							   thrust::raw_pointer_cast(device_new_element_rho_e.data()),
 							   thrust::raw_pointer_cast(device_new_element_volume.data()),
 							   m_device_element.get_all(rho_next),
 							   m_device_element.get_all(rho_v1_next),
 							   m_device_element.get_all(rho_v2_next),
+							   m_device_element.get_all(rho_v3_next),
 							   m_device_element.get_all(rho_e_next),
 							   m_device_element.get_all(volume),
 							   num_new_elements);
@@ -591,11 +606,12 @@ void t8gpu::CompressibleEulerSolver::partition() {
   m_device_element.copy(rho_next, std::move(device_new_element_rho));
   m_device_element.copy(rho_v1_next, std::move(device_new_element_rho_v1));
   m_device_element.copy(rho_v2_next, std::move(device_new_element_rho_v2));
+  m_device_element.copy(rho_v3_next, std::move(device_new_element_rho_v3));
   m_device_element.copy(rho_e_next, std::move(device_new_element_rho_e));
   m_device_element.copy(volume, std::move(device_new_element_volume));
 
   float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
-  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 4*sizeof(float_type)*num_new_elements));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements));
 
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest));
   t8_forest_set_user_data(partitioned_forest, forest_user_data);
@@ -775,10 +791,10 @@ void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
 }
 
 void t8gpu::CompressibleEulerSolver::compute_fluxes(VariableName rho,
-					    VariableName rho_v1,
-					    VariableName rho_v2,
-					    VariableName rho_v3,
-					    VariableName rho_e) {
+						    VariableName rho_v1,
+						    VariableName rho_v2,
+						    VariableName rho_v3,
+						    VariableName rho_e) {
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   kepes_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
@@ -881,11 +897,13 @@ __global__ static void compute_refinement_criteria(float_type const* __restrict_
 __global__ static void adapt_variables_and_volume(float_type const* __restrict__ rho_old,
 						  float_type const* __restrict__ rho_v1_old,
 						  float_type const* __restrict__ rho_v2_old,
+						  float_type const* __restrict__ rho_v3_old,
 						  float_type const* __restrict__ rho_e_old,
 						  float_type const* __restrict__ volume_old,
 						  float_type* __restrict__ rho_new,
 						  float_type* __restrict__ rho_v1_new,
 						  float_type* __restrict__ rho_v2_new,
+						  float_type* __restrict__ rho_v3_new,
 						  float_type* __restrict__ rho_e_new,
 						  float_type* __restrict__ volume_new,
 						  t8_locidx_t* adapt_data,
@@ -905,11 +923,13 @@ __global__ static void adapt_variables_and_volume(float_type const* __restrict__
   rho_new[i] = 0.0;
   rho_v1_new[i] = 0.0;
   rho_v2_new[i] = 0.0;
+  rho_v3_new[i] = 0.0;
   rho_e_new[i] = 0.0;
   for (int j = 0; j < nb_elements_sum; j++) {
     rho_new[i]    += rho_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
     rho_v1_new[i] += rho_v1_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
     rho_v2_new[i] += rho_v2_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
+    rho_v3_new[i] += rho_v3_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
     rho_e_new[i]  += rho_e_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
   }
 }
@@ -918,11 +938,13 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
 			       float_type* __restrict__ new_rho,
 			       float_type* __restrict__ new_rho_v1,
 			       float_type* __restrict__ new_rho_v2,
+			       float_type* __restrict__ new_rho_v3,
 			       float_type* __restrict__ new_rho_e,
 			       float_type* __restrict__ new_volume,
 			       float_type const*const* __restrict__ old_rho,
 			       float_type const*const* __restrict__ old_rho_v1,
 			       float_type const*const* __restrict__ old_rho_v2,
+			       float_type const*const* __restrict__ old_rho_v3,
 			       float_type const*const* __restrict__ old_rho_e,
 			       float_type const*const* __restrict__ old_volume,
 			       int num_new_elements) {
@@ -932,6 +954,7 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
   new_rho[i]    = old_rho[ranks[i]][indices[i]];
   new_rho_v1[i] = old_rho_v1[ranks[i]][indices[i]];
   new_rho_v2[i] = old_rho_v2[ranks[i]][indices[i]];
+  new_rho_v3[i] = old_rho_v3[ranks[i]][indices[i]];
   new_rho_e[i]  = old_rho_e[ranks[i]][indices[i]];
 
   new_volume[i] = old_volume[ranks[i]][indices[i]];
