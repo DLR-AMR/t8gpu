@@ -31,8 +31,8 @@ static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_
 static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
 				    const int is_family, const int num_elements, t8_element_t* elements[]);
 
-__global__ static void compute_refinement_criteria(float_type const* __restrict__ rho_v1,
-						   float_type const* __restrict__ rho_v2,
+__global__ static void compute_refinement_criteria(float_type const* __restrict__ fluxes_rho,
+						   float_type const* __restrict__ volume,
 						   float_type* __restrict__ criteria, int nb_elements);
 
 __global__ static void adapt_variables_and_volume(float_type const* __restrict__ rho_old,
