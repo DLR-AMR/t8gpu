@@ -145,19 +145,20 @@ namespace t8gpu {
     /// reallocation might be necessary.
     [[nodiscard]] inline T const* const* get_all() const;
   private:
-    sc_MPI_Comm comm_;
-    int rank_;
-    int nb_ranks_;
-    size_t size_;
-    size_t capacity_;
-
-    struct handle_t {
+    struct Handle {
       cudaIpcMemHandle_t handle;
-      bool need_open_ipc;
+      bool               need_open_ipc;
     };
-    thrust::host_vector<handle_t> handles_;
-    thrust::host_vector<T*> arrays_;
-    thrust::device_vector<T*> device_arrays_;
+
+    sc_MPI_Comm m_comm;
+    int         m_rank;
+    int         m_nb_ranks;
+    size_t      m_size;
+    size_t      m_capacity;
+
+    thrust::host_vector<Handle> m_handles;
+    thrust::host_vector<T*>     m_arrays;
+    thrust::device_vector<T*>   m_device_arrays;
   };
 
   ///
@@ -287,21 +288,22 @@ namespace t8gpu {
     /// reallocation might be necessary.
     [[nodiscard]] inline T const* const* get_all(int index) const;
   private:
-    sc_MPI_Comm comm_;
-    int rank_;
-    int nb_ranks_;
-    size_t size_;
-    size_t capacity_;
-
-    struct handle_t {
+    struct Handle {
       cudaIpcMemHandle_t handle;
-      size_t capacity;
-      bool need_open_ipc;
+      size_t             capacity;
+      bool               need_open_ipc;
     };
-    thrust::host_vector<handle_t> handles_;
-    thrust::host_vector<T*> allocations_;
-    thrust::host_vector<T*> arrays_;
-    thrust::device_vector<T*> device_arrays_;
+
+    sc_MPI_Comm m_comm;
+    int         m_rank;
+    int         m_nb_ranks;
+    size_t      m_size;
+    size_t      m_capacity;
+
+    thrust::host_vector<Handle> m_handles;
+    thrust::host_vector<T*>     m_allocations;
+    thrust::host_vector<T*>     m_arrays;
+    thrust::device_vector<T*>   m_device_arrays;
   };
 } // namespace t8gpu
 
