@@ -180,14 +180,14 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   m_device_element_refinement_criteria.resize(m_num_local_elements);
 
   // copy new shared element variables
-  m_device_element.copy(get_var(next, rho), element_rho);
-  m_device_element.copy(get_var(next, rho_v1), element_rho_v1);
-  m_device_element.copy(get_var(next, rho_v2), element_rho_v2);
-  m_device_element.copy(get_var(next, rho_v3), element_rho_v3);
-  m_device_element.copy(get_var(next, rho_e), element_rho_e);
+  m_device_element.copy(get_var(next, rho), std::move(element_rho));
+  m_device_element.copy(get_var(next, rho_v1), std::move(element_rho_v1));
+  m_device_element.copy(get_var(next, rho_v2), std::move(element_rho_v2));
+  m_device_element.copy(get_var(next, rho_v3), std::move(element_rho_v3));
+  m_device_element.copy(get_var(next, rho_e), std::move(element_rho_e));
 
   // m_device_element[volume] = element_volume;
-  m_device_element.copy(get_vol(), element_volume);
+  m_device_element.copy(get_vol(), std::move(element_volume));
 
   // fill fluxes device element variable
   float_type* device_element_fluxes_ptr {m_device_element.get_own(get_var(fluxes, rho))};
@@ -519,9 +519,9 @@ void t8gpu::CompressibleEulerSolver::partition() {
   m_device_element_refinement_criteria.resize(num_new_elements);
 
   for (int k=0; k<nb_conserved_variables; k++) {
-    m_device_element.copy(get_var(next, static_cast<VariableName>(k)), new_variables[k]);
+    m_device_element.copy(get_var(next, static_cast<VariableName>(k)), new_variables[k], num_new_elements);
   }
-  m_device_element.copy(get_vol(), thrust::raw_pointer_cast(device_new_element_volume.data()));
+  m_device_element.copy(get_vol(), std::move(device_new_element_volume));
 
 
   float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(get_var(fluxes, rho))};

@@ -252,19 +252,20 @@ inline void t8gpu::SharedDeviceVector<std::array<T, N>>::resize(size_t new_size)
 
 template<typename T, size_t N>
 inline void t8gpu::SharedDeviceVector<std::array<T, N>>::copy(int index, const thrust::host_vector<T>& vector) {
-  this->resize(vector.size());
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(m_arrays[index*m_nb_ranks+m_rank], thrust::raw_pointer_cast(vector.data()), sizeof(T)*m_size, cudaMemcpyHostToDevice));
+  assert(m_size <= vector.size());
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(m_arrays[index*m_nb_ranks+m_rank], thrust::raw_pointer_cast(vector.data()), sizeof(T)*vector.size(), cudaMemcpyHostToDevice));
 }
 
 template<typename T, size_t N>
 inline void t8gpu::SharedDeviceVector<std::array<T, N>>::copy(int index, const thrust::device_vector<T>& vector) {
-  this->resize(vector.size());
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(m_arrays[index*m_nb_ranks+m_rank], thrust::raw_pointer_cast(vector.data()), sizeof(T)*m_size, cudaMemcpyDeviceToDevice));
+  assert(m_size <= vector.size());
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(m_arrays[index*m_nb_ranks+m_rank], thrust::raw_pointer_cast(vector.data()), sizeof(T)*vector.size(), cudaMemcpyDeviceToDevice));
 }
 
 template<typename T, size_t N>
-inline void t8gpu::SharedDeviceVector<std::array<T, N>>::copy(int index, T const* buffer) {
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(m_arrays[index*m_nb_ranks+m_rank], buffer, sizeof(T)*m_size, cudaMemcpyDeviceToDevice));
+inline void t8gpu::SharedDeviceVector<std::array<T, N>>::copy(int index, T const* buffer, size_t num_elements) {
+  assert(num_elements <= m_size);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(m_arrays[index*m_nb_ranks+m_rank], buffer, sizeof(T)*num_elements, cudaMemcpyDeviceToDevice));
 }
 
 template<typename T, size_t N>
