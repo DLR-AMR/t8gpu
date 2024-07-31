@@ -173,6 +173,16 @@ namespace t8gpu {
       return vars;
     }
 
+    [[nodiscard]] cuda::std::array<float_type** __restrict__, nb_conserved_variables> get_all_vars(StepName step_name) {
+      cuda::std::array<float_type** __restrict__, nb_conserved_variables> vars {};
+      // TODO: this could be done with a object that holds only one pointer but has __device__ operator[] to do the correct strided access into the shared device vector m_device_array member
+
+      for (int k=0; k<nb_conserved_variables; k++) {
+	vars[k] = m_device_element.get_all(get_var(step_name, static_cast<VariableName>(k)));
+      }
+      return vars;
+    }
+
     [[nodiscard]] static int get_vol() {
       return nb_steps*nb_conserved_variables;
     }

@@ -50,19 +50,12 @@ __global__ static void adapt_variables_and_volume(float_type const* __restrict__
 						  t8_locidx_t* adapt_data,
 						  int nb_new_elements);
 
+template<typename ft, size_t nb_variables>
 __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict__ indices,
-			       float_type* __restrict__ new_rho,
-			       float_type* __restrict__ new_rho_v1,
-			       float_type* __restrict__ new_rho_v2,
-			       float_type* __restrict__ new_rho_v3,
-			       float_type* __restrict__ new_rho_e,
-			       float_type* __restrict__ new_volume,
-			       float_type const*const* __restrict__ old_rho,
-			       float_type const*const* __restrict__ old_rho_v1,
-			       float_type const*const* __restrict__ old_rho_v2,
-			       float_type const*const* __restrict__ old_rho_v3,
-			       float_type const*const* __restrict__ old_rho_e,
-			       float_type const*const* __restrict__ old_volume,
+			       cuda::std::array<ft* __restrict__, nb_variables> new_variables,
+			       cuda::std::array<ft** __restrict__, nb_variables> old_variables,
+			       ft* __restrict__ new_volume,
+			       ft** __restrict__ old_volume,
 			       int num_new_elements);
 
 __global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
@@ -499,31 +492,24 @@ void t8gpu::CompressibleEulerSolver::partition() {
   thrust::device_vector<int> device_new_ranks = new_ranks;
   thrust::device_vector<t8_locidx_t> device_new_indices = new_indices;
 
-  // TODO: same this here, change this code so that it does not depend on the number of equations
-  thrust::device_vector<float_type> device_new_element_rho(num_new_elements);
-  thrust::device_vector<float_type> device_new_element_rho_v1(num_new_elements);
-  thrust::device_vector<float_type> device_new_element_rho_v2(num_new_elements);
-  thrust::device_vector<float_type> device_new_element_rho_v3(num_new_elements);
-  thrust::device_vector<float_type> device_new_element_rho_e(num_new_elements);
+  thrust::device_vector<float_type> device_new_conserved_variables(num_new_elements*nb_conserved_variables);
   thrust::device_vector<float_type> device_new_element_volume(num_new_elements);
+
+  cuda::std::array<float_type* __restrict__, nb_conserved_variables> new_variables {};
+  for (size_t k=0; k<nb_conserved_variables; k++) {
+    new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + sizeof(float_type)*num_new_elements;
+  }
 
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
-  partition_data<<<fluxes_num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_new_ranks.data()),
-							   thrust::raw_pointer_cast(device_new_indices.data()),
-							   thrust::raw_pointer_cast(device_new_element_rho.data()),
-							   thrust::raw_pointer_cast(device_new_element_rho_v1.data()),
-							   thrust::raw_pointer_cast(device_new_element_rho_v2.data()),
-							   thrust::raw_pointer_cast(device_new_element_rho_v3.data()),
-							   thrust::raw_pointer_cast(device_new_element_rho_e.data()),
-							   thrust::raw_pointer_cast(device_new_element_volume.data()),
-							   m_device_element.get_all(get_var(next, rho)),
-							   m_device_element.get_all(get_var(next, rho_v1)),
-							   m_device_element.get_all(get_var(next, rho_v2)),
-							   m_device_element.get_all(get_var(next, rho_v3)),
-							   m_device_element.get_all(get_var(next, rho_e)),
-							   m_device_element.get_all(get_vol()),
-							   num_new_elements);
+  partition_data<float_type, nb_conserved_variables><<<fluxes_num_blocks, thread_block_size>>>(
+    thrust::raw_pointer_cast(device_new_ranks.data()),
+    thrust::raw_pointer_cast(device_new_indices.data()),
+    new_variables,
+    get_all_vars(next),
+    thrust::raw_pointer_cast(device_new_element_volume.data()),
+    m_device_element.get_all(get_vol()),
+    num_new_elements);
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
@@ -532,13 +518,11 @@ void t8gpu::CompressibleEulerSolver::partition() {
 
   m_device_element_refinement_criteria.resize(num_new_elements);
 
-  // copy new shared element variables
-  m_device_element.copy(get_var(next, rho), std::move(device_new_element_rho));
-  m_device_element.copy(get_var(next, rho_v1), std::move(device_new_element_rho_v1));
-  m_device_element.copy(get_var(next, rho_v2), std::move(device_new_element_rho_v2));
-  m_device_element.copy(get_var(next, rho_v3), std::move(device_new_element_rho_v3));
-  m_device_element.copy(get_var(next, rho_e), std::move(device_new_element_rho_e));
-  m_device_element.copy(get_vol(), std::move(device_new_element_volume));
+  for (int k=0; k<nb_conserved_variables; k++) {
+    m_device_element.copy(get_var(next, static_cast<VariableName>(k)), new_variables[k]);
+  }
+  m_device_element.copy(get_vol(), thrust::raw_pointer_cast(device_new_element_volume.data()));
+
 
   float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(get_var(fluxes, rho))};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements));
@@ -861,28 +845,19 @@ __global__ static void adapt_variables_and_volume(float_type const* __restrict__
   }
 }
 
+template<typename float_type, size_t nb_variables>
 __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict__ indices,
-			       float_type* __restrict__ new_rho,
-			       float_type* __restrict__ new_rho_v1,
-			       float_type* __restrict__ new_rho_v2,
-			       float_type* __restrict__ new_rho_v3,
-			       float_type* __restrict__ new_rho_e,
+			       cuda::std::array<float_type* __restrict__, nb_variables> new_variables,
+			       cuda::std::array<float_type** __restrict__, nb_variables> old_variables,
 			       float_type* __restrict__ new_volume,
-			       float_type const*const* __restrict__ old_rho,
-			       float_type const*const* __restrict__ old_rho_v1,
-			       float_type const*const* __restrict__ old_rho_v2,
-			       float_type const*const* __restrict__ old_rho_v3,
-			       float_type const*const* __restrict__ old_rho_e,
-			       float_type const*const* __restrict__ old_volume,
+			       float_type** __restrict__ old_volume,
 			       int num_new_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_new_elements) return;
 
-  new_rho[i]    = old_rho[ranks[i]][indices[i]];
-  new_rho_v1[i] = old_rho_v1[ranks[i]][indices[i]];
-  new_rho_v2[i] = old_rho_v2[ranks[i]][indices[i]];
-  new_rho_v3[i] = old_rho_v3[ranks[i]][indices[i]];
-  new_rho_e[i]  = old_rho_e[ranks[i]][indices[i]];
+  for (size_t k=0; k<nb_variables; k++) {
+    new_variables[k][i] = old_variables[k][ranks[i]][indices[i]];
+  }
 
   new_volume[i] = old_volume[ranks[i]][indices[i]];
 }
