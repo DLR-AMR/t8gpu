@@ -11,6 +11,8 @@
 #include <utility>
 #include <utils/cuda.h>
 
+// TODO: add a copy_unsafe that does not resize before copying
+
 namespace t8gpu {
   ///
   /// @brief A class that implements a shared array This class creates

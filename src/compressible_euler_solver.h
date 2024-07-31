@@ -5,6 +5,7 @@
 #ifndef COMPRESSIBLE_EULER_SOLVER_H
 #define COMPRESSIBLE_EULER_SOLVER_H
 
+#include <cuda/std/array>
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
 #include <thrust/device_vector.h>
@@ -135,48 +136,48 @@ namespace t8gpu {
     thrust::device_vector<float_type>  m_device_face_area;
     thrust::device_vector<float_type>  m_device_face_speed_estimate;
 
-    /*! enum of all variables associated to elements */
+    // defines the set of conserved variables
     enum VariableName {
-      rho_0,          /*! previous variable */
-      rho_v1_0,       /*! previous variable */
-      rho_v2_0,       /*! previous variable */
-      rho_v3_0,       /*! previous variable */
-      rho_e_0,        /*! previous variable */
-      rho_1,          /*! first SSP-RK intermediate state */
-      rho_v1_1,       /*! first SSP-RK intermediate state */
-      rho_v2_1,       /*! first SSP-RK intermediate state */
-      rho_v3_1,       /*! first SSP-RK intermediate state */
-      rho_e_1,        /*! first SSP-RK intermediate state */
-      rho_2,          /*! second SSP-RK intermediate state */
-      rho_v1_2,       /*! second SSP-RK intermediate state */
-      rho_v2_2,       /*! second SSP-RK intermediate state */
-      rho_v3_2,       /*! second SSP-RK intermediate state */
-      rho_e_2,        /*! second SSP-RK intermediate state */
-      rho_3,          /*! next variable */
-      rho_v1_3,       /*! next variable */
-      rho_v2_3,       /*! next variable */
-      rho_v3_3,       /*! next variable */
-      rho_e_3,        /*! next variable */
-      rho_fluxes,     /*! flux contributions */
-      rho_v1_fluxes,  /*! flux contributions */
-      rho_v2_fluxes,  /*! flux contributions */
-      rho_v3_fluxes,  /*! flux contributions */
-      rho_e_fluxes,   /*! flux contributions */
-      volume,         /*! volume */
-      nb_element_variables
+      rho,    // density
+      rho_v1, // x-component of momentum
+      rho_v2, // y-component of momentum
+      rho_v3, // z-component of momentum
+      rho_e,  // energy
+      nb_conserved_variables
     };
 
-    VariableName rho_prev;
-    VariableName rho_v1_prev;
-    VariableName rho_v2_prev;
-    VariableName rho_v3_prev;
-    VariableName rho_e_prev;
+    // defines the number of duplicates per variables that we need
+    enum StepName {
+      step0,  // used for RK3 timestepping
+      step1,  // used for RK3 timestepping
+      step2,  // used for RK3 timestepping
+      step3,  // used for RK3 timestepping
+      fluxes, // used to store fluxes
+      nb_steps
+    };
 
-    VariableName rho_next;
-    VariableName rho_v1_next;
-    VariableName rho_v2_next;
-    VariableName rho_v3_next;
-    VariableName rho_e_next;
+    StepName prev = step0;
+    StepName next = step3;
+
+    [[nodiscard]] static int get_var(StepName step_name, VariableName var_name) {
+      return var_name + step_name*nb_conserved_variables;
+    }
+
+    [[nodiscard]] cuda::std::array<float_type* __restrict__, nb_conserved_variables> get_own_vars(StepName step_name) {
+      cuda::std::array<float_type* __restrict__, nb_conserved_variables> vars {};
+      // TODO: this could be done with a object that holds only one pointer but has __device__ operator[] to do the correct strided access into the shared device vector m_device_array member
+
+      for (int k=0; k<nb_conserved_variables; k++) {
+	vars[k] = m_device_element.get_own(get_var(step_name, static_cast<VariableName>(k)));
+      }
+      return vars;
+    }
+
+    [[nodiscard]] static int get_vol() {
+      return nb_steps*nb_conserved_variables;
+    }
+
+    constexpr static size_t nb_element_variables = nb_conserved_variables * nb_steps + 1;
 
     /*! collection of all shared variables associated to elements */
     t8gpu::SharedDeviceVector<std::array<float_type, nb_element_variables>> m_device_element;
@@ -185,11 +186,7 @@ namespace t8gpu {
     thrust::device_vector<float_type> m_device_element_refinement_criteria;
 
     void compute_edge_connectivity();
-    void compute_fluxes(VariableName rho,
-			VariableName rho_v1,
-			VariableName rho_v2,
-			VariableName rho_v3,
-			VariableName rho_e);
+    void compute_fluxes(StepName step_name);
 
     template<typename ft = float_type>
     void save_vtk_impl(const std::string& prefix) const;

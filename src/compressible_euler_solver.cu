@@ -112,18 +112,6 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   MPI_Comm_size(m_comm, &m_nb_ranks);
   MPI_Comm_rank(m_comm, &m_rank);
 
-  rho_prev    = rho_0;
-  rho_v1_prev = rho_v1_0;
-  rho_v2_prev = rho_v2_0;
-  rho_v3_prev = rho_v3_0;
-  rho_e_prev  = rho_e_0;
-
-  rho_next    = rho_3;
-  rho_v1_next = rho_v1_3;
-  rho_v2_next = rho_v2_3;
-  rho_v3_next = rho_v3_3;
-  rho_e_next  = rho_e_3;
-
   m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 
@@ -199,17 +187,17 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   m_device_element_refinement_criteria.resize(m_num_local_elements);
 
   // copy new shared element variables
-  m_device_element.copy(rho_next, element_rho);
-  m_device_element.copy(rho_v1_next, element_rho_v1);
-  m_device_element.copy(rho_v2_next, element_rho_v2);
-  m_device_element.copy(rho_v3_next, element_rho_v3);
-  m_device_element.copy(rho_e_next, element_rho_e);
+  m_device_element.copy(get_var(next, rho), element_rho);
+  m_device_element.copy(get_var(next, rho_v1), element_rho_v1);
+  m_device_element.copy(get_var(next, rho_v2), element_rho_v2);
+  m_device_element.copy(get_var(next, rho_v3), element_rho_v3);
+  m_device_element.copy(get_var(next, rho_e), element_rho_e);
 
   // m_device_element[volume] = element_volume;
-  m_device_element.copy(volume, element_volume);
+  m_device_element.copy(get_vol(), element_volume);
 
   // fill fluxes device element variable
-  float_type* device_element_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
+  float_type* device_element_fluxes_ptr {m_device_element.get_own(get_var(fluxes, rho))};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, 5*sizeof(float_type)*m_num_local_elements));
 
   compute_edge_connectivity();
@@ -238,103 +226,43 @@ t8gpu::CompressibleEulerSolver::~CompressibleEulerSolver() {
 }
 
 void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
-  std::swap(rho_prev, rho_next);
-  std::swap(rho_v1_prev, rho_v1_next);
-  std::swap(rho_v2_prev, rho_v2_next);
-  std::swap(rho_v3_prev, rho_v3_next);
-  std::swap(rho_e_prev, rho_e_next);
+  std::swap(prev, next);
 
-  compute_fluxes(rho_prev,
-		 rho_v1_prev,
-		 rho_v2_prev,
-		 rho_v3_prev,
-		 rho_e_prev);
+  compute_fluxes(prev);
 
   constexpr int thread_block_size = 256;
   const int SSP_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
-  t8gpu::timestepping::SSP_3RK_step1<<<SSP_num_blocks, thread_block_size>>>(
-      m_device_element.get_own(rho_prev),
-      m_device_element.get_own(rho_v1_prev),
-      m_device_element.get_own(rho_v2_prev),
-      m_device_element.get_own(rho_v3_prev),
-      m_device_element.get_own(rho_e_prev),
-      m_device_element.get_own(rho_1),
-      m_device_element.get_own(rho_v1_1),
-      m_device_element.get_own(rho_v2_1),
-      m_device_element.get_own(rho_v3_1),
-      m_device_element.get_own(rho_e_1),
-      m_device_element.get_own(volume),
-      m_device_element.get_own(rho_fluxes),
-      m_device_element.get_own(rho_v1_fluxes),
-      m_device_element.get_own(rho_v2_fluxes),
-      m_device_element.get_own(rho_v3_fluxes),
-      m_device_element.get_own(rho_e_fluxes),
+  t8gpu::timestepping::SSP_3RK_step1<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
+      get_own_vars(prev),
+      get_own_vars(step1),
+      get_own_vars(fluxes),
+      m_device_element.get_own(get_vol()),
       delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
-  compute_fluxes(rho_1,
-		 rho_v1_1,
-		 rho_v2_1,
-		 rho_v3_1,
-		 rho_e_1);
+  compute_fluxes(step1);
 
-  t8gpu::timestepping::SSP_3RK_step2<<<SSP_num_blocks, thread_block_size>>>(
-      m_device_element.get_own(rho_prev),
-      m_device_element.get_own(rho_v1_prev),
-      m_device_element.get_own(rho_v2_prev),
-      m_device_element.get_own(rho_v3_prev),
-      m_device_element.get_own(rho_e_prev),
-      m_device_element.get_own(rho_1),
-      m_device_element.get_own(rho_v1_1),
-      m_device_element.get_own(rho_v2_1),
-      m_device_element.get_own(rho_v3_1),
-      m_device_element.get_own(rho_e_1),
-      m_device_element.get_own(rho_2),
-      m_device_element.get_own(rho_v1_2),
-      m_device_element.get_own(rho_v2_2),
-      m_device_element.get_own(rho_v3_2),
-      m_device_element.get_own(rho_e_2),
-      m_device_element.get_own(volume),
-      m_device_element.get_own(rho_fluxes),
-      m_device_element.get_own(rho_v1_fluxes),
-      m_device_element.get_own(rho_v2_fluxes),
-      m_device_element.get_own(rho_v3_fluxes),
-      m_device_element.get_own(rho_e_fluxes),
-      delta_t, m_num_local_elements);
+  t8gpu::timestepping::SSP_3RK_step2<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
+     get_own_vars(prev),
+     get_own_vars(step1),
+     get_own_vars(step2),
+     get_own_vars(fluxes),
+     m_device_element.get_own(get_vol()),
+     delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
-  compute_fluxes(rho_2,
-		 rho_v1_2,
-		 rho_v2_2,
-		 rho_v3_2,
-		 rho_e_2);
+  compute_fluxes(step2);
 
-  t8gpu::timestepping::SSP_3RK_step3<<<SSP_num_blocks, thread_block_size>>>(
-      m_device_element.get_own(rho_prev),
-      m_device_element.get_own(rho_v1_prev),
-      m_device_element.get_own(rho_v2_prev),
-      m_device_element.get_own(rho_v3_prev),
-      m_device_element.get_own(rho_e_prev),
-      m_device_element.get_own(rho_2),
-      m_device_element.get_own(rho_v1_2),
-      m_device_element.get_own(rho_v2_2),
-      m_device_element.get_own(rho_v3_2),
-      m_device_element.get_own(rho_e_2),
-      m_device_element.get_own(rho_next),
-      m_device_element.get_own(rho_v1_next),
-      m_device_element.get_own(rho_v2_next),
-      m_device_element.get_own(rho_v3_next),
-      m_device_element.get_own(rho_e_next),
-      m_device_element.get_own(volume),
-      m_device_element.get_own(rho_fluxes),
-      m_device_element.get_own(rho_v1_fluxes),
-      m_device_element.get_own(rho_v2_fluxes),
-      m_device_element.get_own(rho_v3_fluxes),
-      m_device_element.get_own(rho_e_fluxes),
+  t8gpu::timestepping::SSP_3RK_step3<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
+      get_own_vars(prev),
+      get_own_vars(step2),
+      get_own_vars(next),
+      get_own_vars(fluxes),
+      m_device_element.get_own(get_vol()),
       delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 }
@@ -367,8 +295,8 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   constexpr int thread_block_size = 256;
   const int gradient_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   estimate_gradient<<<gradient_num_blocks, thread_block_size>>>(
-	m_device_element.get_all(rho_next),
-	m_device_element.get_all(rho_fluxes),
+	m_device_element.get_all(get_var(next, rho)),
+	m_device_element.get_all(get_var(fluxes, rho)),
 	thrust::raw_pointer_cast(m_device_face_normals.data()),
 	thrust::raw_pointer_cast(m_device_face_area.data()),
 	thrust::raw_pointer_cast(m_device_face_neighbors.data()),
@@ -381,8 +309,8 @@ void t8gpu::CompressibleEulerSolver::adapt() {
 
   const int fluxes_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
   compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(
-	m_device_element.get_own(rho_fluxes),
-	m_device_element.get_own(volume),
+	m_device_element.get_own(get_var(fluxes, rho)),
+	m_device_element.get_own(get_vol()),
 	thrust::raw_pointer_cast(m_device_element_refinement_criteria.data()),
 	m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
@@ -473,6 +401,7 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   t8_forest_set_user_data(adapted_forest, forest_user_data);
   t8_forest_unref(&m_forest);
 
+  // TODO: change this so that is does not depent on the number of equations
   thrust::device_vector<float_type> device_element_rho_next_adapted(num_new_elements);
   thrust::device_vector<float_type> device_element_rho_v1_next_adapted(num_new_elements);
   thrust::device_vector<float_type> device_element_rho_v2_next_adapted(num_new_elements);
@@ -486,12 +415,12 @@ void t8gpu::CompressibleEulerSolver::adapt() {
       cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size() * sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
   const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
   adapt_variables_and_volume<<<adapt_num_blocks, thread_block_size>>>(
-      m_device_element.get_own(rho_next),
-      m_device_element.get_own(rho_v1_next),
-      m_device_element.get_own(rho_v2_next),
-      m_device_element.get_own(rho_v3_next),
-      m_device_element.get_own(rho_e_next),
-      m_device_element.get_own(volume),
+      m_device_element.get_own(get_var(next, rho)),
+      m_device_element.get_own(get_var(next, rho_v1)),
+      m_device_element.get_own(get_var(next, rho_v2)),
+      m_device_element.get_own(get_var(next, rho_v3)),
+      m_device_element.get_own(get_var(next, rho_e)),
+      m_device_element.get_own(get_vol()),
       thrust::raw_pointer_cast(device_element_rho_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v1_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_rho_v2_next_adapted.data()),
@@ -509,16 +438,16 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   m_device_element_refinement_criteria.resize(num_new_elements);
 
   // fill fluxes device element variable
-  float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
+  float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(get_var(fluxes, rho))};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements));
 
   // TODO add copy with rvalue reference
-  m_device_element.copy(rho_next, std::move(device_element_rho_next_adapted));
-  m_device_element.copy(rho_v1_next, std::move(device_element_rho_v1_next_adapted));
-  m_device_element.copy(rho_v2_next, std::move(device_element_rho_v2_next_adapted));
-  m_device_element.copy(rho_v3_next, std::move(device_element_rho_v3_next_adapted));
-  m_device_element.copy(rho_e_next, std::move(device_element_rho_e_next_adapted));
-  m_device_element.copy(volume, std::move(device_element_volume_adapted));
+  m_device_element.copy(get_var(next, rho), std::move(device_element_rho_next_adapted));
+  m_device_element.copy(get_var(next, rho_v1), std::move(device_element_rho_v1_next_adapted));
+  m_device_element.copy(get_var(next, rho_v2), std::move(device_element_rho_v2_next_adapted));
+  m_device_element.copy(get_var(next, rho_v3), std::move(device_element_rho_v3_next_adapted));
+  m_device_element.copy(get_var(next, rho_e), std::move(device_element_rho_e_next_adapted));
+  m_device_element.copy(get_vol(), std::move(device_element_volume_adapted));
 
   m_forest = adapted_forest;
 
@@ -570,6 +499,7 @@ void t8gpu::CompressibleEulerSolver::partition() {
   thrust::device_vector<int> device_new_ranks = new_ranks;
   thrust::device_vector<t8_locidx_t> device_new_indices = new_indices;
 
+  // TODO: same this here, change this code so that it does not depend on the number of equations
   thrust::device_vector<float_type> device_new_element_rho(num_new_elements);
   thrust::device_vector<float_type> device_new_element_rho_v1(num_new_elements);
   thrust::device_vector<float_type> device_new_element_rho_v2(num_new_elements);
@@ -587,12 +517,12 @@ void t8gpu::CompressibleEulerSolver::partition() {
 							   thrust::raw_pointer_cast(device_new_element_rho_v3.data()),
 							   thrust::raw_pointer_cast(device_new_element_rho_e.data()),
 							   thrust::raw_pointer_cast(device_new_element_volume.data()),
-							   m_device_element.get_all(rho_next),
-							   m_device_element.get_all(rho_v1_next),
-							   m_device_element.get_all(rho_v2_next),
-							   m_device_element.get_all(rho_v3_next),
-							   m_device_element.get_all(rho_e_next),
-							   m_device_element.get_all(volume),
+							   m_device_element.get_all(get_var(next, rho)),
+							   m_device_element.get_all(get_var(next, rho_v1)),
+							   m_device_element.get_all(get_var(next, rho_v2)),
+							   m_device_element.get_all(get_var(next, rho_v3)),
+							   m_device_element.get_all(get_var(next, rho_e)),
+							   m_device_element.get_all(get_vol()),
 							   num_new_elements);
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
@@ -603,14 +533,14 @@ void t8gpu::CompressibleEulerSolver::partition() {
   m_device_element_refinement_criteria.resize(num_new_elements);
 
   // copy new shared element variables
-  m_device_element.copy(rho_next, std::move(device_new_element_rho));
-  m_device_element.copy(rho_v1_next, std::move(device_new_element_rho_v1));
-  m_device_element.copy(rho_v2_next, std::move(device_new_element_rho_v2));
-  m_device_element.copy(rho_v3_next, std::move(device_new_element_rho_v3));
-  m_device_element.copy(rho_e_next, std::move(device_new_element_rho_e));
-  m_device_element.copy(volume, std::move(device_new_element_volume));
+  m_device_element.copy(get_var(next, rho), std::move(device_new_element_rho));
+  m_device_element.copy(get_var(next, rho_v1), std::move(device_new_element_rho_v1));
+  m_device_element.copy(get_var(next, rho_v2), std::move(device_new_element_rho_v2));
+  m_device_element.copy(get_var(next, rho_v3), std::move(device_new_element_rho_v3));
+  m_device_element.copy(get_var(next, rho_e), std::move(device_new_element_rho_e));
+  m_device_element.copy(get_vol(), std::move(device_new_element_volume));
 
-  float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(rho_fluxes)};
+  float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(get_var(fluxes, rho))};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements));
 
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest));
@@ -654,7 +584,7 @@ void t8gpu::CompressibleEulerSolver::save_vtk(const std::string& prefix) const {
 template<typename ft>
 void t8gpu::CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) const {
   thrust::host_vector<ft> element_variable(m_num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), m_device_element.get_own(rho_next), sizeof(ft)*m_num_local_elements, cudaMemcpyDeviceToHost));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), m_device_element.get_own(get_var(next, rho)), sizeof(ft)*m_num_local_elements, cudaMemcpyDeviceToHost));
 
   t8_vtk_data_field_t vtk_data_field {};
   vtk_data_field.type = T8_VTK_SCALAR;
@@ -691,11 +621,11 @@ void t8gpu::CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) co
 
 float_type t8gpu::CompressibleEulerSolver::compute_integral() const {
   float_type local_integral = 0.0;
-  float_type const* mem {m_device_element.get_own(rho_next)};
+  float_type const* mem {m_device_element.get_own(get_var(next, rho))};
   thrust::host_vector<float_type> variable(m_num_local_elements);
   T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(float_type)*m_device_element.size(), cudaMemcpyDeviceToHost));
   thrust::host_vector<float_type> volume(m_num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), m_device_element.get_own(VariableName::volume), sizeof(float_type)*m_device_element.size(), cudaMemcpyDeviceToHost));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), m_device_element.get_own(get_vol()), sizeof(float_type)*m_device_element.size(), cudaMemcpyDeviceToHost));
 
   for (t8_locidx_t i=0; i<m_num_local_elements; i++) {
     local_integral += volume[i] * variable[i];
@@ -790,24 +720,21 @@ void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
   m_num_local_faces = static_cast<t8_locidx_t>(m_face_area.size());
 }
 
-void t8gpu::CompressibleEulerSolver::compute_fluxes(VariableName rho,
-						    VariableName rho_v1,
-						    VariableName rho_v2,
-						    VariableName rho_v3,
-						    VariableName rho_e) {
+void t8gpu::CompressibleEulerSolver::compute_fluxes(StepName step) {
+  // TODO: clean up the function call to not see the different variables
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   kepes_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
-								 m_device_element.get_all(rho),
-								 m_device_element.get_all(rho_v1),
-								 m_device_element.get_all(rho_v2),
-								 m_device_element.get_all(rho_v3),
-								 m_device_element.get_all(rho_e),
-								 m_device_element.get_all(rho_fluxes),
-								 m_device_element.get_all(rho_v1_fluxes),
-								 m_device_element.get_all(rho_v2_fluxes),
-								 m_device_element.get_all(rho_v3_fluxes),
-								 m_device_element.get_all(rho_e_fluxes),
+								 m_device_element.get_all(get_var(step, rho)),
+								 m_device_element.get_all(get_var(step, rho_v1)),
+								 m_device_element.get_all(get_var(step, rho_v2)),
+								 m_device_element.get_all(get_var(step, rho_v3)),
+								 m_device_element.get_all(get_var(step, rho_e)),
+								 m_device_element.get_all(get_var(fluxes, rho)),
+								 m_device_element.get_all(get_var(fluxes, rho_v1)),
+								 m_device_element.get_all(get_var(fluxes, rho_v2)),
+								 m_device_element.get_all(get_var(fluxes, rho_v3)),
+								 m_device_element.get_all(get_var(fluxes, rho_e)),
 								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()),
 								 thrust::raw_pointer_cast(m_device_face_normals.data()),
 								 thrust::raw_pointer_cast(m_device_face_area.data()),

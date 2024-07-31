@@ -1,73 +1,31 @@
 #ifndef TIMESTEPPING_SSP_RUNGE_KUTTA_H
 #define TIMESTEPPING_SSP_RUNGE_KUTTA_H
 
+#include <cuda/std/array>
+
 namespace t8gpu::timestepping {
 
-template<typename float_type>
-__global__ void SSP_3RK_step1(float_type const* __restrict__ rho_prev,
-			      float_type const* __restrict__ rho_v1_prev,
-			      float_type const* __restrict__ rho_v2_prev,
-			      float_type const* __restrict__ rho_v3_prev,
-			      float_type const* __restrict__ rho_e_prev,
-			      float_type* __restrict__ rho_1,
-			      float_type* __restrict__ rho_v1_1,
-			      float_type* __restrict__ rho_v2_1,
-			      float_type* __restrict__ rho_v3_1,
-			      float_type* __restrict__ rho_e_1,
+  template<typename float_type, size_t nb_variables>
+  __global__ void SSP_3RK_step1(cuda::std::array<float_type* __restrict__, nb_variables> prev,
+				cuda::std::array<float_type* __restrict__, nb_variables> step1,
+				float_type const* __restrict__ volume,
+				cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
+				float_type delta_t, int nb_elements);
+
+  template<typename float_type, size_t nb_variables>
+__global__ void SSP_3RK_step2(cuda::std::array<float_type* __restrict__, nb_variables> prev,
+			      cuda::std::array<float_type* __restrict__, nb_variables> step1,
+			      cuda::std::array<float_type* __restrict__, nb_variables> step2,
 			      float_type const* __restrict__ volume,
-			      float_type* __restrict__ rho_fluxes,
-			      float_type* __restrict__ rho_v1_fluxes,
-			      float_type* __restrict__ rho_v2_fluxes,
-			      float_type* __restrict__ rho_v3_fluxes,
-			      float_type* __restrict__ rho_e_fluxes,
+			      cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
 			      float_type delta_t, int nb_elements);
 
-template<typename float_type>
-__global__ void SSP_3RK_step2(float_type const* __restrict__ rho_prev,
-			      float_type const* __restrict__ rho_v1_prev,
-			      float_type const* __restrict__ rho_v2_prev,
-			      float_type const* __restrict__ rho_v3_prev,
-			      float_type const* __restrict__ rho_e_prev,
-			      float_type* __restrict__ rho_1,
-			      float_type* __restrict__ rho_v1_1,
-			      float_type* __restrict__ rho_v2_1,
-			      float_type* __restrict__ rho_v3_1,
-			      float_type* __restrict__ rho_e_1,
-			      float_type* __restrict__ rho_2,
-			      float_type* __restrict__ rho_v1_2,
-			      float_type* __restrict__ rho_v2_2,
-			      float_type* __restrict__ rho_v3_2,
-			      float_type* __restrict__ rho_e_2,
+  template<typename float_type, size_t nb_variables>
+__global__ void SSP_3RK_step3(cuda::std::array<float_type* __restrict__, nb_variables> prev,
+			      cuda::std::array<float_type* __restrict__, nb_variables> step2,
+			      cuda::std::array<float_type* __restrict__, nb_variables> next,
 			      float_type const* __restrict__ volume,
-			      float_type* __restrict__ rho_fluxes,
-			      float_type* __restrict__ rho_v1_fluxes,
-			      float_type* __restrict__ rho_v2_fluxes,
-			      float_type* __restrict__ rho_v3_fluxes,
-			      float_type* __restrict__ rho_e_fluxes,
-			      float_type delta_t, int nb_elements);
-
-template<typename float_type>
-__global__ void SSP_3RK_step3(float_type const* __restrict__ rho_prev,
-			      float_type const* __restrict__ rho_v1__prev,
-			      float_type const* __restrict__ rho_v2_prev,
-			      float_type const* __restrict__ rho_v3_prev,
-			      float_type const* __restrict__ rho_e_prev,
-			      float_type* __restrict__ rho_2,
-			      float_type* __restrict__ rho_v1_2,
-			      float_type* __restrict__ rho_v2_2,
-			      float_type* __restrict__ rho_v3_2,
-			      float_type* __restrict__ rho_e_2,
-			      float_type* __restrict__ rho_next,
-			      float_type* __restrict__ rho_v1_next,
-			      float_type* __restrict__ rho_v2_next,
-			      float_type* __restrict__ rho_v3_next,
-			      float_type* __restrict__ rho_e_next,
-			      float_type const* __restrict__ volume,
-			      float_type* __restrict__ rho_fluxes,
-			      float_type* __restrict__ rho_v1_fluxes,
-			      float_type* __restrict__ rho_v2_fluxes,
-			      float_type* __restrict__ rho_v3_fluxes,
-			      float_type* __restrict__ rho_e_fluxes,
+			      cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
 			      float_type delta_t, int nb_elements);
 
 } // namespace t8gpu

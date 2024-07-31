@@ -25,117 +25,61 @@ struct rk_coeffs<double> {
   static constexpr double stage_3_3 = 0.66666666666666;
 };
 
-template<typename float_type>
-__global__ void t8gpu::timestepping::SSP_3RK_step1(float_type const* __restrict__ rho_prev,
-						   float_type const* __restrict__ rho_v1_prev,
-						   float_type const* __restrict__ rho_v2_prev,
-						   float_type const* __restrict__ rho_v3_prev,
-						   float_type const* __restrict__ rho_e_prev,
-						   float_type* __restrict__ rho_1,
-						   float_type* __restrict__ rho_v1_1,
-						   float_type* __restrict__ rho_v2_1,
-						   float_type* __restrict__ rho_v3_1,
-						   float_type* __restrict__ rho_e_1,
+template<typename float_type, size_t nb_variables>
+__global__ void t8gpu::timestepping::SSP_3RK_step1(cuda::std::array<float_type* __restrict__, nb_variables> prev,
+						   cuda::std::array<float_type* __restrict__, nb_variables> step1,
+						   cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
 						   float_type const* __restrict__ volume,
-						   float_type* __restrict__ rho_fluxes,
-						   float_type* __restrict__ rho_v1_fluxes,
-						   float_type* __restrict__ rho_v2_fluxes,
-						   float_type* __restrict__ rho_v3_fluxes,
-						   float_type* __restrict__ rho_e_fluxes,
 						   float_type delta_t, int nb_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements) return;
 
-  rho_1[i]    = rho_prev[i]    + delta_t / volume[i] * rho_fluxes[i];
-  rho_v1_1[i] = rho_v1_prev[i] + delta_t / volume[i] * rho_v1_fluxes[i];
-  rho_v2_1[i] = rho_v2_prev[i] + delta_t / volume[i] * rho_v2_fluxes[i];
-  rho_v3_1[i] = rho_v3_prev[i] + delta_t / volume[i] * rho_v3_fluxes[i];
-  rho_e_1[i]  = rho_e_prev[i]  + delta_t / volume[i] * rho_e_fluxes[i];
+  for (size_t k=0; k<nb_variables; k++) {
+    step1[k][i] = prev[k][i] + delta_t / volume[i] * fluxes[k][i];
+  }
 
-  rho_fluxes[i]    = 0.0;
-  rho_v1_fluxes[i] = 0.0;
-  rho_v2_fluxes[i] = 0.0;
-  rho_v3_fluxes[i] = 0.0;
-  rho_e_fluxes[i]  = 0.0;
+  for (size_t k=0; k<nb_variables; k++) {
+    fluxes[k][i] = 0.0;
+  }
 }
 
-template<typename float_type>
-__global__  void t8gpu::timestepping::SSP_3RK_step2(float_type const* __restrict__ rho_prev,
-						    float_type const* __restrict__ rho_v1_prev,
-						    float_type const* __restrict__ rho_v2_prev,
-						    float_type const* __restrict__ rho_v3_prev,
-						    float_type const* __restrict__ rho_e_prev,
-						    float_type* __restrict__ rho_1,
-						    float_type* __restrict__ rho_v1_1,
-						    float_type* __restrict__ rho_v2_1,
-						    float_type* __restrict__ rho_v3_1,
-						    float_type* __restrict__ rho_e_1,
-						    float_type* __restrict__ rho_2,
-						    float_type* __restrict__ rho_v1_2,
-						    float_type* __restrict__ rho_v2_2,
-						    float_type* __restrict__ rho_v3_2,
-						    float_type* __restrict__ rho_e_2,
-						    float_type const* __restrict__ volume,
-						    float_type* __restrict__ rho_fluxes,
-						    float_type* __restrict__ rho_v1_fluxes,
-						    float_type* __restrict__ rho_v2_fluxes,
-						    float_type* __restrict__ rho_v3_fluxes,
-						    float_type* __restrict__ rho_e_fluxes,
-						    float_type delta_t, int nb_elements) {
+template<typename float_type, size_t nb_variables>
+__global__ void t8gpu::timestepping::SSP_3RK_step2(cuda::std::array<float_type* __restrict__, nb_variables> prev,
+						   cuda::std::array<float_type* __restrict__, nb_variables> step1,
+						   cuda::std::array<float_type* __restrict__, nb_variables> step2,
+						   cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
+						   float_type const* __restrict__ volume,
+						   float_type delta_t, int nb_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements) return;
 
-  rho_2[i]    = rk_coeffs<float_type>::stage_2_1*rho_prev[i]    + rk_coeffs<float_type>::stage_2_2*rho_1[i]    + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * rho_fluxes[i];
-  rho_v1_2[i] = rk_coeffs<float_type>::stage_2_1*rho_v1_prev[i] + rk_coeffs<float_type>::stage_2_2*rho_v1_1[i] + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * rho_v1_fluxes[i];
-  rho_v2_2[i] = rk_coeffs<float_type>::stage_2_1*rho_v2_prev[i] + rk_coeffs<float_type>::stage_2_2*rho_v2_1[i] + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * rho_v2_fluxes[i];
-  rho_v3_2[i] = rk_coeffs<float_type>::stage_2_1*rho_v3_prev[i] + rk_coeffs<float_type>::stage_2_2*rho_v3_1[i] + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * rho_v3_fluxes[i];
-  rho_e_2[i]  = rk_coeffs<float_type>::stage_2_1*rho_e_prev[i]  + rk_coeffs<float_type>::stage_2_2*rho_e_1[i]  + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * rho_e_fluxes[i];
+  for (size_t k=0; k<nb_variables; k++) {
+    step2[k][i] = rk_coeffs<float_type>::stage_2_1*prev[k][i] + rk_coeffs<float_type>::stage_2_2*step1[k][i] + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * fluxes[k][i];
+  }
 
-  rho_fluxes[i]    = 0.0;
-  rho_v1_fluxes[i] = 0.0;
-  rho_v2_fluxes[i] = 0.0;
-  rho_v3_fluxes[i] = 0.0;
-  rho_e_fluxes[i]  = 0.0;
+  for (size_t k=0; k<nb_variables; k++) {
+    fluxes[k][i] = 0.0;
+  }
 }
 
-template<typename float_type>
-__global__  void t8gpu::timestepping::SSP_3RK_step3(float_type const* __restrict__ rho_prev,
-						    float_type const* __restrict__ rho_v1_prev,
-						    float_type const* __restrict__ rho_v2_prev,
-						    float_type const* __restrict__ rho_v3_prev,
-						    float_type const* __restrict__ rho_e_prev,
-						    float_type* __restrict__ rho_2,
-						    float_type* __restrict__ rho_v1_2,
-						    float_type* __restrict__ rho_v2_2,
-						    float_type* __restrict__ rho_v3_2,
-						    float_type* __restrict__ rho_e_2,
-						    float_type* __restrict__ rho_next,
-						    float_type* __restrict__ rho_v1_next,
-						    float_type* __restrict__ rho_v2_next,
-						    float_type* __restrict__ rho_v3_next,
-						    float_type* __restrict__ rho_e_next,
-						    float_type const* __restrict__ volume,
-						    float_type* __restrict__ rho_fluxes,
-						    float_type* __restrict__ rho_v1_fluxes,
-						    float_type* __restrict__ rho_v2_fluxes,
-						    float_type* __restrict__ rho_v3_fluxes,
-						    float_type* __restrict__ rho_e_fluxes,
-						    float_type delta_t, int nb_elements) {
+template<typename float_type, size_t nb_variables>
+__global__ void t8gpu::timestepping::SSP_3RK_step3(cuda::std::array<float_type* __restrict__, nb_variables> prev,
+						   cuda::std::array<float_type* __restrict__, nb_variables> step2,
+						   cuda::std::array<float_type* __restrict__, nb_variables> next,
+						   cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
+						   float_type const* __restrict__ volume,
+						   float_type delta_t, int nb_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements) return;
 
-  rho_next[i]    = rk_coeffs<float_type>::stage_3_1*rho_prev[i]    + rk_coeffs<float_type>::stage_3_2*rho_2[i]    + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * rho_fluxes[i];
-  rho_v1_next[i] = rk_coeffs<float_type>::stage_3_1*rho_v1_prev[i] + rk_coeffs<float_type>::stage_3_2*rho_v1_2[i] + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * rho_v1_fluxes[i];
-  rho_v2_next[i] = rk_coeffs<float_type>::stage_3_1*rho_v2_prev[i] + rk_coeffs<float_type>::stage_3_2*rho_v2_2[i] + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * rho_v2_fluxes[i];
-  rho_v3_next[i] = rk_coeffs<float_type>::stage_3_1*rho_v3_prev[i] + rk_coeffs<float_type>::stage_3_2*rho_v3_2[i] + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * rho_v3_fluxes[i];
-  rho_e_next[i]  = rk_coeffs<float_type>::stage_3_1*rho_e_prev[i]  + rk_coeffs<float_type>::stage_3_2*rho_e_2[i]  + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * rho_e_fluxes[i];
+  for (size_t k=0; k<nb_variables; k++) {
+    next[k][i] = rk_coeffs<float_type>::stage_3_1*prev[k][i] + rk_coeffs<float_type>::stage_3_2*step2[k][i] + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * fluxes[k][i];
+  }
 
-  rho_fluxes[i]    = 0.0;
-  rho_v1_fluxes[i] = 0.0;
-  rho_v2_fluxes[i] = 0.0;
-  rho_v3_fluxes[i] = 0.0;
-  rho_e_fluxes[i]  = 0.0;
+  for (size_t k=0; k<nb_variables; k++) {
+    fluxes[k][i] = 0.0;
+  }
 }
