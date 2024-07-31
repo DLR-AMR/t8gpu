@@ -35,18 +35,11 @@ __global__ static void compute_refinement_criteria(float_type const* __restrict_
 						   float_type const* __restrict__ volume,
 						   float_type* __restrict__ criteria, int nb_elements);
 
-__global__ static void adapt_variables_and_volume(float_type const* __restrict__ rho_old,
-						  float_type const* __restrict__ rho_v1_old,
-						  float_type const* __restrict__ rho_v2_old,
-						  float_type const* __restrict__ rho_v3_old,
-						  float_type const* __restrict__ rho_e_old,
-						  float_type const* __restrict__ volume_old,
-						  float_type* __restrict__ rho_new,
-						  float_type* __restrict__ rho_v1_new,
-						  float_type* __restrict__ rho_v2_new,
-						  float_type* __restrict__ rho_v3_new,
-						  float_type* __restrict__ rho_e_new,
-						  float_type* __restrict__ volume_new,
+template<typename ft, size_t nb_variables>
+__global__ static void adapt_variables_and_volume(cuda::std::array<ft* __restrict__, nb_variables> variables_old,
+						  cuda::std::array<ft* __restrict__, nb_variables> variables_new,
+						  ft const* __restrict__ volume_old,
+						  ft* __restrict__       volume_new,
 						  t8_locidx_t* adapt_data,
 						  int nb_new_elements);
 
@@ -394,12 +387,12 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   t8_forest_set_user_data(adapted_forest, forest_user_data);
   t8_forest_unref(&m_forest);
 
-  // TODO: change this so that is does not depent on the number of equations
-  thrust::device_vector<float_type> device_element_rho_next_adapted(num_new_elements);
-  thrust::device_vector<float_type> device_element_rho_v1_next_adapted(num_new_elements);
-  thrust::device_vector<float_type> device_element_rho_v2_next_adapted(num_new_elements);
-  thrust::device_vector<float_type> device_element_rho_v3_next_adapted(num_new_elements);
-  thrust::device_vector<float_type> device_element_rho_e_next_adapted(num_new_elements);
+  thrust::device_vector<float_type> device_new_conserved_variables(num_new_elements*nb_conserved_variables);
+
+  cuda::std::array<float_type* __restrict__, nb_conserved_variables> new_variables {};
+  for (size_t k=0; k<nb_conserved_variables; k++) {
+    new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + sizeof(float_type)*num_new_elements;
+  }
 
   thrust::device_vector<float_type> device_element_volume_adapted(num_new_elements);
   t8_locidx_t* device_element_adapt_data {};
@@ -407,18 +400,10 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   T8GPU_CUDA_CHECK_ERROR(
       cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size() * sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
   const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
-  adapt_variables_and_volume<<<adapt_num_blocks, thread_block_size>>>(
-      m_device_element.get_own(get_var(next, rho)),
-      m_device_element.get_own(get_var(next, rho_v1)),
-      m_device_element.get_own(get_var(next, rho_v2)),
-      m_device_element.get_own(get_var(next, rho_v3)),
-      m_device_element.get_own(get_var(next, rho_e)),
+  adapt_variables_and_volume<float_type, nb_conserved_variables><<<adapt_num_blocks, thread_block_size>>>(
+      get_own_vars(next),
+      new_variables,
       m_device_element.get_own(get_vol()),
-      thrust::raw_pointer_cast(device_element_rho_next_adapted.data()),
-      thrust::raw_pointer_cast(device_element_rho_v1_next_adapted.data()),
-      thrust::raw_pointer_cast(device_element_rho_v2_next_adapted.data()),
-      thrust::raw_pointer_cast(device_element_rho_v3_next_adapted.data()),
-      thrust::raw_pointer_cast(device_element_rho_e_next_adapted.data()),
       thrust::raw_pointer_cast(device_element_volume_adapted.data()),
       device_element_adapt_data, num_new_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
@@ -434,12 +419,9 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   float_type* device_element_rho_fluxes_ptr {m_device_element.get_own(get_var(fluxes, rho))};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements));
 
-  // TODO add copy with rvalue reference
-  m_device_element.copy(get_var(next, rho), std::move(device_element_rho_next_adapted));
-  m_device_element.copy(get_var(next, rho_v1), std::move(device_element_rho_v1_next_adapted));
-  m_device_element.copy(get_var(next, rho_v2), std::move(device_element_rho_v2_next_adapted));
-  m_device_element.copy(get_var(next, rho_v3), std::move(device_element_rho_v3_next_adapted));
-  m_device_element.copy(get_var(next, rho_e), std::move(device_element_rho_e_next_adapted));
+  for (int k=0; k<nb_conserved_variables; k++) {
+    m_device_element.copy(get_var(next, static_cast<VariableName>(k)), new_variables[k], num_new_elements);
+  }
   m_device_element.copy(get_vol(), std::move(device_element_volume_adapted));
 
   m_forest = adapted_forest;
@@ -802,21 +784,14 @@ __global__ static void compute_refinement_criteria(float_type const* __restrict_
 
   if (i >= nb_elements) return;
 
-  criteria[i] = fluxes_rho[i] / sqrt(volume[i]);
+  criteria[i] = fluxes_rho[i] / cbrt(volume[i]);
 }
 
-__global__ static void adapt_variables_and_volume(float_type const* __restrict__ rho_old,
-						  float_type const* __restrict__ rho_v1_old,
-						  float_type const* __restrict__ rho_v2_old,
-						  float_type const* __restrict__ rho_v3_old,
-						  float_type const* __restrict__ rho_e_old,
-						  float_type const* __restrict__ volume_old,
-						  float_type* __restrict__ rho_new,
-						  float_type* __restrict__ rho_v1_new,
-						  float_type* __restrict__ rho_v2_new,
-						  float_type* __restrict__ rho_v3_new,
-						  float_type* __restrict__ rho_e_new,
-						  float_type* __restrict__ volume_new,
+template<typename ft, size_t nb_variables>
+__global__ static void adapt_variables_and_volume(cuda::std::array<ft* __restrict__, nb_variables> variables_old,
+						  cuda::std::array<ft* __restrict__, nb_variables> variables_new,
+						  ft const* __restrict__ volume_old,
+						  ft* __restrict__       volume_new,
 						  t8_locidx_t* adapt_data,
 						  int nb_new_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -831,17 +806,12 @@ __global__ static void adapt_variables_and_volume(float_type const* __restrict__
     volume_new[i] = volume_old[adapt_data[i]] * 0.25;
   }
 
-  rho_new[i] = 0.0;
-  rho_v1_new[i] = 0.0;
-  rho_v2_new[i] = 0.0;
-  rho_v3_new[i] = 0.0;
-  rho_e_new[i] = 0.0;
-  for (int j = 0; j < nb_elements_sum; j++) {
-    rho_new[i]    += rho_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
-    rho_v1_new[i] += rho_v1_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
-    rho_v2_new[i] += rho_v2_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
-    rho_v3_new[i] += rho_v3_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
-    rho_e_new[i]  += rho_e_old[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
+  for (size_t k=0; k<nb_variables; k++) {
+    variables_new[k][i] = 0.0;
+
+    for (int j = 0; j < nb_elements_sum; j++) {
+      variables_new[k][i] += variables_old[k][adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
+    }
   }
 }
 
