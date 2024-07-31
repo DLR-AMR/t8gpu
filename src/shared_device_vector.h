@@ -217,17 +217,43 @@ namespace t8gpu {
 
     /// @brief copy host to device
     ///
+    /// @param [in]         index  index of the array to be copied over.
+    /// @param [in]         vector data to be copied over.
+    ///
     /// This member function copies a thrust host array to the shared
     /// device vector. This function is expensive ás host to device
-    /// memory copy operation is necessary.
-    inline void copy(int index, const thrust::host_vector<T>& other);
+    /// memory copy operation is necessary. Moreover, it resizes the
+    /// array to other.m_size to be able to fit other entirely. Thus,
+    /// MPI communication is used. And is a resize was necessary, all
+    /// other index arrays are invalidated except the one copied over.
+    [[deprecated]] inline void copy(int index, const thrust::host_vector<T>& vector);
 
     /// @brief copy device to device
     ///
-    /// This member function copies a thrust device array to the
-    /// shared device vector. This function is expensive ás device to
-    /// device memory copy operation is necessary.
-    inline void copy(int index, const thrust::device_vector<T>& other);
+    /// @param [in]         index  index of the array to be copied over.
+    /// @param [in]         vector data to be copied over.
+    ///
+    /// This member function copies a thrust host array to the shared
+    /// device vector. This function is expensive ás device to device
+    /// memory copy operation is necessary. Moreover, it resizes the
+    /// array to other.m_size to be able to fit other entirely. Thus,
+    /// MPI communication is used. And is a resize was necessary, all
+    /// other index arrays are invalidated except the one copied over.
+    ///
+    /// @warning This function is deprecated as it is error-prone to
+    ///          use (as it may invalidate previous copies is a resize
+    ///          is necessary). Use instead copy(int, T const*) and
+    ///          resize manually if needed beforehand
+    [[deprecated]] inline void copy(int index, const thrust::device_vector<T>& vector);
+
+    /// @brief copy device to device
+    ///
+    /// @param [in]         index  index of the array to be copied over.
+    /// @param [in]         buffer data to be copied over.
+    ///
+    /// This member function copies a GPU buffer to the shared device
+    /// vector. This function copies m_size elements from other.
+    inline void copy(int index, T const* buffer);
 
     /// @brief Returns the size of the allocation
     ///
