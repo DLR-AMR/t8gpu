@@ -19,10 +19,10 @@
 #include <limits>
 #include <type_traits>
 
-using float_type = t8gpu::CompressibleEulerSolver::float_type;
+using namespace t8gpu;
 
 struct forest_user_data_t {
-  thrust::host_vector<float_type>* element_refinement_criteria;
+  thrust::host_vector<CompressibleEulerSolver::float_type>* element_refinement_criteria;
 };
 
 static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id,
@@ -31,57 +31,46 @@ static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_
 static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
 				    const int is_family, const int num_elements, t8_element_t* elements[]);
 
+template<typename float_type>
 __global__ static void compute_refinement_criteria(float_type const* __restrict__ fluxes_rho,
 						   float_type const* __restrict__ volume,
 						   float_type* __restrict__ criteria, int nb_elements);
 
-template<typename ft, size_t nb_variables>
-__global__ static void adapt_variables_and_volume(cuda::std::array<ft* __restrict__, nb_variables> variables_old,
-						  cuda::std::array<ft* __restrict__, nb_variables> variables_new,
-						  ft const* __restrict__ volume_old,
-						  ft* __restrict__       volume_new,
+template<typename float_type, size_t nb_variables>
+__global__ static void adapt_variables_and_volume(cuda::std::array<float_type* __restrict__, nb_variables> variables_old,
+						  cuda::std::array<float_type* __restrict__, nb_variables> variables_new,
+						  float_type const* __restrict__ volume_old,
+						  float_type* __restrict__       volume_new,
 						  t8_locidx_t* adapt_data,
 						  int nb_new_elements);
 
-template<typename ft, size_t nb_variables>
+template<typename float_type, size_t nb_variables>
 __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict__ indices,
-			       cuda::std::array<ft* __restrict__, nb_variables> new_variables,
-			       cuda::std::array<ft** __restrict__, nb_variables> old_variables,
-			       ft* __restrict__ new_volume,
-			       ft** __restrict__ old_volume,
+			       cuda::std::array<float_type* __restrict__, nb_variables> new_variables,
+			       cuda::std::array<float_type** __restrict__, nb_variables> old_variables,
+			       float_type* __restrict__ new_volume,
+			       float_type** __restrict__ old_volume,
 			       int num_new_elements);
 
-__global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
-					  float_type** __restrict__ rho_v1,
-					  float_type** __restrict__ rho_v2,
-					  float_type** __restrict__ rho_e,
-					  float_type** __restrict__ rho_fluxes,
-					  float_type** __restrict__ rho_v1_fluxes,
-					  float_type** __restrict__ rho_v2_fluxes,
-					  float_type** __restrict__ rho_e_fluxes,
-					  float_type* __restrict__ speed_estimate,
+template<typename float_type>
+__global__ static void hll_compute_fluxes(cuda::std::array<float_type** __restrict__, 4> variables,
+					  cuda::std::array<float_type** __restrict__, 4> fluxes,
+					  float_type* __restrict__ speed_estimates,
 					  float_type const* __restrict__ normal,
 					  float_type const* __restrict__ area,
 					  int const* e_idx, int* rank,
 					  t8_locidx_t* indices, int nb_edges);
 
-__global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
-					    float_type** __restrict__ rho_v1,
-					    float_type** __restrict__ rho_v2,
-					    float_type** __restrict__ rho_v3,
-					    float_type** __restrict__ rho_e,
-					    float_type** __restrict__ rho_fluxes,
-					    float_type** __restrict__ rho_v1_fluxes,
-					    float_type** __restrict__ rho_v2_fluxes,
-					    float_type** __restrict__ rho_v3_fluxes,
-					    float_type** __restrict__ rho_e_fluxes,
+template<typename float_type>
+__global__ static void kepes_compute_fluxes(cuda::std::array<float_type** __restrict__, 5> variables,
+					    cuda::std::array<float_type** __restrict__, 5> fluxes,
 					    float_type* __restrict__ speed_estimates,
 					    float_type const* __restrict__ normal,
 					    float_type const* __restrict__ area,
 					    int const* e_idx, int* rank,
 					    t8_locidx_t* indices, int nb_edges);
 
-t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
+CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
     : m_comm(comm),
       m_cmesh(t8_cmesh_new_periodic(m_comm, dim)),
       m_scheme(t8_scheme_new_default_cxx()),
@@ -203,7 +192,7 @@ t8gpu::CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   t8_forest_set_user_data(m_forest, forest_user_data);
 }
 
-t8gpu::CompressibleEulerSolver::~CompressibleEulerSolver() {
+CompressibleEulerSolver::~CompressibleEulerSolver() {
   forest_user_data_t* forest_user_data {static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest))};
   free(forest_user_data);
 
@@ -211,14 +200,14 @@ t8gpu::CompressibleEulerSolver::~CompressibleEulerSolver() {
   t8_cmesh_destroy(&m_cmesh);
 }
 
-void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
+void CompressibleEulerSolver::iterate(float_type delta_t) {
   std::swap(prev, next);
 
   compute_fluxes(prev);
 
   constexpr int thread_block_size = 256;
   const int SSP_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
-  t8gpu::timestepping::SSP_3RK_step1<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
+  timestepping::SSP_3RK_step1<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
       get_own_vars(prev),
       get_own_vars(step1),
       get_own_vars(fluxes),
@@ -230,7 +219,7 @@ void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
 
   compute_fluxes(step1);
 
-  t8gpu::timestepping::SSP_3RK_step2<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
+  timestepping::SSP_3RK_step2<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
      get_own_vars(prev),
      get_own_vars(step1),
      get_own_vars(step2),
@@ -243,7 +232,7 @@ void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
 
   compute_fluxes(step2);
 
-  t8gpu::timestepping::SSP_3RK_step3<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
+  timestepping::SSP_3RK_step3<float_type, nb_conserved_variables><<<SSP_num_blocks, thread_block_size>>>(
       get_own_vars(prev),
       get_own_vars(step2),
       get_own_vars(next),
@@ -253,6 +242,7 @@ void t8gpu::CompressibleEulerSolver::iterate(float_type delta_t) {
   T8GPU_CUDA_CHECK_LAST_ERROR();
 }
 
+template<typename float_type>
 __global__ void estimate_gradient(float_type const* const* __restrict__ rho,
 				  float_type** __restrict__ rho_gradient,
 				  float_type const* __restrict__ normal,
@@ -277,10 +267,10 @@ __global__ void estimate_gradient(float_type const* const* __restrict__ rho,
   atomicAdd(&rho_gradient[r_rank][r_index], gradient);
 }
 
-void t8gpu::CompressibleEulerSolver::adapt() {
+void CompressibleEulerSolver::adapt() {
   constexpr int thread_block_size = 256;
   const int gradient_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
-  estimate_gradient<<<gradient_num_blocks, thread_block_size>>>(
+  estimate_gradient<float_type><<<gradient_num_blocks, thread_block_size>>>(
 	m_device_element.get_all(get_var(next, rho)),
 	m_device_element.get_all(get_var(fluxes, rho)),
 	thrust::raw_pointer_cast(m_device_face_normals.data()),
@@ -294,7 +284,7 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   MPI_Barrier(m_comm);
 
   const int fluxes_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
-  compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(
+  compute_refinement_criteria<float_type><<<fluxes_num_blocks, thread_block_size>>>(
 	m_device_element.get_own(get_var(fluxes, rho)),
 	m_device_element.get_own(get_vol()),
 	thrust::raw_pointer_cast(m_device_element_refinement_criteria.data()),
@@ -430,7 +420,7 @@ void t8gpu::CompressibleEulerSolver::adapt() {
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
-void t8gpu::CompressibleEulerSolver::partition() {
+void CompressibleEulerSolver::partition() {
   assert(t8_forest_is_committed(m_forest));
   t8_forest_ref(m_forest);
   t8_forest_t partitioned_forest {};
@@ -518,7 +508,7 @@ void t8gpu::CompressibleEulerSolver::partition() {
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
-void t8gpu::CompressibleEulerSolver::compute_connectivity_information() {
+void CompressibleEulerSolver::compute_connectivity_information() {
   m_ranks.resize(m_num_local_elements + m_num_ghost_elements);
   m_indices.resize(m_num_local_elements + m_num_ghost_elements);
   for (t8_locidx_t i=0; i<m_num_local_elements; i++) {
@@ -543,12 +533,12 @@ void t8gpu::CompressibleEulerSolver::compute_connectivity_information() {
   m_device_face_speed_estimate.resize(m_face_area.size());
 }
 
-void t8gpu::CompressibleEulerSolver::save_vtk(const std::string& prefix) const {
+void CompressibleEulerSolver::save_vtk(const std::string& prefix) const {
   save_vtk_impl(prefix);
 }
 
 template<typename ft>
-void t8gpu::CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) const {
+void CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) const {
   thrust::host_vector<ft> element_variable(m_num_local_elements);
   T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), m_device_element.get_own(get_var(next, rho)), sizeof(ft)*m_num_local_elements, cudaMemcpyDeviceToHost));
 
@@ -585,7 +575,7 @@ void t8gpu::CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) co
   }
 }
 
-float_type t8gpu::CompressibleEulerSolver::compute_integral() const {
+CompressibleEulerSolver::float_type CompressibleEulerSolver::compute_integral() const {
   float_type local_integral = 0.0;
   float_type const* mem {m_device_element.get_own(get_var(next, rho))};
   thrust::host_vector<float_type> variable(m_num_local_elements);
@@ -605,7 +595,7 @@ float_type t8gpu::CompressibleEulerSolver::compute_integral() const {
   return global_integral;
 }
 
-float_type t8gpu::CompressibleEulerSolver::compute_timestep() const {
+CompressibleEulerSolver::float_type CompressibleEulerSolver::compute_timestep() const {
   float_type local_speed_estimate = thrust::reduce(m_device_face_speed_estimate.begin(),
 						   m_device_face_speed_estimate.end(),
 						   float_type{0.0}, thrust::maximum<float_type>());
@@ -619,7 +609,7 @@ float_type t8gpu::CompressibleEulerSolver::compute_timestep() const {
   return  cfl*static_cast<float_type>(std::pow(static_cast<float_type>(0.5), max_level))/global_speed_estimate;
 }
 
-void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
+void CompressibleEulerSolver::compute_edge_connectivity() {
   m_face_neighbors.clear();
   m_face_normals.clear();
   m_face_area.clear();
@@ -686,28 +676,20 @@ void t8gpu::CompressibleEulerSolver::compute_edge_connectivity() {
   m_num_local_faces = static_cast<t8_locidx_t>(m_face_area.size());
 }
 
-void t8gpu::CompressibleEulerSolver::compute_fluxes(StepName step) {
+void CompressibleEulerSolver::compute_fluxes(StepName step) {
   // TODO: clean up the function call to not see the different variables
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
-  kepes_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(
-								 m_device_element.get_all(get_var(step, rho)),
-								 m_device_element.get_all(get_var(step, rho_v1)),
-								 m_device_element.get_all(get_var(step, rho_v2)),
-								 m_device_element.get_all(get_var(step, rho_v3)),
-								 m_device_element.get_all(get_var(step, rho_e)),
-								 m_device_element.get_all(get_var(fluxes, rho)),
-								 m_device_element.get_all(get_var(fluxes, rho_v1)),
-								 m_device_element.get_all(get_var(fluxes, rho_v2)),
-								 m_device_element.get_all(get_var(fluxes, rho_v3)),
-								 m_device_element.get_all(get_var(fluxes, rho_e)),
-								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()),
-								 thrust::raw_pointer_cast(m_device_face_normals.data()),
-								 thrust::raw_pointer_cast(m_device_face_area.data()),
-								 thrust::raw_pointer_cast(m_device_face_neighbors.data()),
-								 thrust::raw_pointer_cast(m_device_ranks.data()),
-								 thrust::raw_pointer_cast(m_device_indices.data()),
-								 m_num_local_faces);
+  kepes_compute_fluxes<float_type><<<fluxes_num_blocks, thread_block_size>>>(
+	get_all_vars(step),
+	get_all_vars(fluxes),
+        thrust::raw_pointer_cast(m_device_face_speed_estimate.data()),
+        thrust::raw_pointer_cast(m_device_face_normals.data()),
+        thrust::raw_pointer_cast(m_device_face_area.data()),
+        thrust::raw_pointer_cast(m_device_face_neighbors.data()),
+        thrust::raw_pointer_cast(m_device_ranks.data()),
+        thrust::raw_pointer_cast(m_device_indices.data()),
+        m_num_local_faces);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
@@ -719,7 +701,7 @@ static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_
 
   // double b = 0.02;
 
-  // if (element_level < t8gpu::CompressibleEulerSolver::max_level) {
+  // if (element_level < CompressibleEulerSolver::max_level) {
   //   double center[3];
   //   t8_forest_element_centroid(forest_from, which_tree, elements[0], center);
 
@@ -727,7 +709,7 @@ static int adapt_callback_initialization(t8_forest_t forest, t8_forest_t forest_
 
   //   if (std::abs(variable) < b) return 1;
   // }
-  // if (element_level > t8gpu::CompressibleEulerSolver::min_level && is_family) {
+  // if (element_level > CompressibleEulerSolver::min_level && is_family) {
   //   double center[] = {0.0, 0.0, 0.0};
   //   double current_element_center[] = {0.0, 0.0, 0.0};
   //   for (size_t i = 0; i < 4; i++) {
@@ -754,19 +736,19 @@ static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from,
 
   t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
 
-  float_type b = static_cast<float_type>(10.0);
+  CompressibleEulerSolver::float_type b = static_cast<CompressibleEulerSolver::float_type>(10.0);
 
-  if (element_level < t8gpu::CompressibleEulerSolver::max_level) {
-    float_type criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
+  if (element_level < CompressibleEulerSolver::max_level) {
+    CompressibleEulerSolver::float_type criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
 
     if (criteria > b) {
       return 1;
     }
   }
-  if (element_level > t8gpu::CompressibleEulerSolver::min_level && is_family) {
-    float_type criteria = 0.0;
+  if (element_level > CompressibleEulerSolver::min_level && is_family) {
+    CompressibleEulerSolver::float_type criteria = 0.0;
     for (size_t i = 0; i < 4; i++) {
-      criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / float_type{4.0};
+      criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / CompressibleEulerSolver::float_type{4.0};
     }
 
     if (criteria < b) {
@@ -777,6 +759,7 @@ static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from,
   return 0;
 }
 
+template<typename float_type>
 __global__ static void compute_refinement_criteria(float_type const* __restrict__ fluxes_rho,
 						   float_type const* __restrict__ volume,
 						   float_type* __restrict__ criteria, int nb_elements) {
@@ -787,11 +770,11 @@ __global__ static void compute_refinement_criteria(float_type const* __restrict_
   criteria[i] = fluxes_rho[i] / cbrt(volume[i]);
 }
 
-template<typename ft, size_t nb_variables>
-__global__ static void adapt_variables_and_volume(cuda::std::array<ft* __restrict__, nb_variables> variables_old,
-						  cuda::std::array<ft* __restrict__, nb_variables> variables_new,
-						  ft const* __restrict__ volume_old,
-						  ft* __restrict__       volume_new,
+template<typename float_type, size_t nb_variables>
+__global__ static void adapt_variables_and_volume(cuda::std::array<float_type* __restrict__, nb_variables> variables_old,
+						  cuda::std::array<float_type* __restrict__, nb_variables> variables_new,
+						  float_type const* __restrict__ volume_old,
+						  float_type* __restrict__       volume_new,
 						  t8_locidx_t* adapt_data,
 						  int nb_new_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -832,7 +815,7 @@ __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict_
   new_volume[i] = old_volume[ranks[i]][indices[i]];
 }
 
-template<typename ft>
+template<typename float_type>
 struct numerical_constants {};
 
 template<>
@@ -849,17 +832,12 @@ struct numerical_constants<double> {
   static constexpr double one  = 1.0;
 };
 
-using nc = numerical_constants<float_type>;
+using nc = numerical_constants<CompressibleEulerSolver::float_type>;
 
-__global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
-					  float_type** __restrict__ rho_v1,
-					  float_type** __restrict__ rho_v2,
-					  float_type** __restrict__ rho_e,
-					  float_type** __restrict__ rho_fluxes,
-					  float_type** __restrict__ rho_v1_fluxes,
-					  float_type** __restrict__ rho_v2_fluxes,
-					  float_type** __restrict__ rho_e_fluxes,
-					  float_type* __restrict__ speed_estimate,
+template<typename float_type>
+__global__ static void hll_compute_fluxes(cuda::std::array<float_type** __restrict__, 4> variables,
+					  cuda::std::array<float_type** __restrict__, 4> fluxes,
+					  float_type* __restrict__ speed_estimates,
 					  float_type const* __restrict__ normal,
 					  float_type const* __restrict__ area,
 					  int const* e_idx, int* rank,
@@ -867,7 +845,7 @@ __global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= nb_edges) return;
 
-  float_type gamma = t8gpu::CompressibleEulerSolver::gamma;
+  float_type gamma = CompressibleEulerSolver::gamma;
 
   float_type face_surface = area[i];
 
@@ -880,15 +858,15 @@ __global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
   float_type nx = normal[2*i];
   float_type ny = normal[2*i+1];
 
-  float_type rho_l    = rho[l_rank][l_index];
-  float_type rho_vx_l = rho_v1[l_rank][l_index];
-  float_type rho_vy_l = rho_v2[l_rank][l_index];
-  float_type rho_e_l  = rho_e[l_rank][l_index];
+  float_type rho_l    = variables[0][l_rank][l_index];
+  float_type rho_vx_l = variables[1][l_rank][l_index];
+  float_type rho_vy_l = variables[2][l_rank][l_index];
+  float_type rho_e_l  = variables[3][l_rank][l_index];
 
-  float_type rho_r    = rho[r_rank][r_index];
-  float_type rho_vx_r = rho_v1[r_rank][r_index];
-  float_type rho_vy_r = rho_v2[r_rank][r_index];
-  float_type rho_e_r  = rho_e[r_rank][r_index];
+  float_type rho_r    = variables[0][r_rank][r_index];
+  float_type rho_vx_r = variables[1][r_rank][r_index];
+  float_type rho_vy_r = variables[2][r_rank][r_index];
+  float_type rho_e_r  = variables[3][r_rank][r_index];
 
   // rotate from (x,y) basis to local basis (n,t)
   float_type rho_v1_l =  nx*rho_vx_l + ny*rho_vy_l;
@@ -921,7 +899,7 @@ __global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
   float_type S_l = min(v1_roe-c_roe, v1_l-c_l);
   float_type S_r = max(v1_roe+c_roe, v1_r+c_r);
 
-  speed_estimate[i] = max(-S_l, S_r);
+  speed_estimates[i] = max(-S_l, S_r);
 
   float_type F_l[4] = {rho_v1_l,
     rho_v1_l*rho_v1_l/rho_l + p_l,
@@ -945,17 +923,17 @@ __global__ static void hll_compute_fluxes(float_type** __restrict__ rho,
   float_type rho_vx_flux = nx*rho_v1_flux - ny*rho_v2_flux;
   float_type rho_vy_flux = ny*rho_v1_flux + nx*rho_v2_flux;
 
-  atomicAdd(&rho_fluxes[l_rank][l_index], -rho_flux);
-  atomicAdd(&rho_fluxes[r_rank][r_index],  rho_flux);
+  atomicAdd(&fluxes[0][l_rank][l_index], -rho_flux);
+  atomicAdd(&fluxes[0][r_rank][r_index],  rho_flux);
 
-  atomicAdd(&rho_v1_fluxes[l_rank][l_index], -rho_vx_flux);
-  atomicAdd(&rho_v1_fluxes[r_rank][r_index],  rho_vx_flux);
+  atomicAdd(&fluxes[1][l_rank][l_index], -rho_vx_flux);
+  atomicAdd(&fluxes[1][r_rank][r_index],  rho_vx_flux);
 
-  atomicAdd(&rho_v2_fluxes[l_rank][l_index], -rho_vy_flux);
-  atomicAdd(&rho_v2_fluxes[r_rank][r_index],  rho_vy_flux);
+  atomicAdd(&fluxes[2][l_rank][l_index], -rho_vy_flux);
+  atomicAdd(&fluxes[2][r_rank][r_index],  rho_vy_flux);
 
-  atomicAdd(&rho_e_fluxes[l_rank][l_index], -rho_e_flux);
-  atomicAdd(&rho_e_fluxes[r_rank][r_index],  rho_e_flux);
+  atomicAdd(&fluxes[3][l_rank][l_index], -rho_e_flux);
+  atomicAdd(&fluxes[3][r_rank][r_index],  rho_e_flux);
 }
 
 __device__ static float ln_mean(float aL, float aR) {
@@ -982,6 +960,7 @@ __device__ static double ln_mean(double aL, double aR) {
   }
 }
 
+template<typename float_type>
 __device__ static void kepes_compute_flux(float_type u_L[5],
 					  float_type u_R[5],
 					  float_type F_star[5],
@@ -992,7 +971,7 @@ __device__ static void kepes_compute_flux(float_type u_L[5],
 					  float_type& rhoHat,
 					  float_type& HHat,
 					  float_type& p1Hat) {
-  float_type kappa = t8gpu::CompressibleEulerSolver::gamma;
+  float_type kappa = CompressibleEulerSolver::gamma;
   float_type kappaM1 = kappa - nc::one;
   float_type sKappaM1 = nc::one/kappaM1;
 
@@ -1036,6 +1015,7 @@ __device__ static void kepes_compute_flux(float_type u_L[5],
   F_star[4] = F_star[0]*nc::half*(sKappaM1/beta_Hat - Vel2_M) + uHat*F_star[1] + vHat*F_star[2] + wHat*F_star[3];
 }
 
+template<typename float_type>
 __device__ static void kepes_compute_diffusion_matrix(float_type u_L[5],
 						      float_type u_R[5],
 						      float_type F_star[5],
@@ -1051,7 +1031,7 @@ __device__ static void kepes_compute_diffusion_matrix(float_type u_L[5],
 
 
 
-  float_type kappa = t8gpu::CompressibleEulerSolver::gamma;
+  float_type kappa = CompressibleEulerSolver::gamma;
   float_type kappaM1 = kappa - nc::one;
 
   kepes_compute_flux(u_L,
@@ -1085,17 +1065,10 @@ __device__ static void kepes_compute_diffusion_matrix(float_type u_L[5],
 
 }
 
-__global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
-					    float_type** __restrict__ rho_v1,
-					    float_type** __restrict__ rho_v2,
-					    float_type** __restrict__ rho_v3,
-					    float_type** __restrict__ rho_e,
-					    float_type** __restrict__ rho_fluxes,
-					    float_type** __restrict__ rho_v1_fluxes,
-					    float_type** __restrict__ rho_v2_fluxes,
-					    float_type** __restrict__ rho_v3_fluxes,
-					    float_type** __restrict__ rho_e_fluxes,
-					    float_type* __restrict__ speed_estimate,
+template<typename float_type>
+__global__ static void kepes_compute_fluxes(cuda::std::array<float_type** __restrict__, 5> variables,
+					    cuda::std::array<float_type** __restrict__, 5> fluxes,
+					    float_type* __restrict__ speed_estimates,
 					    float_type const* __restrict__ normal,
 					    float_type const* __restrict__ area,
 					    int const* e_idx, int* rank,
@@ -1115,17 +1088,17 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
   float_type ny = normal[3*i+1];
   float_type nz = normal[3*i+2];
 
-  float_type rho_l    = rho[l_rank][l_index];
-  float_type rho_vx_l = rho_v1[l_rank][l_index];
-  float_type rho_vy_l = rho_v2[l_rank][l_index];
-  float_type rho_vz_l = rho_v3[l_rank][l_index];
-  float_type rho_e_l  = rho_e[l_rank][l_index];
+  float_type rho_l    = variables[0][l_rank][l_index];
+  float_type rho_vx_l = variables[1][l_rank][l_index];
+  float_type rho_vy_l = variables[2][l_rank][l_index];
+  float_type rho_vz_l = variables[3][l_rank][l_index];
+  float_type rho_e_l  = variables[4][l_rank][l_index];
 
-  float_type rho_r    = rho[r_rank][r_index];
-  float_type rho_vx_r = rho_v1[r_rank][r_index];
-  float_type rho_vy_r = rho_v2[r_rank][r_index];
-  float_type rho_vz_r = rho_v3[r_rank][r_index];
-  float_type rho_e_r  = rho_e[r_rank][r_index];
+  float_type rho_r    = variables[0][r_rank][r_index];
+  float_type rho_vx_r = variables[1][r_rank][r_index];
+  float_type rho_vy_r = variables[2][r_rank][r_index];
+  float_type rho_vz_r = variables[3][r_rank][r_index];
+  float_type rho_e_r  = variables[4][r_rank][r_index];
 
   float_type n[3] = {nx, ny, nz};
 
@@ -1188,10 +1161,10 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
 				 hHat,
 				 p1Hat);
 
-  speed_estimate[i] = abs(uHat) + aHat;
+  speed_estimates[i] = abs(uHat) + aHat;
 
 
-  float_type kappa = t8gpu::CompressibleEulerSolver::gamma;
+  float_type kappa = CompressibleEulerSolver::gamma;
   float_type kappaM1 = kappa - nc::one;
 
   float_type sRho_L = nc::one/u_L[0];
@@ -1256,18 +1229,18 @@ __global__ static void kepes_compute_fluxes(float_type** __restrict__ rho,
   float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] * rho_v3_flux*t2[1];
   float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] * rho_v3_flux*t2[2];
 
-  atomicAdd(&rho_fluxes[l_rank][l_index], -rho_flux);
-  atomicAdd(&rho_fluxes[r_rank][r_index],  rho_flux);
+  atomicAdd(&fluxes[0][l_rank][l_index], -rho_flux);
+  atomicAdd(&fluxes[0][r_rank][r_index],  rho_flux);
 
-  atomicAdd(&rho_v1_fluxes[l_rank][l_index], -rho_vx_flux);
-  atomicAdd(&rho_v1_fluxes[r_rank][r_index],  rho_vx_flux);
+  atomicAdd(&fluxes[1][l_rank][l_index], -rho_vx_flux);
+  atomicAdd(&fluxes[1][r_rank][r_index],  rho_vx_flux);
 
-  atomicAdd(&rho_v2_fluxes[l_rank][l_index], -rho_vy_flux);
-  atomicAdd(&rho_v2_fluxes[r_rank][r_index],  rho_vy_flux);
+  atomicAdd(&fluxes[2][l_rank][l_index], -rho_vy_flux);
+  atomicAdd(&fluxes[2][r_rank][r_index],  rho_vy_flux);
 
-  atomicAdd(&rho_v3_fluxes[l_rank][l_index], -rho_vz_flux);
-  atomicAdd(&rho_v3_fluxes[r_rank][r_index],  rho_vz_flux);
+  atomicAdd(&fluxes[3][l_rank][l_index], -rho_vz_flux);
+  atomicAdd(&fluxes[3][r_rank][r_index],  rho_vz_flux);
 
-  atomicAdd(&rho_e_fluxes[l_rank][l_index], -rho_e_flux);
-  atomicAdd(&rho_e_fluxes[r_rank][r_index],  rho_e_flux);
+  atomicAdd(&fluxes[4][l_rank][l_index], -rho_e_flux);
+  atomicAdd(&fluxes[4][r_rank][r_index],  rho_e_flux);
 }
