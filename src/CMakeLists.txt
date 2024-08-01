@@ -7,6 +7,7 @@ target_sources(t8gpu PRIVATE
   timestepping/ssp_runge_kutta.inl
   timestepping/ssp_runge_kutta.h
   utils/cuda.h
+  utils/meta.h
   utils/profiling.h)
 target_include_directories(t8gpu PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
