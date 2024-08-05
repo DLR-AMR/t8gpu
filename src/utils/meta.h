@@ -11,8 +11,11 @@ namespace t8gpu::meta {
   ///
   /// @brief all_same is a bool integral constant struct whose value
   ///        static field is true only if all of the types stripped
-  ///        from cv supplied are equal. Here are a few usage
-  ///        examples:
+  ///        from cv supplied are equal.
+  ///
+  /// @tparam Ts... the types to check
+  ///
+  /// Here are a few usage examples:
   ///
   /// all_same<int, int, const int> = std::true_type
   /// all_same<double, float>       = std::false_type
@@ -32,6 +35,24 @@ namespace t8gpu::meta {
   template<typename... Ts>
   inline constexpr bool all_same_v = all_same<Ts...>::value;
 
+  ///
+  /// @brief is_explicitly_convertible_to is a bool integral constant
+  ///        whose value represents whether the type T can be
+  ///        explicitly statically casted to U. This is more
+  ///        permissive that std::is_convertible which only is true
+  ///        for implicit casts.
+  ///
+  /// @tparam T the type to be converted from
+  /// @tparam U the type to be converted to
+  ///
+  template<typename T, typename U, typename = void>
+  struct is_explicitly_convertible_to : std::false_type {};
+
+  template<typename T, typename U>
+  struct is_explicitly_convertible_to<T, U, std::void_t<decltype(static_cast<U>(std::declval<T>()))>> : std::true_type {};
+
+  template<typename T, typename U>
+  inline constexpr bool is_explicitly_convertible_to_v = is_explicitly_convertible_to<T, U>::value;
 
 } // namespace t8gpu
 

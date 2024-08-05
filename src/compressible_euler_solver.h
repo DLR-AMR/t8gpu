@@ -5,12 +5,11 @@
 #ifndef COMPRESSIBLE_EULER_SOLVER_H
 #define COMPRESSIBLE_EULER_SOLVER_H
 
-#include <cuda/std/array>
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <shared_device_vector.h>
+#include <memory_manager.h>
 #include <string>
 
 namespace t8gpu {
@@ -110,6 +109,26 @@ namespace t8gpu {
     /// function uses the last wave speed estimates (so the ones
     /// computed at the last step of the last timestepping)
     [[nodiscard]] float_type compute_timestep() const;
+
+    enum VariableName {
+      rho,    // density
+      rho_v1, // x-component of momentum
+      rho_v2, // y-component of momentum
+      rho_v3, // z-component of momentum
+      rho_e,  // energy
+      nb_variables,
+    };
+
+    // defines the number of duplicates per variables that we need
+    enum StepName {
+      step0,  // used for RK3 timestepping
+      step1,  // used for RK3 timestepping
+      step2,  // used for RK3 timestepping
+      step3,  // used for RK3 timestepping
+      fluxes, // used to store fluxes
+      nb_steps
+    };
+
   private:
     sc_MPI_Comm      m_comm;
     int              m_rank;
@@ -136,61 +155,10 @@ namespace t8gpu {
     thrust::device_vector<float_type>  m_device_face_area;
     thrust::device_vector<float_type>  m_device_face_speed_estimate;
 
-    // defines the set of conserved variables
-    enum VariableName {
-      rho,    // density
-      rho_v1, // x-component of momentum
-      rho_v2, // y-component of momentum
-      rho_v3, // z-component of momentum
-      rho_e,  // energy
-      nb_conserved_variables
-    };
-
-    // defines the number of duplicates per variables that we need
-    enum StepName {
-      step0,  // used for RK3 timestepping
-      step1,  // used for RK3 timestepping
-      step2,  // used for RK3 timestepping
-      step3,  // used for RK3 timestepping
-      fluxes, // used to store fluxes
-      nb_steps
-    };
-
     StepName prev = step0;
     StepName next = step3;
 
-    [[nodiscard]] static int get_var(StepName step_name, VariableName var_name) {
-      return var_name + step_name*nb_conserved_variables;
-    }
-
-    [[nodiscard]] cuda::std::array<float_type* __restrict__, nb_conserved_variables> get_own_vars(StepName step_name) {
-      cuda::std::array<float_type* __restrict__, nb_conserved_variables> vars {};
-      // TODO: this could be done with a object that holds only one pointer but has __device__ operator[] to do the correct strided access into the shared device vector m_device_array member
-
-      for (int k=0; k<nb_conserved_variables; k++) {
-	vars[k] = m_device_element.get_own(get_var(step_name, static_cast<VariableName>(k)));
-      }
-      return vars;
-    }
-
-    [[nodiscard]] cuda::std::array<float_type** __restrict__, nb_conserved_variables> get_all_vars(StepName step_name) {
-      cuda::std::array<float_type** __restrict__, nb_conserved_variables> vars {};
-      // TODO: this could be done with a object that holds only one pointer but has __device__ operator[] to do the correct strided access into the shared device vector m_device_array member
-
-      for (int k=0; k<nb_conserved_variables; k++) {
-	vars[k] = m_device_element.get_all(get_var(step_name, static_cast<VariableName>(k)));
-      }
-      return vars;
-    }
-
-    [[nodiscard]] static int get_vol() {
-      return nb_steps*nb_conserved_variables;
-    }
-
-    constexpr static size_t nb_element_variables = nb_conserved_variables * nb_steps + 1;
-
-    /*! collection of all shared variables associated to elements */
-    t8gpu::SharedDeviceVector<std::array<float_type, nb_element_variables>> m_device_element;
+    t8gpu::MemoryManager<VariableName, StepName> m_element_data;
 
     thrust::host_vector<float_type>   m_element_refinement_criteria;
     thrust::device_vector<float_type> m_device_element_refinement_criteria;
@@ -202,4 +170,5 @@ namespace t8gpu {
     void save_vtk_impl(const std::string& prefix) const;
   };
 } // namespace t8gpu
-#endif  // COMPRESSIBLE_EULER_SOLVER_H
+
+#endif // COMPRESSIBLE_EULER_SOLVER_H

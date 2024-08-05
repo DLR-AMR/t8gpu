@@ -25,61 +25,63 @@ struct rk_coeffs<double> {
   static constexpr double stage_3_3 = 0.66666666666666;
 };
 
-template<typename float_type, size_t nb_variables>
-__global__ void t8gpu::timestepping::SSP_3RK_step1(cuda::std::array<float_type* __restrict__, nb_variables> prev,
-						   cuda::std::array<float_type* __restrict__, nb_variables> step1,
-						   cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
-						   float_type const* __restrict__ volume,
-						   float_type delta_t, int nb_elements) {
+template<typename VariableType, typename StepType>
+__global__ void t8gpu::timestepping::SSP_3RK_step1(typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn prev,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step1,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn fluxes,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::float_type const* __restrict__ volume,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::float_type delta_t, int nb_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements) return;
 
-  for (size_t k=0; k<nb_variables; k++) {
-    step1[k][i] = prev[k][i] + delta_t / volume[i] * fluxes[k][i];
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    step1.get(k)[i] = prev.get(k)[i] + delta_t / volume[i] * fluxes.get(k)[i];
   }
 
-  for (size_t k=0; k<nb_variables; k++) {
-    fluxes[k][i] = 0.0;
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    fluxes.get(k)[i] = 0.0;
   }
 }
 
-template<typename float_type, size_t nb_variables>
-__global__ void t8gpu::timestepping::SSP_3RK_step2(cuda::std::array<float_type* __restrict__, nb_variables> prev,
-						   cuda::std::array<float_type* __restrict__, nb_variables> step1,
-						   cuda::std::array<float_type* __restrict__, nb_variables> step2,
-						   cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
-						   float_type const* __restrict__ volume,
-						   float_type delta_t, int nb_elements) {
+template<typename VariableType, typename StepType>
+__global__ void t8gpu::timestepping::SSP_3RK_step2(typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn prev,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step1,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step2,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn fluxes,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::float_type const* __restrict__ volume,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::float_type delta_t, int nb_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements) return;
 
-  for (size_t k=0; k<nb_variables; k++) {
-    step2[k][i] = rk_coeffs<float_type>::stage_2_1*prev[k][i] + rk_coeffs<float_type>::stage_2_2*step1[k][i] + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * fluxes[k][i];
+  using float_type = typename t8gpu::MemoryManager<VariableType, StepType>::float_type;
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    step2.get(k)[i] = rk_coeffs<float_type>::stage_2_1*prev.get(k)[i] + rk_coeffs<float_type>::stage_2_2*step1.get(k)[i] + rk_coeffs<float_type>::stage_2_3*delta_t / volume[i] * fluxes.get(k)[i];
   }
 
-  for (size_t k=0; k<nb_variables; k++) {
-    fluxes[k][i] = 0.0;
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    fluxes.get(k)[i] = 0.0;
   }
 }
 
-template<typename float_type, size_t nb_variables>
-__global__ void t8gpu::timestepping::SSP_3RK_step3(cuda::std::array<float_type* __restrict__, nb_variables> prev,
-						   cuda::std::array<float_type* __restrict__, nb_variables> step2,
-						   cuda::std::array<float_type* __restrict__, nb_variables> next,
-						   cuda::std::array<float_type* __restrict__, nb_variables> fluxes,
-						   float_type const* __restrict__ volume,
-						   float_type delta_t, int nb_elements) {
+template<typename VariableType, typename StepType>
+__global__ void t8gpu::timestepping::SSP_3RK_step3(typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn prev,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step2,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn next,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn fluxes,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::float_type const* __restrict__ volume,
+						   typename t8gpu::MemoryManager<VariableType, StepType>::float_type delta_t, int nb_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_elements) return;
 
-  for (size_t k=0; k<nb_variables; k++) {
-    next[k][i] = rk_coeffs<float_type>::stage_3_1*prev[k][i] + rk_coeffs<float_type>::stage_3_2*step2[k][i] + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * fluxes[k][i];
+  using float_type = typename t8gpu::MemoryManager<VariableType, StepType>::float_type;
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    next.get(k)[i] = rk_coeffs<float_type>::stage_3_1*prev.get(k)[i] + rk_coeffs<float_type>::stage_3_2*step2.get(k)[i] + rk_coeffs<float_type>::stage_3_3*delta_t / volume[i] * fluxes.get(k)[i];
   }
 
-  for (size_t k=0; k<nb_variables; k++) {
-    fluxes[k][i] = 0.0;
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    fluxes.get(k)[i] = 0.0;
   }
 }

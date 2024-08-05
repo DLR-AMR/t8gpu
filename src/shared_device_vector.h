@@ -227,7 +227,7 @@ namespace t8gpu {
     /// @warning This function does not check if the vector has the
     ///          capacity to fit num_elements. You might need to
     ///          resize the shared vector beforehand.
-    inline void copy(int index, const thrust::host_vector<T>& vector);
+    inline void copy(size_t index, const thrust::host_vector<T>& vector);
 
     /// @brief copy device to device
     ///
@@ -241,7 +241,7 @@ namespace t8gpu {
     /// @warning This function does not check if the vector has the
     ///          capacity to fit num_elements. You might need to
     ///          resize the shared vector beforehand.
-    inline void copy(int index, const thrust::device_vector<T>& vector);
+    inline void copy(size_t index, const thrust::device_vector<T>& vector);
 
     /// @brief copy device to device
     ///
@@ -255,7 +255,7 @@ namespace t8gpu {
     /// @warning This function does not check if the vector has the
     ///          capacity to fit num_elements. You might need to
     ///          resize the shared vector beforehand.
-    inline void copy(int index, T const* buffer, size_t num_elements);
+    inline void copy(size_t index, T const* buffer, size_t num_elements);
 
     /// @brief Returns the size of the allocation
     ///
