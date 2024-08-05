@@ -5,11 +5,11 @@
 #ifndef MEMORY_MANAGER_H
 #define MEMORY_MANAGER_H
 
-#include <cuda/std/array>
 #include <utils/meta.h>
 #include <shared_device_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <tuple>
 #include <type_traits>
 
 namespace t8gpu {
@@ -63,62 +63,74 @@ namespace t8gpu {
     void set_variable(step_index_type step, variable_index_type variable, const thrust::host_vector<float_type>& buffer);
     void set_variable(step_index_type step, variable_index_type variable, float_type* buffer);
 
+    void set_volume(const thrust::host_vector<float_type>& buffer);
     void set_volume(const thrust::device_vector<float_type>& buffer);
     void set_volume(float_type* buffer);
 
     float_type* get_own_volume();
     float_type const* get_own_volume() const;
 
+    float_type* const* get_all_volume();
+    float_type const* const* get_all_volume() const;
+
     class MemoryAccessorOwn {
-      cuda::std::array<float_type*, nb_variables> pointers;
+      std::array<float_type*, nb_variables> pointers;
 
     public:
-      [[nodiscard]] __device__ __host__ inline float_type* get(variable_index_type i) {
-	return pointers[i];
+      template<typename T>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type*> get(T i) {
+	return pointers[static_cast<variable_index_type>(i)];
       }
 
-      [[nodiscard]] __device__ __host__ inline float_type const* get(variable_index_type i) const {
-	return pointers[i];
+      template<typename T>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const*> get(T i) const {
+	return pointers[static_cast<variable_index_type>(i)];
       }
 
-      template<typename T1, typename T2, typename... Ts>
-      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::all_same_v<VariableType, T1, T2, Ts...>, std::array<float_type*, sizeof...(Ts) + 2>> get(T1 i1, T2 i2, Ts... is) {
-	return { get(i1), get(i2), get(is)... };
+      template<typename... Ts>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type*, sizeof...(Ts)>> get(Ts... is) {
+	return { get(static_cast<variable_index_type>(is))... };
       }
 
-      template<typename T1, typename T2, typename... Ts>
-      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::all_same_v<VariableType, T1, T2, Ts...>, std::array<float_type const*, sizeof...(Ts) + 2>> get(T1 i1, T2 i2, Ts... is) const {
-	return { get(i1), get(i2), get(is)... };
+      template<typename... Ts>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const*, sizeof...(Ts)>> get(Ts... is) const {
+	return {  get(static_cast<variable_index_type>(is))... };
       }
       friend MemoryManager<VariableType, StepType>;
     };
 
     class MemoryAccessorAll {
-      cuda::std::array<float_type* const*, nb_variables> pointers;
+      std::array<float_type* const*, nb_variables> pointers;
 
     public:
-      [[nodiscard]] __device__ __host__ inline float_type* get(variable_index_type i) {
-	return pointers[i];
+      template<typename T>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type* const*> get(T i) {
+	return pointers[static_cast<variable_index_type>(i)];
       }
 
-      [[nodiscard]] __device__ __host__ inline float_type const* get(variable_index_type i) const {
-	return pointers[i];
+      template<typename T>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const* const*> get(T i) const {
+	return pointers[static_cast<variable_index_type>(i)];
       }
 
-      template<typename T1, typename T2, typename... Ts>
-      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::all_same_v<VariableType, T1, T2, Ts...>, cuda::std::array<float_type*, sizeof...(Ts) + 2>> get(T1 i1, T2 i2, Ts... is) {
-	return { get(i1), get(i2), get(is)... };
+      template<typename... Ts>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type* const*, sizeof...(Ts)>> get(Ts... is) {
+	return { get(static_cast<variable_index_type>(is))... };
       }
 
-      template<typename T1, typename T2, typename... Ts>
-      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::all_same_v<VariableType, T1, T2, Ts...>, cuda::std::array<float_type const*, sizeof...(Ts) + 2>> get(T1 i1, T2 i2, Ts... is) const {
-	return { get(i1), get(i2), get(is)... };
+      template<typename... Ts>
+      [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const* const*, sizeof...(Ts)>> get(Ts... is) const {
+	return { get(static_cast<variable_index_type>(is))... };
       }
+
       friend MemoryManager<VariableType, StepType>;
     };
 
     [[nodiscard]] MemoryAccessorOwn get_own_variables(step_index_type step);
     [[nodiscard]] MemoryAccessorAll get_all_variables(step_index_type step);
+
+    [[nodiscard]] float_type* get_own_variable(step_index_type step, variable_index_type variable);
+    [[nodiscard]] float_type const* get_own_variable(step_index_type step, variable_index_type variable) const;
 
   private:
     t8gpu::SharedDeviceVector<std::array<float_type, nb_variables*nb_steps+1>> m_device_buffer;
