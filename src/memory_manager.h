@@ -40,13 +40,40 @@ namespace t8gpu {
     static constexpr size_t nb_steps = StepType::nb_steps;
   };
 
+  ///
+  /// @brief A class that is used to access variables on the CPU and
+  ///        GPU side using their name or index.
+  ///
+  /// This struct gives access to the variable data owned by the rank
+  /// using the get member functions. Example using the following
+  /// variable list type:
+  ///
+  /// enum Variables {Rho, Rho_u, Rho_v, Rho_e, nb_variables };
+  ///
+  /// Either select the variables with their names:
+  ///
+  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
+  ///   auto [rho_u, rho_v] = m.get(Rho_u, Rho_v);
+  ///
+  ///   rho_u[i] = ...
+  ///
+  /// ...
+  /// }
+  ///
+  /// Or, iterate on all of the variables:
+  ///
+  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
+  ///
+  ///   for (int k=0; k<nb_variables; k++) {
+  ///     m.get(k)[i] = ...
+  ///   }
+  /// }
   template<typename VariableType>
-  class MemoryAccessorOwn {
+  struct MemoryAccessorOwn {
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
-  public:
     std::array<float_type*, nb_variables> pointers;
 
     template<typename T>
@@ -70,13 +97,40 @@ namespace t8gpu {
     }
   };
 
+  ///
+  /// @brief A class that is used to access variables on the CPU and
+  ///        GPU side using their name or index.
+  ///
+  /// This struct gives access to the variable data owned by all ranks
+  /// using the get member functions. Example using the following
+  /// variable list type:
+  ///
+  /// enum Variables {Rho, Rho_u, Rho_v, Rho_e, nb_variables };
+  ///
+  /// Either select the variables with their names:
+  ///
+  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
+  ///   auto [rho_u, rho_v] = m.get(Rho_u, Rho_v);
+  ///
+  ///   rho_u[i][rank] = ...
+  ///
+  /// ...
+  /// }
+  ///
+  /// Or, iterate on all of the variables:
+  ///
+  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
+  ///
+  ///   for (int k=0; k<nb_variables; k++) {
+  ///     m.get(k)[rank][i] = ...
+  ///   }
+  /// }
   template<typename VariableType>
-  class MemoryAccessorAll {
+  struct MemoryAccessorAll {
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
-  public:
     std::array<float_type* const*, nb_variables> pointers;
 
     template<typename T>
@@ -104,6 +158,13 @@ namespace t8gpu {
   /// @brief A class that manages GPU memory templated on the variable enum
   ///        class listing and step.
   ///
+  /// Giving a enum VariableType and StepType, this class handles GPU
+  /// memory allocation for all the variables and steps. All of the
+  /// variables can be accesses on the GPU from all ranks (even
+  /// accessing variable data from element that the rank does not own)
+  /// using the appropriate get_{own,all}_variables{s} getter
+  /// functions and the variable names given by the VariableType enum
+  /// and StepType.
   template<typename VariableType, typename StepType>
   class MemoryManager {
   public:

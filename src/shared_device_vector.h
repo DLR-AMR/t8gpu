@@ -11,24 +11,22 @@
 #include <utility>
 #include <utils/cuda.h>
 
-// TODO: add a copy_unsafe that does not resize before copying
-
 namespace t8gpu {
   ///
-  /// @brief A class that implements a shared array This class creates
+  /// @brief A class that implements a shared array
   ///
-  /// A shared vetor of device memory by providing most of the
-  /// `std::vector` interface. Each MPI rank handles its owm local gpu
-  /// allocation. However, as all of these allocation are done on the
-  /// same GPU, each rank can retrieve device pointers to all of the
-  /// other rank's allocations throught IPC (Inter Process
-  /// Communication) in order to be able to launch kernels accessing
-  /// other MPI ranks's GPU device allocated memory. This is primarily
-  /// used to handle the ghost layer: instead of allocating on the
-  /// device space for the ghost layer, we directly access the other
-  /// rank's device allocations. This implies a better use of the GPU
-  /// memory but requires more synhronization between each ranks GPU
-  /// kernel launches.
+  ///This class creates a shared vetor of device memory by providing
+  /// most of the `std::vector` interface. Each MPI rank handles its
+  /// owm local gpu allocation. However, as all of these allocation
+  /// are done on the same GPU, each rank can retrieve device pointers
+  /// to all of the other rank's allocations throught IPC (Inter
+  /// Process Communication) in order to be able to launch kernels
+  /// accessing other MPI ranks's GPU device allocated memory. This is
+  /// primarily used to handle the ghost layer: instead of allocating
+  /// on the device space for the ghost layer, we directly access the
+  /// other rank's device allocations. This implies a better use of
+  /// the GPU memory but requires more synhronization between each
+  /// ranks GPU kernel launches.
   ///
   /// @warning Contrary to std::vector, when resizing an array, we do
   ///          not copy from the previous allocation to the next, thus
