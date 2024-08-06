@@ -59,8 +59,8 @@ t8gpu::MemoryManager<VariableType, StepType>::float_type const* const* t8gpu::Me
 }
 
 template<typename VariableType, typename StepType>
-t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn t8gpu::MemoryManager<VariableType, StepType>::get_own_variables(t8gpu::MemoryManager<VariableType, StepType>::step_index_type step) {
-  MemoryAccessorOwn memory_accessor {};
+t8gpu::MemoryAccessorOwn<VariableType> t8gpu::MemoryManager<VariableType, StepType>::get_own_variables(t8gpu::MemoryManager<VariableType, StepType>::step_index_type step) {
+  MemoryAccessorOwn<VariableType> memory_accessor {};
   for (int k=0; k<static_cast<int>(nb_variables); k++) {
     memory_accessor.pointers[k] = m_device_buffer.get_own(step*static_cast<int>(nb_variables) + k);
   }
@@ -68,8 +68,8 @@ t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn t8gpu::MemoryMan
 }
 
 template<typename VariableType, typename StepType>
-t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorAll t8gpu::MemoryManager<VariableType, StepType>::get_all_variables(t8gpu::MemoryManager<VariableType, StepType>::step_index_type step) {
-  MemoryAccessorAll memory_accessor {};
+t8gpu::MemoryAccessorAll<VariableType> t8gpu::MemoryManager<VariableType, StepType>::get_all_variables(t8gpu::MemoryManager<VariableType, StepType>::step_index_type step) {
+  MemoryAccessorAll<VariableType> memory_accessor {};
   for (int k=0; k<static_cast<int>(nb_variables); k++) {
     memory_accessor.pointers[k] = m_device_buffer.get_all(step*static_cast<int>(nb_variables) + k);
   }

@@ -21,9 +21,6 @@
 
 using namespace t8gpu;
 
-using MemoryAccessorAll = MemoryManager<CompressibleEulerSolver::VariableName, CompressibleEulerSolver::StepName>::MemoryAccessorAll;
-using MemoryAccessorOwn = MemoryManager<CompressibleEulerSolver::VariableName, CompressibleEulerSolver::StepName>::MemoryAccessorOwn;
-
 struct forest_user_data_t {
   thrust::host_vector<CompressibleEulerSolver::float_type>* element_refinement_criteria;
 };
@@ -39,37 +36,37 @@ __global__ static void compute_refinement_criteria(float_type const* __restrict_
 						   float_type const* __restrict__ volume,
 						   float_type* __restrict__ criteria, int nb_elements);
 
-template<typename float_type, size_t nb_total_variables>
-__global__ static void adapt_variables_and_volume(MemoryAccessorOwn variables_old,
-						  cuda::std::array<float_type* __restrict__, nb_total_variables> variables_new,
-						  float_type const* __restrict__ volume_old,
-						  float_type* __restrict__       volume_new,
+template<typename VariableType>
+__global__ static void adapt_variables_and_volume(MemoryAccessorOwn<VariableType> variables_old,
+						  std::array<typename variable_traits<VariableType>::float_type* __restrict__, variable_traits<VariableType>::nb_variables> variables_new,
+						  typename variable_traits<VariableType>::float_type const* __restrict__ volume_old,
+						  typename variable_traits<VariableType>::float_type* __restrict__       volume_new,
 						  t8_locidx_t* adapt_data,
 						  int nb_new_elements);
 
-template<typename float_type, size_t nb_total_variables>
+template<typename VariableType>
 __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict__ indices,
-			       cuda::std::array<float_type* __restrict__, nb_total_variables> new_variables,
-			       MemoryManager<CompressibleEulerSolver::VariableName, CompressibleEulerSolver::StepName>::MemoryAccessorAll old_variables,
-			       float_type* new_volume,
-			       float_type* const* __restrict__ old_volume,
+			       std::array<typename variable_traits<VariableType>::float_type* __restrict__, variable_traits<VariableType>::nb_variables> new_variables,
+			       MemoryAccessorAll<VariableType> old_variables,
+			       typename variable_traits<VariableType>::float_type* new_volume,
+			       typename variable_traits<VariableType>::float_type* const* __restrict__ old_volume,
 			       int num_new_elements);
 
 template<typename float_type>
-__global__ static void hll_compute_fluxes(cuda::std::array<float_type** __restrict__, 4> variables,
-					  cuda::std::array<float_type** __restrict__, 4> fluxes,
+__global__ static void hll_compute_fluxes(std::array<float_type** __restrict__, 4> variables,
+					  std::array<float_type** __restrict__, 4> fluxes,
 					  float_type* __restrict__ speed_estimates,
 					  float_type const* __restrict__ normal,
 					  float_type const* __restrict__ area,
 					  int const* e_idx, int* rank,
 					  t8_locidx_t* indices, int nb_edges);
 
-template<typename float_type>
-__global__ static void kepes_compute_fluxes(MemoryAccessorAll variables,
-					    MemoryAccessorAll fluxes,
-					    float_type* __restrict__ speed_estimates,
-					    float_type const* __restrict__ normal,
-					    float_type const* __restrict__ area,
+template<typename VariableType>
+__global__ static void kepes_compute_fluxes(MemoryAccessorAll<VariableType> variables,
+					    MemoryAccessorAll<VariableType> fluxes,
+					    typename variable_traits<VariableType>::float_type* __restrict__ speed_estimates,
+					    typename variable_traits<VariableType>::float_type const* __restrict__ normal,
+					    typename variable_traits<VariableType>::float_type const* __restrict__ area,
 					    int const* e_idx, int* rank,
 					    t8_locidx_t* indices, int nb_edges);
 
@@ -209,7 +206,7 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
 
   constexpr int thread_block_size = 256;
   const int SSP_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
-  timestepping::SSP_3RK_step1<VariableName, StepName><<<SSP_num_blocks, thread_block_size>>>(
+  timestepping::SSP_3RK_step1<VariableName><<<SSP_num_blocks, thread_block_size>>>(
       m_element_data.get_own_variables(prev),
       m_element_data.get_own_variables(step1),
       m_element_data.get_own_variables(fluxes),
@@ -221,7 +218,7 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
 
   compute_fluxes(step1);
 
-  timestepping::SSP_3RK_step2<VariableName, StepName><<<SSP_num_blocks, thread_block_size>>>(
+  timestepping::SSP_3RK_step2<VariableName><<<SSP_num_blocks, thread_block_size>>>(
      m_element_data.get_own_variables(prev),
      m_element_data.get_own_variables(step1),
      m_element_data.get_own_variables(step2),
@@ -234,7 +231,7 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
 
   compute_fluxes(step2);
 
-  timestepping::SSP_3RK_step3<VariableName, StepName><<<SSP_num_blocks, thread_block_size>>>(
+  timestepping::SSP_3RK_step3<VariableName><<<SSP_num_blocks, thread_block_size>>>(
       m_element_data.get_own_variables(prev),
       m_element_data.get_own_variables(step2),
       m_element_data.get_own_variables(next),
@@ -244,15 +241,17 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
   T8GPU_CUDA_CHECK_LAST_ERROR();
 }
 
-template<typename float_type>
-__global__ void estimate_gradient(MemoryManager<CompressibleEulerSolver::VariableName, CompressibleEulerSolver::StepName>::MemoryAccessorAll data_next,
-				  MemoryManager<CompressibleEulerSolver::VariableName, CompressibleEulerSolver::StepName>::MemoryAccessorAll data_fluxes,
-				  float_type const* __restrict__ normal,
-				  float_type const* __restrict__ area,
+template<typename VariableType>
+__global__ void estimate_gradient(MemoryAccessorAll<VariableType> data_next,
+				  MemoryAccessorAll<VariableType> data_fluxes,
+				  typename variable_traits<VariableType>::float_type const* __restrict__ normal,
+				  typename variable_traits<VariableType>::float_type const* __restrict__ area,
 				  int const* e_idx, int* rank,
 				  t8_locidx_t* indices, int nb_edges) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= nb_edges) return;
+
+  using float_type = typename variable_traits<VariableType>::float_type;
 
   auto [rho, rho_v1] = data_next.get(CompressibleEulerSolver::VariableName::rho, CompressibleEulerSolver::VariableName::rho_v1);
   auto rho_bis = data_next.get(CompressibleEulerSolver::VariableName::rho);
@@ -277,7 +276,7 @@ __global__ void estimate_gradient(MemoryManager<CompressibleEulerSolver::Variabl
 void CompressibleEulerSolver::adapt() {
   constexpr int thread_block_size = 256;
   const int gradient_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
-  estimate_gradient<float_type><<<gradient_num_blocks, thread_block_size>>>(
+  estimate_gradient<VariableName><<<gradient_num_blocks, thread_block_size>>>(
 	m_element_data.get_all_variables(next),
 	m_element_data.get_all_variables(fluxes), // reuse flux variable here
 	thrust::raw_pointer_cast(m_device_face_normals.data()),
@@ -386,7 +385,7 @@ void CompressibleEulerSolver::adapt() {
 
   thrust::device_vector<float_type> device_new_conserved_variables(num_new_elements*nb_variables);
 
-  cuda::std::array<float_type* __restrict__, nb_variables> new_variables {};
+  std::array<float_type* __restrict__, nb_variables> new_variables {};
   for (size_t k=0; k<nb_variables; k++) {
     new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + sizeof(float_type)*num_new_elements;
   }
@@ -397,7 +396,7 @@ void CompressibleEulerSolver::adapt() {
   T8GPU_CUDA_CHECK_ERROR(
       cudaMemcpy(device_element_adapt_data, element_adapt_data.data(), element_adapt_data.size() * sizeof(t8_locidx_t), cudaMemcpyHostToDevice));
   const int adapt_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
-  adapt_variables_and_volume<float_type, nb_variables><<<adapt_num_blocks, thread_block_size>>>(
+  adapt_variables_and_volume<VariableName><<<adapt_num_blocks, thread_block_size>>>(
       m_element_data.get_own_variables(next),
       new_variables,
       m_element_data.get_own_volume(),
@@ -474,14 +473,14 @@ void CompressibleEulerSolver::partition() {
   thrust::device_vector<float_type> device_new_conserved_variables(num_new_elements*nb_variables);
   thrust::device_vector<float_type> device_new_element_volume(num_new_elements);
 
-  cuda::std::array<float_type* __restrict__, nb_variables> new_variables {};
+  std::array<float_type* __restrict__, nb_variables> new_variables {};
   for (size_t k=0; k<nb_variables; k++) {
     new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + sizeof(float_type)*num_new_elements;
   }
 
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
-  partition_data<float_type, nb_variables><<<fluxes_num_blocks, thread_block_size>>>(
+  partition_data<VariableName><<<fluxes_num_blocks, thread_block_size>>>(
     thrust::raw_pointer_cast(device_new_ranks.data()),
     thrust::raw_pointer_cast(device_new_indices.data()),
     new_variables,
@@ -687,7 +686,7 @@ void CompressibleEulerSolver::compute_fluxes(StepName step) {
   // TODO: clean up the function call to not see the different variables
   constexpr int thread_block_size = 256;
   const int fluxes_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
-  kepes_compute_fluxes<float_type><<<fluxes_num_blocks, thread_block_size>>>(
+  kepes_compute_fluxes<VariableName><<<fluxes_num_blocks, thread_block_size>>>(
         m_element_data.get_all_variables(step),
         m_element_data.get_all_variables(fluxes),
         thrust::raw_pointer_cast(m_device_face_speed_estimate.data()),
@@ -777,11 +776,11 @@ __global__ static void compute_refinement_criteria(float_type const* __restrict_
   criteria[i] = fluxes_rho[i] / cbrt(volume[i]);
 }
 
-template<typename float_type, size_t nb_total_variables>
-__global__ static void adapt_variables_and_volume(MemoryAccessorOwn variables_old,
-						  cuda::std::array<float_type* __restrict__, nb_total_variables> variables_new,
-						  float_type const* __restrict__ volume_old,
-						  float_type* __restrict__       volume_new,
+template<typename VariableType>
+__global__ static void adapt_variables_and_volume(MemoryAccessorOwn<VariableType> variables_old,
+						  std::array<typename variable_traits<VariableType>::float_type* __restrict__, variable_traits<VariableType>::nb_variables> variables_new,
+						  typename variable_traits<VariableType>::float_type const* __restrict__ volume_old,
+						  typename variable_traits<VariableType>::float_type* __restrict__       volume_new,
 						  t8_locidx_t* adapt_data,
 						  int nb_new_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -796,26 +795,26 @@ __global__ static void adapt_variables_and_volume(MemoryAccessorOwn variables_ol
     volume_new[i] = volume_old[adapt_data[i]] * 0.25;
   }
 
-  for (int k=0; k<nb_total_variables; k++) {
+  for (int k=0; k<variable_traits<VariableType>::nb_variables; k++) {
     variables_new[k][i] = 0.0;
 
     for (int j = 0; j < nb_elements_sum; j++) {
-      variables_new[k][i] += variables_old.get(k)[adapt_data[i] + j] / static_cast<float_type>(nb_elements_sum);
+      variables_new[k][i] += variables_old.get(k)[adapt_data[i] + j] / static_cast<typename variable_traits<VariableType>::float_type>(nb_elements_sum);
     }
   }
 }
 
-template<typename float_type, size_t nb_total_variables>
+template<typename VariableType>
 __global__ void partition_data(int* __restrict__ ranks, t8_locidx_t* __restrict__ indices,
-			       cuda::std::array<float_type* __restrict__, nb_total_variables> new_variables,
-			       MemoryManager<CompressibleEulerSolver::VariableName, CompressibleEulerSolver::StepName>::MemoryAccessorAll old_variables,
-			       float_type* new_volume,
-			       float_type* const* __restrict__ old_volume,
+			       std::array<typename variable_traits<VariableType>::float_type* __restrict__, variable_traits<VariableType>::nb_variables> new_variables,
+			       MemoryAccessorAll<VariableType> old_variables,
+			       typename variable_traits<VariableType>::float_type* new_volume,
+			       typename variable_traits<VariableType>::float_type* const* __restrict__ old_volume,
 			       int num_new_elements) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_new_elements) return;
 
-  for (size_t k=0; k<nb_total_variables; k++) {
+  for (size_t k=0; k<variable_traits<VariableType>::nb_variables; k++) {
     new_variables[k][i] = old_variables.get(k)[ranks[i]][indices[i]];
   }
 
@@ -842,8 +841,8 @@ struct numerical_constants<double> {
 using nc = numerical_constants<CompressibleEulerSolver::float_type>;
 
 template<typename float_type>
-__global__ static void hll_compute_fluxes(cuda::std::array<float_type** __restrict__, 4> variables,
-					  cuda::std::array<float_type** __restrict__, 4> fluxes,
+__global__ static void hll_compute_fluxes(std::array<float_type** __restrict__, 4> variables,
+					  std::array<float_type** __restrict__, 4> fluxes,
 					  float_type* __restrict__ speed_estimates,
 					  float_type const* __restrict__ normal,
 					  float_type const* __restrict__ area,
@@ -1072,16 +1071,18 @@ __device__ static void kepes_compute_diffusion_matrix(float_type u_L[5],
 
 }
 
-template<typename float_type>
-__global__ static void kepes_compute_fluxes(MemoryAccessorAll variables,
-					    MemoryAccessorAll fluxes,
-					    float_type* __restrict__ speed_estimates,
-					    float_type const* __restrict__ normal,
-					    float_type const* __restrict__ area,
+template<typename VariableType>
+__global__ static void kepes_compute_fluxes(MemoryAccessorAll<VariableType> variables,
+					    MemoryAccessorAll<VariableType> fluxes,
+					    typename variable_traits<VariableType>::float_type* __restrict__ speed_estimates,
+					    typename variable_traits<VariableType>::float_type const* __restrict__ normal,
+					    typename variable_traits<VariableType>::float_type const* __restrict__ area,
 					    int const* e_idx, int* rank,
 					    t8_locidx_t* indices, int nb_edges) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= nb_edges) return;
+
+  using float_type = typename variable_traits<VariableType>::float_type;
 
   float_type face_surface = area[i];
 

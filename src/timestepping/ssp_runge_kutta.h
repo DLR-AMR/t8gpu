@@ -6,28 +6,28 @@
 
 namespace t8gpu::timestepping {
 
-  template<typename VariableType, typename StepType>
-  __global__ void SSP_3RK_step1(typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn prev,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step1,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn fluxes,
-				typename t8gpu::MemoryManager<VariableType, StepType>::float_type const* __restrict__ volume,
-				typename t8gpu::MemoryManager<VariableType, StepType>::float_type delta_t, int nb_elements);
+  template<typename VariableType>
+  __global__ void SSP_3RK_step1(MemoryAccessorOwn<VariableType> prev,
+				MemoryAccessorOwn<VariableType> step1,
+				MemoryAccessorOwn<VariableType> fluxes,
+				typename variable_traits<VariableType>::float_type const* __restrict__ volume,
+				typename variable_traits<VariableType>::float_type delta_t, int nb_elements);
 
-  template<typename VariableType, typename StepType>
-  __global__ void SSP_3RK_step2(typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn prev,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step1,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step2,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn fluxes,
-				typename t8gpu::MemoryManager<VariableType, StepType>::float_type const* __restrict__ volume,
-				typename t8gpu::MemoryManager<VariableType, StepType>::float_type delta_t, int nb_elements);
+  template<typename VariableType>
+  __global__ void SSP_3RK_step2(MemoryAccessorOwn<VariableType> prev,
+				MemoryAccessorOwn<VariableType> step1,
+				MemoryAccessorOwn<VariableType> step2,
+				MemoryAccessorOwn<VariableType> fluxes,
+				typename variable_traits<VariableType>::float_type const* __restrict__ volume,
+				typename variable_traits<VariableType>::float_type delta_t, int nb_elements);
 
-  template<typename VariableType, typename StepType>
-  __global__ void SSP_3RK_step3(typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn prev,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn step2,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn next,
-				typename t8gpu::MemoryManager<VariableType, StepType>::MemoryAccessorOwn fluxes,
-				typename t8gpu::MemoryManager<VariableType, StepType>::float_type const* __restrict__ volume,
-				typename t8gpu::MemoryManager<VariableType, StepType>::float_type delta_t, int nb_elements);
+  template<typename VariableType>
+  __global__ void SSP_3RK_step3(MemoryAccessorOwn<VariableType> prev,
+				MemoryAccessorOwn<VariableType> step2,
+				MemoryAccessorOwn<VariableType> next,
+				MemoryAccessorOwn<VariableType> fluxes,
+				typename variable_traits<VariableType>::float_type const* __restrict__ volume,
+				typename variable_traits<VariableType>::float_type delta_t, int nb_elements);
 
 } // namespace t8gpu
 
