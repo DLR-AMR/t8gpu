@@ -163,16 +163,16 @@ CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
   m_device_element_refinement_criteria.resize(m_num_local_elements);
 
   // copy new shared element variables
-  m_element_data.set_variable(next, rho, std::move(element_rho));
-  m_element_data.set_variable(next, rho_v1, std::move(element_rho_v1));
-  m_element_data.set_variable(next, rho_v2, std::move(element_rho_v2));
-  m_element_data.set_variable(next, rho_v3, std::move(element_rho_v3));
-  m_element_data.set_variable(next, rho_e, std::move(element_rho_e));
+  m_element_data.set_variable(next, Rho, std::move(element_rho));
+  m_element_data.set_variable(next, Rho_v1, std::move(element_rho_v1));
+  m_element_data.set_variable(next, Rho_v2, std::move(element_rho_v2));
+  m_element_data.set_variable(next, Rho_v3, std::move(element_rho_v3));
+  m_element_data.set_variable(next, Rho_e, std::move(element_rho_e));
 
   m_element_data.set_volume(std::move(element_volume));
 
   // fill fluxes device element variable
-  float_type* device_element_fluxes_ptr {m_element_data.get_own_variable(fluxes, rho)};
+  float_type* device_element_fluxes_ptr {m_element_data.get_own_variable(Fluxes, Rho)};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_fluxes_ptr, 0, 5*sizeof(float_type)*m_num_local_elements));
 
   compute_edge_connectivity();
@@ -209,34 +209,34 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
   const int SSP_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
   timestepping::SSP_3RK_step1<VariableName><<<SSP_num_blocks, thread_block_size>>>(
       m_element_data.get_own_variables(prev),
-      m_element_data.get_own_variables(step1),
-      m_element_data.get_own_variables(fluxes),
+      m_element_data.get_own_variables(Step1),
+      m_element_data.get_own_variables(Fluxes),
       m_element_data.get_own_volume(),
       delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
-  compute_fluxes(step1);
+  compute_fluxes(Step1);
 
   timestepping::SSP_3RK_step2<VariableName><<<SSP_num_blocks, thread_block_size>>>(
      m_element_data.get_own_variables(prev),
-     m_element_data.get_own_variables(step1),
-     m_element_data.get_own_variables(step2),
-     m_element_data.get_own_variables(fluxes),
+     m_element_data.get_own_variables(Step1),
+     m_element_data.get_own_variables(Step2),
+     m_element_data.get_own_variables(Fluxes),
      m_element_data.get_own_volume(),
      delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
-  compute_fluxes(step2);
+  compute_fluxes(Step2);
 
   timestepping::SSP_3RK_step3<VariableName><<<SSP_num_blocks, thread_block_size>>>(
       m_element_data.get_own_variables(prev),
-      m_element_data.get_own_variables(step2),
+      m_element_data.get_own_variables(Step2),
       m_element_data.get_own_variables(next),
-      m_element_data.get_own_variables(fluxes),
+      m_element_data.get_own_variables(Fluxes),
       m_element_data.get_own_volume(),
       delta_t, m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
@@ -254,10 +254,10 @@ __global__ void estimate_gradient(MemoryAccessorAll<VariableType> data_next,
 
   using float_type = typename variable_traits<VariableType>::float_type;
 
-  auto [rho, rho_v1] = data_next.get(CompressibleEulerSolver::VariableName::rho, CompressibleEulerSolver::VariableName::rho_v1);
-  auto rho_bis = data_next.get(CompressibleEulerSolver::VariableName::rho);
+  auto [rho, rho_v1] = data_next.get(Rho, Rho_v1);
+  auto rho_bis = data_next.get(Rho);
 
-  auto rho_gradient = data_fluxes.get(CompressibleEulerSolver::VariableName::rho);
+  auto rho_gradient = data_fluxes.get(Rho);
 
   int l_rank  = rank[e_idx[2 * i]];
   int l_index = indices[e_idx[2 * i]];
@@ -279,7 +279,7 @@ void CompressibleEulerSolver::adapt() {
   const int gradient_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   estimate_gradient<VariableName><<<gradient_num_blocks, thread_block_size>>>(
 	m_element_data.get_all_variables(next),
-	m_element_data.get_all_variables(fluxes), // reuse flux variable here
+	m_element_data.get_all_variables(Fluxes), // reuse flux variable here
 	thrust::raw_pointer_cast(m_device_face_normals.data()),
 	thrust::raw_pointer_cast(m_device_face_area.data()),
 	thrust::raw_pointer_cast(m_device_face_neighbors.data()),
@@ -292,7 +292,7 @@ void CompressibleEulerSolver::adapt() {
 
   const int fluxes_num_blocks = (m_num_local_elements + thread_block_size - 1) / thread_block_size;
   compute_refinement_criteria<float_type><<<fluxes_num_blocks, thread_block_size>>>(
-	m_element_data.get_own_variable(fluxes, rho),
+	m_element_data.get_own_variable(Fluxes, Rho),
 	m_element_data.get_own_volume(),
 	thrust::raw_pointer_cast(m_device_element_refinement_criteria.data()),
 	m_num_local_elements);
@@ -413,7 +413,7 @@ void CompressibleEulerSolver::adapt() {
   m_device_element_refinement_criteria.resize(num_new_elements);
 
   // fill fluxes device element variable
-  float_type* device_element_rho_fluxes_ptr {m_element_data.get_own_variable(fluxes, rho)};
+  float_type* device_element_rho_fluxes_ptr {m_element_data.get_own_variable(Fluxes, Rho)};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements)); // cleanup tampered with flux variable
 
   for (int k=0; k<nb_variables; k++) {
@@ -503,7 +503,7 @@ void CompressibleEulerSolver::partition() {
   m_element_data.set_volume(std::move(device_new_element_volume));
 
 
-  float_type* device_element_rho_fluxes_ptr {m_element_data.get_own_variable(fluxes, rho)};
+  float_type* device_element_rho_fluxes_ptr {m_element_data.get_own_variable(Fluxes, Rho)};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements));
 
   forest_user_data_t* forest_user_data = static_cast<forest_user_data_t*>(t8_forest_get_user_data(m_forest));
@@ -547,7 +547,7 @@ void CompressibleEulerSolver::save_vtk(const std::string& prefix) const {
 template<typename ft>
 void CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) const {
   thrust::host_vector<ft> element_variable(m_num_local_elements);
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), m_element_data.get_own_variable(next, rho), sizeof(ft)*m_num_local_elements, cudaMemcpyDeviceToHost));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), m_element_data.get_own_variable(next, Rho), sizeof(ft)*m_num_local_elements, cudaMemcpyDeviceToHost));
 
   t8_vtk_data_field_t vtk_data_field {};
   vtk_data_field.type = T8_VTK_SCALAR;
@@ -584,7 +584,7 @@ void CompressibleEulerSolver::save_vtk_impl(const std::string& prefix) const {
 
 CompressibleEulerSolver::float_type CompressibleEulerSolver::compute_integral() const {
   float_type local_integral = 0.0;
-  float_type const* mem {m_element_data.get_own_variable(next, rho)};
+  float_type const* mem {m_element_data.get_own_variable(next, Rho)};
   thrust::host_vector<float_type> variable(m_num_local_elements);
   T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(float_type)*m_num_local_elements, cudaMemcpyDeviceToHost));
   thrust::host_vector<float_type> volume(m_num_local_elements);
@@ -689,7 +689,7 @@ void CompressibleEulerSolver::compute_fluxes(StepName step) {
   const int fluxes_num_blocks = (m_num_local_faces + thread_block_size - 1) / thread_block_size;
   kepes_compute_fluxes<VariableName><<<fluxes_num_blocks, thread_block_size>>>(
         m_element_data.get_all_variables(step),
-        m_element_data.get_all_variables(fluxes),
+        m_element_data.get_all_variables(Fluxes),
         thrust::raw_pointer_cast(m_device_face_speed_estimate.data()),
         thrust::raw_pointer_cast(m_device_face_normals.data()),
         thrust::raw_pointer_cast(m_device_face_area.data()),
@@ -1097,11 +1097,7 @@ __global__ static void kepes_compute_fluxes(MemoryAccessorAll<VariableType> vari
   float_type ny = normal[3*i+1];
   float_type nz = normal[3*i+2];
 
-  auto [rho, rho_v1, rho_v2, rho_v3, rho_e] = variables.get(CompressibleEulerSolver::VariableName::rho,
-							    CompressibleEulerSolver::VariableName::rho_v1,
-							    CompressibleEulerSolver::VariableName::rho_v2,
-							    CompressibleEulerSolver::VariableName::rho_v3,
-							    CompressibleEulerSolver::VariableName::rho_e);
+  auto [rho, rho_v1, rho_v2, rho_v3, rho_e] = variables.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
   float_type rho_l    = rho[l_rank][l_index];
   float_type rho_vx_l = rho_v1[l_rank][l_index];
@@ -1244,11 +1240,7 @@ __global__ static void kepes_compute_fluxes(MemoryAccessorAll<VariableType> vari
   float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] * rho_v3_flux*t2[1];
   float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] * rho_v3_flux*t2[2];
 
-  auto [fluxes_rho, fluxes_rho_v1, fluxes_rho_v2, fluxes_rho_v3, fluxes_rho_e] = fluxes.get(CompressibleEulerSolver::VariableName::rho,
-											    CompressibleEulerSolver::VariableName::rho_v1,
-											    CompressibleEulerSolver::VariableName::rho_v2,
-											    CompressibleEulerSolver::VariableName::rho_v3,
-											    CompressibleEulerSolver::VariableName::rho_e);
+  auto [fluxes_rho, fluxes_rho_v1, fluxes_rho_v2, fluxes_rho_v3, fluxes_rho_e] = fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
   atomicAdd(&fluxes_rho[l_rank][l_index], -rho_flux);
   atomicAdd(&fluxes_rho[r_rank][r_index],  rho_flux);

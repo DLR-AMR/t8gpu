@@ -13,6 +13,26 @@
 #include <string>
 
 namespace t8gpu {
+
+  enum VariableName {
+    Rho,    // density
+    Rho_v1, // x-component of momentum
+    Rho_v2, // y-component of momentum
+    Rho_v3, // z-component of momentum
+    Rho_e,  // energy
+    nb_variables,
+  };
+
+  // defines the number of duplicates per variables that we need
+  enum StepName {
+    Step0,  // used for RK3 timestepping
+    Step1,  // used for RK3 timestepping
+    Step2,  // used for RK3 timestepping
+    Step3,  // used for RK3 timestepping
+    Fluxes, // used to store fluxes
+    nb_steps
+  };
+
   ///
   /// @brief A class that implements a simple finite volume solver for
   /// the compressible Euler equations
@@ -110,25 +130,6 @@ namespace t8gpu {
     /// computed at the last step of the last timestepping)
     [[nodiscard]] float_type compute_timestep() const;
 
-    enum VariableName {
-      rho,    // density
-      rho_v1, // x-component of momentum
-      rho_v2, // y-component of momentum
-      rho_v3, // z-component of momentum
-      rho_e,  // energy
-      nb_variables,
-    };
-
-    // defines the number of duplicates per variables that we need
-    enum StepName {
-      step0,  // used for RK3 timestepping
-      step1,  // used for RK3 timestepping
-      step2,  // used for RK3 timestepping
-      step3,  // used for RK3 timestepping
-      fluxes, // used to store fluxes
-      nb_steps
-    };
-
   private:
     sc_MPI_Comm      m_comm;
     int              m_rank;
@@ -155,8 +156,8 @@ namespace t8gpu {
     thrust::device_vector<float_type>  m_device_face_area;
     thrust::device_vector<float_type>  m_device_face_speed_estimate;
 
-    StepName prev = step0;
-    StepName next = step3;
+    StepName prev = Step0;
+    StepName next = Step3;
 
     t8gpu::MemoryManager<VariableName, StepName> m_element_data;
 
