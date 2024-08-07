@@ -69,21 +69,25 @@ namespace t8gpu {
   ///   }
   /// }
   template<typename VariableType>
-  struct MemoryAccessorOwn {
+  class MemoryAccessorOwn {
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
-    std::array<float_type*, nb_variables> pointers;
+    std::array<float_type*, nb_variables> m_pointers;
+
+  public:
+    template<typename Container>
+    MemoryAccessorOwn(Container&& array) : m_pointers(std::forward<Container>(array)) {}
 
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type*> get(T i) {
-      return pointers[static_cast<variable_index_type>(i)];
+      return m_pointers[static_cast<variable_index_type>(i)];
     }
 
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const*> get(T i) const {
-      return pointers[static_cast<variable_index_type>(i)];
+      return m_pointers[static_cast<variable_index_type>(i)];
     }
 
     template<typename... Ts>
@@ -126,21 +130,25 @@ namespace t8gpu {
   ///   }
   /// }
   template<typename VariableType>
-  struct MemoryAccessorAll {
+  class MemoryAccessorAll {
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
-    std::array<float_type* const*, nb_variables> pointers;
+    std::array<float_type* const*, nb_variables> m_pointers;
+
+  public:
+    template<typename Container>
+    MemoryAccessorAll(Container&& array) : m_pointers(std::forward<Container>(array)) {}
 
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type* const*> get(T i) {
-      return pointers[static_cast<variable_index_type>(i)];
+      return m_pointers[static_cast<variable_index_type>(i)];
     }
 
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const* const*> get(T i) const {
-      return pointers[static_cast<variable_index_type>(i)];
+      return m_pointers[static_cast<variable_index_type>(i)];
     }
 
     template<typename... Ts>
