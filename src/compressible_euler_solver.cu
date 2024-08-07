@@ -72,9 +72,10 @@ __global__ static void kepes_compute_fluxes(MemoryAccessorAll<VariableType> vari
 
 CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm)
     : m_comm(comm),
-      m_cmesh(t8_cmesh_new_periodic(m_comm, dim)),
       m_scheme(t8_scheme_new_default_cxx()),
-      m_forest(t8_forest_new_uniform(m_cmesh, m_scheme, 6, true, m_comm)) {
+      m_cmesh(t8_cmesh_new_periodic(m_comm, dim)),
+      m_forest(t8_forest_new_uniform(m_cmesh, m_scheme, 6, true, comm)),
+      m_element_data(0, comm) {
   t8_forest_t new_forest {};
   t8_forest_init(&new_forest);
   t8_forest_set_adapt(new_forest, m_forest, adapt_callback_initialization, true);

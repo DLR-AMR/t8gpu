@@ -1,7 +1,7 @@
 #include <memory_manager.h>
 
 template<typename VariableType, typename StepType>
-t8gpu::MemoryManager<VariableType, StepType>::MemoryManager(size_t nb_elements) : m_device_buffer(nb_elements) {}
+t8gpu::MemoryManager<VariableType, StepType>::MemoryManager(size_t nb_elements, sc_MPI_Comm comm) : m_device_buffer(nb_elements, comm) {}
 
 template<typename VariableType, typename StepType>
 void t8gpu::MemoryManager<VariableType, StepType>::resize(size_t new_size) {
