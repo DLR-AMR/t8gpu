@@ -1,13 +1,15 @@
 add_executable(t8gpu)
 target_sources(t8gpu PRIVATE
-  memory_manager.inl
   memory_manager.h
+  memory_manager.inl
+  mesh_manager.h
+  mesh_manager.inl
   main.cu
   compressible_euler_solver.cu
-  shared_device_vector.inl
   shared_device_vector.h
-  timestepping/ssp_runge_kutta.inl
+  shared_device_vector.inl
   timestepping/ssp_runge_kutta.h
+  timestepping/ssp_runge_kutta.inl
   utils/cuda.h
   utils/meta.h
   utils/profiling.h)

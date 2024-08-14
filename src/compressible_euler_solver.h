@@ -39,7 +39,7 @@ namespace t8gpu {
   ///
   class CompressibleEulerSolver {
   public:
-    using float_type = float;
+    using float_type = typename variable_traits<VariableName>::float_type;
     static constexpr size_t dim = 3; /*! dimension of the domain */
     static constexpr t8_locidx_t min_level = 6;  /*! minimum refinement level */
     static constexpr t8_locidx_t max_level = 12; /*! maximum refinement level */

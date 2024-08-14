@@ -70,15 +70,15 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorOwn {
+  public:
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
-    std::array<float_type*, nb_variables> m_pointers;
-
-  public:
     template<typename Container>
     MemoryAccessorOwn(Container&& array) : m_pointers(std::forward<Container>(array)) {}
+
+    MemoryAccessorOwn(const MemoryAccessorOwn& other) = default;
 
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type*> get(T i) {
@@ -99,6 +99,9 @@ namespace t8gpu {
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const*, sizeof...(Ts)>> get(Ts... is) const {
       return {  get(static_cast<variable_index_type>(is))... };
     }
+
+  private:
+    std::array<float_type*, nb_variables> m_pointers;
   };
 
   ///
@@ -131,13 +134,11 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorAll {
+  public:
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
-    std::array<float_type* const*, nb_variables> m_pointers;
-
-  public:
     template<typename Container>
     MemoryAccessorAll(Container&& array) : m_pointers(std::forward<Container>(array)) {}
 
@@ -160,6 +161,9 @@ namespace t8gpu {
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const* const*, sizeof...(Ts)>> get(Ts... is) const {
       return { get(static_cast<variable_index_type>(is))... };
     }
+
+  private:
+    std::array<float_type* const*, nb_variables> m_pointers;
   };
 
   ///
