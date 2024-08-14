@@ -35,7 +35,7 @@ namespace t8gpu {
 
   ///
   /// @brief A class that implements a simple finite volume solver for
-  /// the compressible Euler equations
+  /// the compressible Euler equations.
   ///
   class CompressibleEulerSolver {
   public:
@@ -47,27 +47,27 @@ namespace t8gpu {
     static constexpr float_type gamma = float_type{1.4}; /*! ratio of specific heats */
     static constexpr float_type cfl   = float_type{0.7};
 
-    /// @brief Constructor of the advection solver class
+    /// @brief Constructor of the advection solver class.
     ///
-    /// @param [in]         comm specifies the MPI communicator to use
+    /// @param [in]         comm specifies the MPI communicator to use.
     ///
     /// This constructor initializes create a simple mesh and initializes
-    /// all of its data members
+    /// all of its data members.
     CompressibleEulerSolver(sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
 
-    /// @brief Destructor of the advection solver class
+    /// @brief Destructor of the advection solver class.
     ///
     /// This destructor frees all the allocated device and host memory used.
     /// It is important to note that it should be called before MPI_Finalize.
     ~CompressibleEulerSolver();
 
-    /// @brief This function does one step of the simulation In order
+    /// @brief This function does one step of the simulation
     ///
-    ///  To work properly on multiple MPI ranks, the method
+    ///  In order to work properly on multiple MPI ranks, the method
     ///  `compute_ghost_information` must be called beforehand after
     ///  the last mesh refinement/repartitioning in order to have an
     ///  up to date ghost information. It is the responsability of the
-    ///  user to do so
+    ///  user to do so.
     void iterate(float_type timestep);
 
     /// @brief Adapt member function
@@ -78,7 +78,7 @@ namespace t8gpu {
     /// called beforehand to construct an up to date ghost layer.
     void adapt();
 
-    /// @brief Partition member function
+    /// @brief Partition member function.
     ///
     /// Repartition the mesh to balance the load between all MPI ranks
     /// in the comm MPI communicator. It is important to note that
@@ -88,7 +88,7 @@ namespace t8gpu {
     void partition();
 
     /// @brief Ghost layer and connectivity information computation
-    ///        member function
+    ///        member function.
     ///
     /// This function creates the necessary ghost layer and
     /// connectivity information needed by the `iterate` member
@@ -102,32 +102,32 @@ namespace t8gpu {
     /// class.
     void compute_connectivity_information();
 
-    /// @brief Save current quantity of interest to vkt format
+    /// @brief Save current quantity of interest to vkt format.
     ///
     /// @param [in] prefix specifies the prefix used to saved the vtk
-    ///             file
+    ///             file.
     ///
     /// This member function saves the current simulation step in the
     /// vtk file format.
     void save_vtk(const std::string& prefix) const;
 
-    /// @brief Computes the integral of the quantity of interest
+    /// @brief Computes the integral of the quantity of interest.
     ///
-    /// @return returns the integral on all the ranks
+    /// @return returns the integral on all the ranks.
     ///
     /// This member function computes the total integral on the domain
     /// of the quantity of interest. It can be used for sanity check
     /// in Debug mode to assert the conservativity of the scheme.
     [[nodiscard]] float_type compute_integral() const;
 
-    /// @brief compute the timestep accoring to the CFL condition
+    /// @brief compute the timestep accoring to the CFL condition.
     ///
-    /// @return timestep
+    /// @return timestep.
     ///
     /// This member function returns the maximum timestep according to
     /// the CFL condition and using maximum wave speed estimates. This
     /// function uses the last wave speed estimates (so the ones
-    /// computed at the last step of the last timestepping)
+    /// computed at the last step of the last timestepping).
     [[nodiscard]] float_type compute_timestep() const;
 
   private:

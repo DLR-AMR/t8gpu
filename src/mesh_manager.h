@@ -13,7 +13,10 @@
 
 namespace t8gpu {
 
-
+  ///
+  /// @brief This class gives access to face connectivity information
+  ///        on the GPU.
+  ///
   template<typename float_type, size_t dim>
   class MeshConnectivityAccessor {
   public:
@@ -27,6 +30,8 @@ namespace t8gpu {
 	m_face_neighbors(face_neighbors),
 	m_face_normals(face_normals),
 	m_face_surfaces(face_surfaces) {}
+
+    MeshConnectivityAccessor(const MeshConnectivityAccessor& other) = default;
 
     [[nodiscard]] __device__ t8_locidx_t get_face_surface(int face_idx) const {
       return m_face_surfaces[face_idx];
@@ -104,8 +109,8 @@ namespace t8gpu {
   ///                                        │                      │
   ///                                        └──────➤───────➤───────┘
   ///
-  /// The class ConnectvityAccessor is prodived to access connectivity
-  /// information.
+  /// The class MeshConnectvityAccessor is prodived to access
+  /// connectivity information.
   ///
   template<typename VariableType, typename StepType, size_t dim>
   class MeshManager : public MemoryManager<VariableType, StepType> {
@@ -120,25 +125,94 @@ namespace t8gpu {
     static constexpr t8_locidx_t max_level = 9;
     static constexpr t8_locidx_t min_level = 6;
 
+    /// @brief Constructor of the MeshManager class.
+    ///
+    /// @param [in]   comm   specifies the MPI communicator to use.
+    /// @param [in]   scheme specifies the t8code scheme used.
+    /// @param [in]   cmesh  specifies the t8code cmesh used.
+    /// @param [in]   forest specifies the t8code forest.
+    ///
+    /// This constructor initializes a MeshManager class taking
+    /// ownership of the coarse mesh cmesh and forest.
     MeshManager(sc_MPI_Comm comm,
 		t8_scheme_cxx_t* scheme,
 		t8_cmesh_t cmesh,
 		t8_forest_t forest);
+
+    /// @brief Destructor of the MeshManager class.
+    ///
+    /// This destructor releases all of the resources owned,
+    /// i.e. cmesh, forest and user data associated to the forest.
     ~MeshManager();
 
+
+    /// @brief member function to initialize the variables.
+    ///
+    /// @param [in] func specifies the function used to initialize the
+    ///                  variables.
+    ///
+    /// The Func function can either be a lambda, function pointer
+    /// (something that is callable). It must have the following
+    /// signature:
+    ///
+    /// void func(MemoryAccessorOwn<VariableList>& accessor,
+    ///           t8_forest_t forest,
+    ///           t8_locidx_t tree_idx,
+    ///           const t8_element_t* element,
+    ///           t8_locidx_t e_idx);
     template<typename Func>
     void initialize_variables(Func func);
 
+    /// @brief refine the mesh according to a user  specified criteria.
+    ///
+    /// @param [in] refinement_criteria specifies the refinement, 0 to
+    ///                                 mean do not refine or coarsen,
+    ///                                 1 to refine and -1 to coarsen.
+    ///
+    /// @param [in] step the step for which the variables are copied
+    ///                  over.
+    ///
+    /// It is important to note that after such an operation, it is
+    /// necessary to call compute_connectivity_information to
+    /// recompute the connectivity information and to discard any
+    /// other object related to connectivity initialized before the
+    /// refinement.
     void refine(const thrust::host_vector<int>& refinement_criteria, StepType step);
 
+    /// @brief repartition the elements among the ranks.
+    ///
+    /// It is important to note that after such an operation, it is
+    /// necessary to call compute_connectivity_information to
+    /// recompute the connectivity information and to discard any
+    /// other object related to connectivity initialized before the
+    /// partition.
     void partition();
 
+    /// @brief Ghost layer and connectivity information computation
+    ///        member function.
+    ///
+    /// This function creates the necessary ghost layer and
+    /// connectivity information needed. Upon creation of the class,
+    /// it is unnecessary to call this member function as the ghost
+    /// layer is already computed in the constructor for the initial
+    /// mesh. However, this function may be used before any operation
+    /// requiring connectivity information if the mesh has been
+    /// modified with either (or both) `refine`, `partition` member
+    /// functions after the last call to `compute_ghost_information`
+    /// or the initial construction of the class.
     void compute_connectivity_information();
 
+    /// @brief get a connectivity struct that can be passed and used
+    ///        on the GPU.
     [[nodiscard]] MeshConnectivityAccessor<float_type, dim> get_connectivity_information() const;
 
+    /// @brief get the number of elements owned by this rank.
     [[nodiscard]] int get_num_local_elements() const;
+
+    /// @brief get the number of ghost elements for this rank.
     [[nodiscard]] int get_num_ghost_elements() const;
+
+    /// @brief get the number of faces owned by this rank.
     [[nodiscard]] int get_num_local_faces() const;
 
   private:

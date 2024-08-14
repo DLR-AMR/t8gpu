@@ -1,6 +1,6 @@
 /// @file memory_manager.h
 /// @brief This header file declares the MemoryManager class that
-///        handles GPU memory allocation
+///        handles GPU memory allocation.
 
 #ifndef MEMORY_MANAGER_H
 #define MEMORY_MANAGER_H
@@ -190,7 +190,7 @@ namespace t8gpu {
     MemoryManager(size_t nb_elements = 0, sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
     ~MemoryManager() = default;
 
-    inline void resize(size_t new_size);
+    inline void resize(size_t new_size); // make this protected
 
     void set_variable(step_index_type step, variable_index_type variable, const thrust::device_vector<float_type>& buffer);
     void set_variable(step_index_type step, variable_index_type variable, const thrust::host_vector<float_type>& buffer);
