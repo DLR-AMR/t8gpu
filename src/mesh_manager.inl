@@ -321,7 +321,97 @@ __global__ void t8gpu::adapt_variables_and_volume(MemoryAccessorOwn<VariableType
 }
 
 template<typename VariableType, typename StepType, size_t dim>
-void t8gpu::MeshManager<VariableType, StepType, dim>::compute_edge_connectivity() {}
+void t8gpu::MeshManager<VariableType, StepType, dim>::compute_edge_connectivity() {
+  m_face_neighbors.clear();
+  m_face_normals.clear();
+  m_face_area.clear();
+
+  assert(t8_forest_is_committed(m_forest));
+
+  t8_locidx_t num_local_trees {t8_forest_get_num_local_trees(m_forest)};
+  t8_locidx_t element_idx = 0;
+  for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
+    t8_eclass_t tree_class = t8_forest_get_tree_class(m_forest, tree_idx);
+    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(m_forest, tree_class)};
+
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(m_forest, tree_idx)};
+    for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
+      const t8_element_t* element {t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
+
+      t8_locidx_t num_faces {eclass_scheme->t8_element_num_faces(element)};
+      for (t8_locidx_t face_idx = 0; face_idx < num_faces; face_idx++) {
+        int num_neighbors {};
+        int* dual_faces {};
+        t8_locidx_t* neighbor_ids {};
+        t8_element_t** neighbors {};
+        t8_eclass_scheme_c* neigh_scheme {};
+
+        t8_forest_leaf_face_neighbors(m_forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors, &neighbor_ids, &neigh_scheme,
+                                      true);
+
+	for (int i=0; i<num_neighbors; i++) {
+	  if (neighbor_ids[i] >= m_num_local_elements && m_rank < m_ranks[neighbor_ids[i]]) {
+	    m_face_neighbors.push_back(element_idx);
+	    m_face_neighbors.push_back(neighbor_ids[i]);
+	    double face_normal[dim];
+	    t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
+	    for (size_t k=0; k<dim; k++) {
+	      m_face_normals.push_back(static_cast<float_type>(face_normal[k]));
+	    }
+	    m_face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)) / static_cast<float_type>(num_neighbors));
+	  }
+	}
+
+        if ((num_neighbors == 1) && (neighbor_ids[0] < m_num_local_elements) &&
+            ((neighbor_ids[0] > element_idx) ||
+             (neighbor_ids[0] < element_idx && neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
+	  m_face_neighbors.push_back(element_idx);
+	  m_face_neighbors.push_back(neighbor_ids[0]);
+	  double face_normal[dim];
+	  t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
+	  for (size_t k=0; k<dim; k++) {
+	    m_face_normals.push_back(static_cast<float_type>(face_normal[k]));
+	  }
+	  m_face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)));
+        }
+	neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
+        T8_FREE(neighbors);
+
+        T8_FREE(dual_faces);
+        T8_FREE(neighbor_ids);
+      }
+
+      element_idx++;
+    }
+  }
+
+  m_num_local_faces = static_cast<t8_locidx_t>(m_face_area.size());
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_information() {
+  m_ranks.resize(m_num_local_elements + m_num_ghost_elements);
+  m_indices.resize(m_num_local_elements + m_num_ghost_elements);
+  for (t8_locidx_t i=0; i<m_num_local_elements; i++) {
+    m_ranks[i] = m_rank;
+    m_indices[i] = i;
+  }
+  sc_array* sc_array_ranks_wrapper {sc_array_new_data(m_ranks.data(), sizeof(int), m_num_local_elements + m_num_ghost_elements)};
+  t8_forest_ghost_exchange_data(m_forest, sc_array_ranks_wrapper);
+  sc_array_destroy(sc_array_ranks_wrapper);
+
+  sc_array* sc_array_indices_wrapper {sc_array_new_data(m_indices.data(), sizeof(t8_locidx_t), m_num_local_elements + m_num_ghost_elements)};
+  t8_forest_ghost_exchange_data(m_forest, sc_array_indices_wrapper);
+  sc_array_destroy(sc_array_indices_wrapper);
+
+  m_device_ranks = m_ranks;
+  m_device_indices = m_indices;
+
+  compute_edge_connectivity();
+  m_device_face_neighbors = m_face_neighbors;
+  m_device_face_normals = m_face_normals;
+  m_device_face_area = m_face_area;
+}
 
 template<typename VariableType, typename StepType, size_t dim>
 t8gpu::MeshConnectivityAccessor<typename t8gpu::MeshManager<VariableType, StepType, dim>::float_type, dim> t8gpu::MeshManager<VariableType, StepType, dim>::get_connectivity_information() const {

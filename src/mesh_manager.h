@@ -133,13 +133,14 @@ namespace t8gpu {
 
     void partition();
 
+    void compute_connectivity_information();
+
     [[nodiscard]] MeshConnectivityAccessor<float_type, dim> get_connectivity_information() const;
 
     [[nodiscard]] int get_num_local_elements() const;
     [[nodiscard]] int get_num_ghost_elements() const;
     [[nodiscard]] int get_num_local_faces() const;
 
-    void compute_edge_connectivity();
   private:
     sc_MPI_Comm      m_comm;
     int              m_rank;
@@ -171,6 +172,8 @@ namespace t8gpu {
     struct UserData {
       thrust::host_vector<float_type>* element_refinement_criteria;
     };
+
+    void compute_edge_connectivity();
 
     static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
 					const int is_family, const int num_elements, t8_element_t* elements[]);

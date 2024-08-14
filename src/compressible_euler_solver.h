@@ -92,7 +92,7 @@ namespace t8gpu {
     ///
     /// This function creates the necessary ghost layer and
     /// connectivity information needed by the `iterate` member
-    /// function. Upon creating of the class, it is unnecessary to
+    /// function. Upon creation of the class, it is unnecessary to
     /// call this member function as the ghost layer is already
     /// computed in the constructor for the initial mesh. However,
     /// this function may be used before the `iterate` member function
