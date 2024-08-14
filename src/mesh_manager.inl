@@ -325,5 +325,26 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_edge_connectivity(
 
 template<typename VariableType, typename StepType, size_t dim>
 t8gpu::MeshConnectivityAccessor<typename t8gpu::MeshManager<VariableType, StepType, dim>::float_type, dim> t8gpu::MeshManager<VariableType, StepType, dim>::get_connectivity_information() const {
-  return {m_ranks, m_indices, m_face_neighbors, m_face_normals, m_face_area};
+  return {
+    thrust::raw_pointer_cast(m_device_ranks.data()),
+    thrust::raw_pointer_cast(m_device_indices.data()),
+    thrust::raw_pointer_cast(m_device_face_neighbors.data()),
+    thrust::raw_pointer_cast(m_device_face_normals.data()),
+    thrust::raw_pointer_cast(m_device_face_area.data())
+  };
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+int t8gpu::MeshManager<VariableType, StepType, dim>::get_num_local_elements() const {
+  return m_num_local_elements;
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+int t8gpu::MeshManager<VariableType, StepType, dim>::get_num_ghost_elements() const {
+  return m_num_ghost_elements;
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+int t8gpu::MeshManager<VariableType, StepType, dim>::get_num_local_faces() const {
+  return m_num_local_faces;
 }

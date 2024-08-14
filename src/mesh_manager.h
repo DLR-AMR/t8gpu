@@ -17,8 +17,16 @@ namespace t8gpu {
   template<typename float_type, size_t dim>
   class MeshConnectivityAccessor {
   public:
-    MeshConnectivityAccessor(int* ranks, t8_locidx_t* indices, t8_locidx_t* face_neighbors, float_type* face_normals, float_type* face_surfaces)
-      : m_ranks(ranks), m_indices(indices), m_face_neighbors(face_neighbors), m_face_normals(m_face_normals), m_face_surfaces(face_surfaces) {}
+    MeshConnectivityAccessor(const int* ranks,
+			     const t8_locidx_t* indices,
+			     const t8_locidx_t* face_neighbors,
+			     const float_type* face_normals,
+			     const float_type* face_surfaces)
+      : m_ranks(ranks),
+	m_indices(indices),
+	m_face_neighbors(face_neighbors),
+	m_face_normals(face_normals),
+	m_face_surfaces(face_surfaces) {}
 
     [[nodiscard]] __device__ t8_locidx_t get_face_surface(int face_idx) const {
       return m_face_surfaces[face_idx];
@@ -45,11 +53,11 @@ namespace t8gpu {
     }
 
   private:
-    int*         m_ranks;
-    t8_locidx_t* m_indices;
-    t8_locidx_t* m_face_neighbors;
-    float_type*  m_face_normals;
-    float_type*  m_face_surfaces;
+    const int*         m_ranks;
+    const t8_locidx_t* m_indices;
+    const t8_locidx_t* m_face_neighbors;
+    const float_type*  m_face_normals;
+    const float_type*  m_face_surfaces;
   };
 
   ///
@@ -125,7 +133,11 @@ namespace t8gpu {
 
     void partition();
 
-    MeshConnectivityAccessor<float_type, dim> get_connectivity_information() const;
+    [[nodiscard]] MeshConnectivityAccessor<float_type, dim> get_connectivity_information() const;
+
+    [[nodiscard]] int get_num_local_elements() const;
+    [[nodiscard]] int get_num_ghost_elements() const;
+    [[nodiscard]] int get_num_local_faces() const;
 
     void compute_edge_connectivity();
   private:
