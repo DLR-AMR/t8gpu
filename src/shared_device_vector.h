@@ -74,7 +74,7 @@ namespace t8gpu {
     /// with the current size of the vector. This functions may not
     /// need to reallocate even if new_size > size the copy over as
     /// the capacity of the allocation might be greater than new_size
-    /// and if not we overallocate by a factor 1/2 to monimize
+    /// and if not we overallocate by a factor 1/2 to minimize
     /// reallocation on later calls to the resize function.
     inline void resize(size_t new_size);
 

@@ -216,6 +216,10 @@ namespace t8gpu {
     [[nodiscard]] int get_num_local_faces() const;
 
   private:
+
+    /// We make the base class resize member function private.
+    using MemoryManager<VariableType, StepType>::resize;
+
     sc_MPI_Comm      m_comm;
     int              m_rank;
     int              m_nb_ranks;

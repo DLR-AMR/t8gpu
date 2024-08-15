@@ -195,27 +195,116 @@ namespace t8gpu {
     MemoryManager(size_t nb_elements = 0, sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
     ~MemoryManager() = default;
 
-    inline void resize(size_t new_size); // make this protected
-
+    /// @brief set a variable.
+    ///
+    /// @param [in]   step     the step for which the variable is set.
+    /// @param [in]   variable the name of the variable to set.
+    /// @param [in]   buffer   the GPU buffer to copy from.
     void set_variable(step_index_type step, variable_index_type variable, const thrust::device_vector<float_type>& buffer);
+
+    /// @brief set a variable.
+    ///
+    /// @param [in]   step     the step for which the variable is set.
+    /// @param [in]   variable the name of the variable to set.
+    /// @param [in]   buffer   the CPU buffer to copy from.
     void set_variable(step_index_type step, variable_index_type variable, const thrust::host_vector<float_type>& buffer);
+
+    /// @brief set a variable.
+    ///
+    /// @param [in]   step     the step for which the variable is set.
+    /// @param [in]   variable the name of the variable to set.
+    /// @param [in]   buffer   the CPU buffer to copy from (raw pointer).
     void set_variable(step_index_type step, variable_index_type variable, float_type* buffer);
 
+
+    /// @brief set the volume variable.
+    ///
+    /// @param [in]   buffer   the CPU buffer to copy from.
     void set_volume(const thrust::host_vector<float_type>& buffer);
+
+    /// @brief set the volume variable.
+    ///
+    /// @param [in]   buffer   the GPU buffer to copy from.
     void set_volume(const thrust::device_vector<float_type>& buffer);
+
+    /// @brief set the volume variable.
+    ///
+    /// @param [in]   buffer   the GPU buffer to copy from (raw pointer).
+    ///
+    /// @warning the buffer needs to be of size the number of elements.
     void set_volume(float_type* buffer);
 
+    /// @brief get the volume variable of elements owned by this rank.
+    ///
+    /// @return A pointer to GPU memory containing the volume data.
     float_type* get_own_volume();
+
+    /// @brief get the volume variable of elements owned by this rank.
+    ///
+    /// @return A pointer to GPU memory containing the volume data.
     float_type const* get_own_volume() const;
 
+    /// @brief get the volume variable of elements owned by all ranks.
+    ///
+    /// @return An array of pointers to GPU memory containing the
+    ///         volume data for each ranks.
     float_type* const* get_all_volume();
+
+    /// @brief get the volume variable of elements owned by all ranks.
+    ///
+    /// @return An array of pointers to GPU memory containing the
+    ///         volume data for each ranks.
     float_type const* const* get_all_volume() const;
 
+    /// @brief get all variables owned by this rank.
+    ///
+    /// @param [in]   step the step from which we retrieve the variables.
+    ///
+    /// @return An object from which we can query the variables on the
+    ///         CPU/GPU (but only access the data on the GPU).
     [[nodiscard]] MemoryAccessorOwn<VariableType> get_own_variables(step_index_type step);
+
+    /// @brief get all variables owned by all ranks.
+    ///
+    /// @param [in]   step the step from which we retrieve the variables.
+    ///
+    /// @return An object from which we can query the variables on the
+    ///         CPU/GPU (but only access the data on the GPU).
     [[nodiscard]] MemoryAccessorAll<VariableType> get_all_variables(step_index_type step);
 
+    /// @brief get variable owned by this rank.
+    ///
+    /// @param [in]   step     the step from which we retrieve the variables.
+    /// @param [in]   variable the name of the variable.
+    ///
+    /// @return A pointer to GPU memory containing the variable data.
     [[nodiscard]] float_type* get_own_variable(step_index_type step, variable_index_type variable);
+
+    /// @brief get variable owned by this rank.
+    ///
+    /// @param [in]   step     the step from which we retrieve the variables.
+    /// @param [in]   variable the name of the variable.
+    ///
+    /// @return A pointer to GPU memory containing the variable data.
     [[nodiscard]] float_type const* get_own_variable(step_index_type step, variable_index_type variable) const;
+
+    /// @brief resize the variables.
+    ///
+    /// @param [in]   new_size new size to use.
+    ///
+    /// It is important to state that this function needs to be called
+    /// by all MPI ranks. Otherwise this results in a lock. If a ranks
+    /// does not need to change the size of the allocation, use resize
+    /// with the current size of the vector. This functions may not
+    /// need to reallocate even if new_size > size the copy over as
+    /// the capacity of the allocation might be greater than new_size
+    /// and if not we overallocate by a factor 1/2 to minimize
+    /// reallocation on later calls to the resize function. It is
+    /// important to note that all previously variable data is
+    /// discarded upon a resize. To properly set new values, an
+    /// explicit copy beforehand is needed to restore properly
+    /// variable data (and do for instance interpolation).
+    inline void resize(size_t new_size);
 
   private:
     t8gpu::SharedDeviceVector<std::array<float_type, nb_variables*nb_steps+1>> m_device_buffer;
