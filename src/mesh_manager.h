@@ -24,6 +24,7 @@ namespace t8gpu {
   ///
   template<typename float_type, size_t dim>
   class MeshConnectivityAccessor {
+    /// Friend class that can instantiate such a class.
     template<typename VT, typename ST, size_t dim_> friend class MeshManager;
 
   public:

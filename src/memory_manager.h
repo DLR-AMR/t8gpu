@@ -1,6 +1,7 @@
 /// @file memory_manager.h
 /// @brief This header file declares the MemoryManager class that
-///        handles GPU memory allocation.
+///        handles GPU memory allocation as well as the
+///        MemoryAccessor{Own,All} helper accessor classes.
 
 #ifndef MEMORY_MANAGER_H
 #define MEMORY_MANAGER_H
@@ -80,6 +81,7 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorOwn {
+    // Friend classesthat can instantiate such a class.
     template<typename VT, typename ST> friend class MemoryManager;
     template<typename VT, typename ST, size_t dim_> friend class MeshManager;
   public:
@@ -87,23 +89,52 @@ namespace t8gpu {
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
+    /// @brief copy constructor.
     MemoryAccessorOwn(const MemoryAccessorOwn& other) = default;
 
+    /// @brief getter function to access variable data.
+    ///
+    /// @param i variable index.
+    ///
+    /// @return device pointer to variable data.
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type*> get(T i) {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
+    /// @brief getter function to access variable data.
+    ///
+    /// @param i variable index.
+    ///
+    /// @return device pointer to variable data.
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const*> get(T i) const {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
+    /// @brief getter function to access multiple variables at the
+    ///        same time.
+    ///
+    /// @param is variable indices.
+    ///
+    /// @return array of device pointers to variable data.
+    ///
+    /// This function is meant to be used in conjunction with c++ 17
+    /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type*, sizeof...(Ts)>> get(Ts... is) {
       return { get(static_cast<variable_index_type>(is))... };
     }
 
+    /// @brief getter function to access multiple variables at the
+    ///        same time.
+    ///
+    /// @param is variable indices.
+    ///
+    /// @return array of device pointers to variable data.
+    ///
+    /// This function is meant to be used in conjunction with c++ 17
+    /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const*, sizeof...(Ts)>> get(Ts... is) const {
       return {  get(static_cast<variable_index_type>(is))... };
@@ -112,6 +143,15 @@ namespace t8gpu {
   private:
     std::array<float_type*, nb_variables> m_pointers;
 
+    /// @brief constructor of MemoryAccessorOwn
+    ///
+    /// This constructor constructs an accessor by forwarding a
+    /// container type. It is intentionally by design made private so
+    /// as to restrict a user from constructing such an object
+    /// manually. Only the friended class part of t8gpu can construct
+    /// this interface object. Moreover, this class is only accessible
+    /// through member functions. This allows us to freely change
+    /// implementation details.
     template<typename Container>
     MemoryAccessorOwn(Container&& array) : m_pointers(std::forward<Container>(array)) {}
   };
@@ -146,6 +186,7 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorAll {
+    // Friend classesthat can instantiate such a class.
     template<typename VT, typename ST> friend class MemoryManager;
     template<typename VT, typename ST, size_t dim_> friend class MeshManager;
 
@@ -154,21 +195,49 @@ namespace t8gpu {
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
+    /// @brief getter function to access variable data.
+    ///
+    /// @param i variable index.
+    ///
+    /// @return an array of device pointer to variable data.
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type* const*> get(T i) {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
+    /// @brief getter function to access variable data.
+    ///
+    /// @param i variable index.
+    ///
+    /// @return an array of device pointer to variable data.
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const* const*> get(T i) const {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
+    /// @brief getter function to access multiple variables at the
+    ///        same time.
+    ///
+    /// @param is variable indices.
+    ///
+    /// @return array of arrays to device pointers to variable data.
+    ///
+    /// This function is meant to be used in conjunction with c++ 17
+    /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type* const*, sizeof...(Ts)>> get(Ts... is) {
       return { get(static_cast<variable_index_type>(is))... };
     }
 
+    /// @brief getter function to access multiple variables at the
+    ///        same time.
+    ///
+    /// @param is variable indices.
+    ///
+    /// @return array of arrays to device pointers to variable data.
+    ///
+    /// This function is meant to be used in conjunction with c++ 17
+    /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const* const*, sizeof...(Ts)>> get(Ts... is) const {
       return { get(static_cast<variable_index_type>(is))... };
@@ -177,6 +246,15 @@ namespace t8gpu {
   private:
     std::array<float_type* const*, nb_variables> m_pointers;
 
+    /// @brief constructor of MemoryAccessorAll
+    ///
+    /// This constructor constructs an accessor by forwarding a
+    /// container type. It is intentionally by design made private so
+    /// as to restrict a user from constructing such an object
+    /// manually. Only the friended class part of t8gpu can construct
+    /// this interface object. Moreover, this class is only accessible
+    /// through member functions. This allows us to freely change
+    /// implementation details.
     template<typename Container>
     MemoryAccessorAll(Container&& array) : m_pointers(std::forward<Container>(array)) {}
   };
