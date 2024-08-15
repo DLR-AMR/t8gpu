@@ -13,24 +13,20 @@
 
 namespace t8gpu {
 
+  /// Forward declaration of MeshManager class needed to make it a
+  /// friend class of the MeshConnectivityAccessor{Own,All}.
+  template<typename VariableType, typename StepType, size_t dim>
+  class MeshManager;
+
   ///
   /// @brief This class gives access to face connectivity information
   ///        on the GPU.
   ///
   template<typename float_type, size_t dim>
   class MeshConnectivityAccessor {
-  public:
-    MeshConnectivityAccessor(const int* ranks,
-			     const t8_locidx_t* indices,
-			     const t8_locidx_t* face_neighbors,
-			     const float_type* face_normals,
-			     const float_type* face_surfaces)
-      : m_ranks(ranks),
-	m_indices(indices),
-	m_face_neighbors(face_neighbors),
-	m_face_normals(face_normals),
-	m_face_surfaces(face_surfaces) {}
+    template<typename VT, typename ST, size_t dim_> friend class MeshManager;
 
+  public:
     MeshConnectivityAccessor(const MeshConnectivityAccessor& other) = default;
 
     [[nodiscard]] __device__ inline t8_locidx_t get_face_surface(int face_idx) const {
@@ -63,6 +59,17 @@ namespace t8gpu {
     const t8_locidx_t* m_face_neighbors;
     const float_type*  m_face_normals;
     const float_type*  m_face_surfaces;
+
+    MeshConnectivityAccessor(const int* ranks,
+			     const t8_locidx_t* indices,
+			     const t8_locidx_t* face_neighbors,
+			     const float_type* face_normals,
+			     const float_type* face_surfaces)
+      : m_ranks(ranks),
+	m_indices(indices),
+	m_face_neighbors(face_neighbors),
+	m_face_normals(face_normals),
+	m_face_surfaces(face_surfaces) {}
   };
 
   ///

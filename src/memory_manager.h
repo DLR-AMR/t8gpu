@@ -40,6 +40,16 @@ namespace t8gpu {
     static constexpr size_t nb_steps = StepType::nb_steps;
   };
 
+  /// Forward declaration of MemoryManager class needed to make it a
+  /// friend class of the MemoryAccessor{Own,All}.
+  template<typename VariableType, typename StepType>
+  class MemoryManager;
+
+  /// Forward declaration of MeshManager class needed to make it a
+  /// friend class of the MemoryAccessor{Own,All}.
+  template<typename VariableType, typename StepType, size_t dim>
+  class MeshManager;
+
   ///
   /// @brief A class that is used to access variables on the CPU and
   ///        GPU side using their name or index.
@@ -70,13 +80,12 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorOwn {
+    template<typename VT, typename ST> friend class MemoryManager;
+    template<typename VT, typename ST, size_t dim_> friend class MeshManager;
   public:
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
-
-    template<typename Container>
-    MemoryAccessorOwn(Container&& array) : m_pointers(std::forward<Container>(array)) {}
 
     MemoryAccessorOwn(const MemoryAccessorOwn& other) = default;
 
@@ -102,6 +111,9 @@ namespace t8gpu {
 
   private:
     std::array<float_type*, nb_variables> m_pointers;
+
+    template<typename Container>
+    MemoryAccessorOwn(Container&& array) : m_pointers(std::forward<Container>(array)) {}
   };
 
   ///
@@ -134,13 +146,13 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorAll {
+    template<typename VT, typename ST> friend class MemoryManager;
+    template<typename VT, typename ST, size_t dim_> friend class MeshManager;
+
   public:
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
-
-    template<typename Container>
-    MemoryAccessorAll(Container&& array) : m_pointers(std::forward<Container>(array)) {}
 
     template<typename T>
     [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type* const*> get(T i) {
@@ -164,6 +176,9 @@ namespace t8gpu {
 
   private:
     std::array<float_type* const*, nb_variables> m_pointers;
+
+    template<typename Container>
+    MemoryAccessorAll(Container&& array) : m_pointers(std::forward<Container>(array)) {}
   };
 
   ///
