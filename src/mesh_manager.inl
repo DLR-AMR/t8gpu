@@ -1,6 +1,7 @@
 #include <array>
 #include <mesh_manager.h>
 #include <thrust/host_vector.h>
+#include <type_traits>
 
 #include <utils/cuda.h>
 #include <utils/profiling.h>
@@ -222,17 +223,18 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_
     int old_level = old_levels[old_idx];
     int new_level = new_levels[new_idx];
 
+    constexpr int nb_subelements = (dim == 2) ? 4 : 8;
     if (old_level < new_level) {  // refined
-      for (size_t i = 0; i < 4; i++) {
+      for (size_t i = 0; i < nb_subelements; i++) {
         element_adapt_data[new_idx + i] = old_idx;
       }
       old_idx += 1;
-      new_idx += 4;
+      new_idx += nb_subelements;
     } else if (old_level > new_level) {  // coarsened
-      for (size_t i = 0; i < 4; i++) {
+      for (size_t i = 0; i < nb_subelements; i++) {
       }
       element_adapt_data[new_idx] = old_idx;
-      old_idx += 4;
+      old_idx += nb_subelements;
       new_idx += 1;
     } else {
       element_adapt_data[new_idx] = old_idx;
@@ -252,7 +254,7 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_
 
   std::array<float_type* __restrict__, nb_variables> new_variables {};
   for (size_t k=0; k<nb_variables; k++) {
-    new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + sizeof(float_type)*num_new_elements;
+    new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + k*num_new_elements;
   }
 
   thrust::device_vector<float_type> device_element_volume_adapted(num_new_elements);
@@ -437,4 +439,43 @@ int t8gpu::MeshManager<VariableType, StepType, dim>::get_num_ghost_elements() co
 template<typename VariableType, typename StepType, size_t dim>
 int t8gpu::MeshManager<VariableType, StepType, dim>::get_num_local_faces() const {
   return m_num_local_faces;
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+void t8gpu::MeshManager<VariableType, StepType, dim>::save_variable_to_vtk(t8gpu::MeshManager<VariableType, StepType, dim>::step_index_type step, t8gpu::MeshManager<VariableType, StepType, dim>::variable_index_type variable, const std::string& prefix) const {
+
+  thrust::host_vector<float_type> element_variable(m_num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(element_variable.data(), this->get_own_variable(step, variable), sizeof(float_type)*m_num_local_elements, cudaMemcpyDeviceToHost));
+
+  t8_vtk_data_field_t vtk_data_field {};
+  vtk_data_field.type = T8_VTK_SCALAR;
+  strcpy(vtk_data_field.description, "density"); // TODO: be able to retrieve variable name as a string.
+  if constexpr (std::is_same_v<float_type, double>) { // no need for conversion
+    vtk_data_field.data = element_variable.data();
+    t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
+			    true,  /* write_treeid */
+			    true,  /* write_mpirank */
+			    true,  /* write_level */
+			    true,  /* write_element_id */
+			    false, /* write_ghost */
+			    false, /* write_curved */
+			    false, /* do_not_use_API */
+			    1,     /* num_data */
+			    &vtk_data_field);
+  } else { // we need to convert to double precision
+    thrust::host_vector<double> double_element_variable(m_num_local_elements);
+    for (t8_locidx_t i=0; i<m_num_local_elements; i++)
+      double_element_variable[i] = static_cast<double>(element_variable[i]);
+    vtk_data_field.data = double_element_variable.data();
+    t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
+			    true,  /* write_treeid */
+			    true,  /* write_mpirank */
+			    true,  /* write_level */
+			    true,  /* write_element_id */
+			    false, /* write_ghost */
+			    false, /* write_curved */
+			    false, /* do_not_use_API */
+			    1,     /* num_data */
+			    &vtk_data_field);
+  }
 }

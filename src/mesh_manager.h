@@ -247,7 +247,7 @@ namespace t8gpu {
     /// recompute the connectivity information and to discard any
     /// other object related to connectivity initialized before the
     /// partition.
-    void partition(StepType step);
+    void partition(step_index_type step);
 
     /// @brief Ghost layer and connectivity information computation
     ///        member function.
@@ -262,6 +262,18 @@ namespace t8gpu {
     /// functions after the last call to `compute_ghost_information`
     /// or the initial construction of the class.
     void compute_connectivity_information();
+
+    /// @brief Save current quantity of interest to vkt format.
+    ///
+    /// @param [in] step     specifies the step from which to choose the
+    ///                      variable.
+    /// @param [in] variable specifies the variable.
+    /// @param [in] prefix   specifies the prefix used to saved the vtk
+    ///             file.
+    ///
+    /// This member function saves the current simulation step in the
+    /// vtk file format.
+    void save_variable_to_vtk(step_index_type step, variable_index_type variable, const std::string& prefix) const;
 
     /// @brief get a connectivity struct that can be passed and used
     ///        on the GPU.
