@@ -1,6 +1,7 @@
 /// @file mesh_manager.h
 /// @brief This header file declares the MeshManager class that
-///        handles t8code meshes.
+///        handles t8code meshes as well as the
+///        MeshConnectivityAccessor helper class.
 
 #ifndef MESH_MANAGER_H
 #define MESH_MANAGER_H
@@ -24,16 +25,32 @@ namespace t8gpu {
   ///
   template<typename float_type, size_t dim>
   class MeshConnectivityAccessor {
-    /// Friend class that can instantiate such a class.
+    /// Friend class that can instantiate this a class.
     template<typename VT, typename ST, size_t dim_> friend class MeshManager;
 
   public:
+
+    /// @brief copy constructor.
     MeshConnectivityAccessor(const MeshConnectivityAccessor& other) = default;
 
-    [[nodiscard]] __device__ inline t8_locidx_t get_face_surface(int face_idx) const {
+    /// @brief assignment constructor.
+    MeshConnectivityAccessor& operator=(const MeshConnectivityAccessor& other) = default;
+
+    /// @brief get the surface of a face.
+    ///
+    /// @param face_idx the face index.
+    ///
+    /// @return the surface of the face.
+    [[nodiscard]] __device__ inline float_type get_face_surface(int face_idx) const {
       return m_face_surfaces[face_idx];
     }
 
+    /// @brief get the normal of a face.
+    ///
+    /// @param face_idx the face index.
+    ///
+    /// @return the normal of the face specified as a dim-element
+    ///         array.
     [[nodiscard]] __device__ inline std::array<float_type, dim> get_face_normal(int face_idx) const {
       std::array<float_type, dim> normal {};
       for (int k=0; k<dim; k++) {
@@ -42,14 +59,48 @@ namespace t8gpu {
       return normal;
     }
 
+    /// @brief get index of face neighbor elements.
+    ///
+    /// @param face_idx the face index.
+    ///
+    /// @return the indices of the 2 face neighbors. Those indices can
+    ///         refer to either owned elements (if the index is < than
+    ///         the local number of elements), or ghost elements (if
+    ///         the face is at a boundary between two domains owned by
+    ///         different ranks). To fetch data for those elements,
+    ///         you need to retrieve the remove indices and ranks
+    ///         using the following member functions.
+    ///
+    /// @warning It is important to note that an index returned by
+    ///          this function is a local index and not a remote
+    ///          index. If it is a ghost element, to get the remote
+    ///          index into the rank that owns the ghost element, use
+    ///          the get_element_owner_remote_rank member function to
+    ///          get the remote index and get_element_owner_rank to
+    ///          get the owning rank.
     [[nodiscard]] __device__ inline std::array<t8_locidx_t, 2> get_face_neighbor_indices(int face_idx) const {
       return {m_face_neighbors[2*face_idx], m_face_neighbors[2*face_idx+1]};
     }
 
+    /// @brief get the owning rank of an element.
+    ///
+    /// @param element_idx local element index.
+    ///
+    /// @return The rank that owns the element.
     [[nodiscard]] __device__ inline t8_locidx_t get_element_owner_rank(int element_idx) const {
       return m_ranks[element_idx];
     }
 
+    /// @brief get the remote index of an element.
+    ///
+    /// @param element_idx local element index.
+    ///
+    /// @return The remote index into the data array of the owning
+    ///         rank. If element_idx refers to a element owned by the
+    ///         current rank, the function returns the same
+    ///         index. Otherwise, if the element_idx refers to a ghost
+    ///         element, it returns the offset into the owning data
+    ///         array of the ghost element.
     [[nodiscard]] __device__ inline t8_locidx_t get_element_owner_remote_index(int element_idx) const {
       return m_indices[element_idx];
     }
@@ -244,7 +295,6 @@ namespace t8gpu {
     thrust::host_vector<t8_locidx_t>   m_indices;
     thrust::device_vector<t8_locidx_t> m_device_indices;
 
-    // host and device face connectivity data
     thrust::host_vector<t8_locidx_t>   m_face_neighbors;
     thrust::device_vector<t8_locidx_t> m_device_face_neighbors;
     thrust::host_vector<float_type>    m_face_normals;
@@ -252,8 +302,8 @@ namespace t8gpu {
     thrust::host_vector<float_type>    m_face_area;
     thrust::device_vector<float_type>  m_device_face_area;
 
-    thrust::host_vector<float_type>   m_element_refinement_criteria;
-    thrust::device_vector<float_type> m_device_refinement_criteria;
+    thrust::host_vector<float_type>    m_element_refinement_criteria;
+    thrust::device_vector<float_type>  m_device_refinement_criteria;
 
     struct UserData {
       thrust::host_vector<float_type>* element_refinement_criteria;

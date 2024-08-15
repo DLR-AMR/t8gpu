@@ -81,7 +81,7 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorOwn {
-    // Friend classesthat can instantiate such a class.
+    // Friend classesthat can instantiate this a class.
     template<typename VT, typename ST> friend class MemoryManager;
     template<typename VT, typename ST, size_t dim_> friend class MeshManager;
   public:
@@ -91,6 +91,9 @@ namespace t8gpu {
 
     /// @brief copy constructor.
     MemoryAccessorOwn(const MemoryAccessorOwn& other) = default;
+
+    /// @brief assignment operator.
+    MemoryAccessorOwn& operator=(const MemoryAccessorOwn& other) = default;
 
     /// @brief getter function to access variable data.
     ///
@@ -186,7 +189,7 @@ namespace t8gpu {
   /// }
   template<typename VariableType>
   class MemoryAccessorAll {
-    // Friend classesthat can instantiate such a class.
+    // Friend classesthat can instantiate this a class.
     template<typename VT, typename ST> friend class MemoryManager;
     template<typename VT, typename ST, size_t dim_> friend class MeshManager;
 
@@ -194,6 +197,12 @@ namespace t8gpu {
     using variable_index_type = typename variable_traits<VariableType>::index_type;
     using float_type = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
+
+    /// @brief copy constructor.
+    MemoryAccessorAll(const MemoryAccessorAll& other) = default;
+
+    /// @brief assignment operator.
+    MemoryAccessorAll& operator=(const MemoryAccessorAll& other) = default;
 
     /// @brief getter function to access variable data.
     ///
@@ -286,6 +295,7 @@ namespace t8gpu {
     /// @param [in]   comm        specifies the MPI communicator to use.
     ///
     MemoryManager(size_t nb_elements = 0, sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
+
     ~MemoryManager() = default;
 
     /// @brief set a variable.
