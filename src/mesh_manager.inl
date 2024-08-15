@@ -159,7 +159,7 @@ int t8gpu::MeshManager<VariableType, StepType, dim>::adapt_callback_iteration(t8
 }
 
 template<typename VariableType, typename StepType, size_t dim>
-void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_vector<int>& refinement_criteria, StepType step) {
+void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_vector<typename t8gpu::MeshManager<VariableType, StepType, dim>::float_type>& refinement_criteria, StepType step) {
   t8_forest_ref(m_forest);
   assert(t8_forest_is_committed(m_forest));
 
@@ -292,7 +292,7 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
-template<typename VariableType, typename StepType, size_t dim>
+template<typename VariableType>
 __global__ void t8gpu::adapt_variables_and_volume(MemoryAccessorOwn<VariableType> variables_old,
 						  std::array<typename variable_traits<VariableType>::float_type* __restrict__, variable_traits<VariableType>::nb_variables> variables_new,
 						  typename variable_traits<VariableType>::float_type const* __restrict__ volume_old,

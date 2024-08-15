@@ -176,7 +176,7 @@ namespace t8gpu {
   public:
     using float_type = typename variable_traits<VariableType>::float_type;
     using variable_index_type = typename variable_traits<VariableType>::index_type;
-    static constexpr size_t nb_variables = variable_traits<VariableType>::nb_variables;
+    static constexpr int nb_variables = variable_traits<VariableType>::nb_variables;
 
     using step_index_type = typename step_traits<StepType>::index_type;
     static constexpr size_t nb_steps = step_traits<StepType>::nb_steps;
@@ -236,16 +236,18 @@ namespace t8gpu {
     /// recompute the connectivity information and to discard any
     /// other object related to connectivity initialized before the
     /// refinement.
-    void refine(const thrust::host_vector<int>& refinement_criteria, StepType step);
+    void refine(const thrust::host_vector<float_type>& refinement_criteria, StepType step);
 
     /// @brief repartition the elements among the ranks.
+    ///
+    /// @param [in] step the step for which the variables are copied.
     ///
     /// It is important to note that after such an operation, it is
     /// necessary to call compute_connectivity_information to
     /// recompute the connectivity information and to discard any
     /// other object related to connectivity initialized before the
     /// partition.
-    void partition();
+    void partition(StepType step);
 
     /// @brief Ghost layer and connectivity information computation
     ///        member function.
