@@ -33,11 +33,11 @@ namespace t8gpu {
 
     MeshConnectivityAccessor(const MeshConnectivityAccessor& other) = default;
 
-    [[nodiscard]] __device__ t8_locidx_t get_face_surface(int face_idx) const {
+    [[nodiscard]] __device__ inline t8_locidx_t get_face_surface(int face_idx) const {
       return m_face_surfaces[face_idx];
     }
 
-    [[nodiscard]] __device__ std::array<float_type, dim> get_face_normal(int face_idx) const {
+    [[nodiscard]] __device__ inline std::array<float_type, dim> get_face_normal(int face_idx) const {
       std::array<float_type, dim> normal {};
       for (int k=0; k<dim; k++) {
 	normal[k] = m_face_normals[dim*face_idx+k];
@@ -45,15 +45,15 @@ namespace t8gpu {
       return normal;
     }
 
-    [[nodiscard]] __device__ std::array<t8_locidx_t, 2> get_face_neighbor_indices(int face_idx) const {
+    [[nodiscard]] __device__ inline std::array<t8_locidx_t, 2> get_face_neighbor_indices(int face_idx) const {
       return {m_face_neighbors[2*face_idx], m_face_neighbors[2*face_idx+1]};
     }
 
-    [[nodiscard]] __device__ t8_locidx_t get_element_owner_rank(int element_idx) const {
+    [[nodiscard]] __device__ inline t8_locidx_t get_element_owner_rank(int element_idx) const {
       return m_ranks[element_idx];
     }
 
-    [[nodiscard]] __device__ t8_locidx_t get_element_owner_remote_index(int element_idx) const {
+    [[nodiscard]] __device__ inline t8_locidx_t get_element_owner_remote_index(int element_idx) const {
       return m_indices[element_idx];
     }
 
@@ -99,15 +99,15 @@ namespace t8gpu {
   ///  indices │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 ┃ 0 │ 2 │ 1 │	   │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 ┃ 2 │ 1 │ 0 │
   ///          └───┴───┴───┴───┴───┴───┸───┴───┴───┘	   └───┴───┴───┴───┴───┴───┸───┴───┴───┘
   ///
-  ///          └──────────────────────┘ └──────────┘      └──────────────────────┘ └──────────┘
-  ///               owned elements       ghost or	        owned elements         ghost or
-  ///                                 remote elements	                            remote elements
+  ///          └──────────────────────┘ └──────────┘       └──────────────────────┘ └──────────┘
+  ///               owned elements       ghost or	         owned elements         ghost or
+  ///                                 remote elements	                             remote elements
   ///
-  ///          ┌───┬───┬───┬───┬───┬───┐   ╔═══╗          ┌───┬───┬───┬───┬───┬───┐
-  ///  data    │   │   │   │   │   │   │   ║   ║          │   │   │   │   │   │   │
-  ///          └───┴───┴───┴───┴───┴───┘   ╚═══╝          └───┴───┴───┴───┴───┴───┘
-  ///                                        │                      │
-  ///                                        └──────➤───────➤───────┘
+  ///          ┌───┬───┬───┬───┬───┬───┐   ╔═══╗           ┌───┬───┬───┬───┬───┬───┐
+  ///  data    │   │   │   │   │   │   │   ║   ║           │   │   │   │   │   │   │
+  ///          └───┴───┴───┴───┴───┴───┘   ╚═══╝           └───┴───┴───┴───┴───┴───┘
+  ///                                        │                       │
+  ///                                        └───────➤───────➤───────┘
   ///
   /// The class MeshConnectvityAccessor is prodived to access
   /// connectivity information.

@@ -187,6 +187,11 @@ namespace t8gpu {
     using step_index_type = typename step_traits<StepType>::index_type;
     static constexpr size_t nb_steps = step_traits<StepType>::nb_steps;
 
+    /// @brief Constructor of the MemoryManager class.
+    ///
+    /// @param [in]   nb_elements specifies the initial number of elements.
+    /// @param [in]   comm        specifies the MPI communicator to use.
+    ///
     MemoryManager(size_t nb_elements = 0, sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
     ~MemoryManager() = default;
 
