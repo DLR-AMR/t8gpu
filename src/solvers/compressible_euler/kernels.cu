@@ -321,3 +321,34 @@ __global__ void t8gpu::kepes_compute_fluxes(MemoryAccessorAll<VariableList> vari
   atomicAdd(&fluxes_rho_e[l_rank][l_index], -rho_e_flux);
   atomicAdd(&fluxes_rho_e[r_rank][r_index],  rho_e_flux);
 }
+
+__global__ void t8gpu::estimate_gradient(MemoryAccessorAll<VariableList> data_next,
+					 MemoryAccessorAll<VariableList> data_fluxes,
+					 typename variable_traits<VariableList>::float_type const* __restrict__ normal,
+					 typename variable_traits<VariableList>::float_type const* __restrict__ area,
+					 int const* e_idx, int* rank,
+					 t8_locidx_t* indices, int nb_edges) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= nb_edges) return;
+
+  using float_type = typename variable_traits<VariableList>::float_type;
+
+  auto [rho, rho_v1] = data_next.get(Rho, Rho_v1);
+  auto rho_bis = data_next.get(Rho);
+
+  auto rho_gradient = data_fluxes.get(Rho);
+
+  int l_rank  = rank[e_idx[2 * i]];
+  int l_index = indices[e_idx[2 * i]];
+
+  int r_rank  = rank[e_idx[2 * i + 1]];
+  int r_index = indices[e_idx[2 * i + 1]];
+
+  float_type rho_l = rho[l_rank][l_index];
+  float_type rho_r = rho[r_rank][r_index];
+
+  float_type gradient = abs(rho_r - rho_l);
+
+  atomicAdd(&rho_gradient[l_rank][l_index], gradient);
+  atomicAdd(&rho_gradient[r_rank][r_index], gradient);
+}
