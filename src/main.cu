@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
     size_t dim = 3;
     sc_MPI_Comm comm = MPI_COMM_WORLD;
     t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();
-    t8_cmesh_t cmesh = t8_cmesh_new_periodic(comm, int{dim});
+    t8_cmesh_t cmesh = t8_cmesh_new_periodic(comm, static_cast<int>(dim));
     t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 5, true, comm);
 
     t8gpu::CompressibleEulerSolver solver {comm, scheme, cmesh, forest};

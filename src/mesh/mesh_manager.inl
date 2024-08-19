@@ -123,7 +123,8 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::initialize_variables(Func 
 
   this->set_volume(std::move(element_volume));
 
-  compute_edge_connectivity();
+  this->compute_face_connectivity();
+
   m_device_face_neighbors = m_face_neighbors;
   m_device_face_normals = m_face_normals;
   m_device_face_area = m_face_area;
@@ -160,6 +161,35 @@ int t8gpu::MeshManager<VariableType, StepType, dim>::adapt_callback_iteration(t8
   }
 
   return 0;
+}
+
+template<typename VariableType>
+__global__ void adapt_variables_and_volume(t8gpu::MemoryAccessorOwn<VariableType> variables_old,
+					   std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
+					   t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
+					   typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
+					   typename t8gpu::variable_traits<VariableType>::float_type* __restrict__       volume_new,
+					   t8_locidx_t* adapt_data,
+					   int nb_new_elements) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i >= nb_new_elements) return;
+
+  int diff = adapt_data[i + 1] - adapt_data[i];
+  int nb_elements_sum = max(1, diff);
+
+  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.25 : (diff == 1 ? 1.0 : 4.0)));
+  if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
+    volume_new[i] = volume_old[adapt_data[i]] * 0.25;
+  }
+
+  for (int k=0; k<t8gpu::variable_traits<VariableType>::nb_variables; k++) {
+    variables_new[k][i] = 0.0;
+
+    for (int j = 0; j < nb_elements_sum; j++) {
+      variables_new[k][i] += variables_old.get(k)[adapt_data[i] + j] / static_cast<typename t8gpu::variable_traits<VariableType>::float_type>(nb_elements_sum);
+    }
+  }
 }
 
 template<typename VariableType, typename StepType, size_t dim>
@@ -297,36 +327,8 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
-template<typename VariableType>
-__global__ void t8gpu::adapt_variables_and_volume(MemoryAccessorOwn<VariableType> variables_old,
-						  std::array<typename variable_traits<VariableType>::float_type* __restrict__, variable_traits<VariableType>::nb_variables> variables_new,
-						  typename variable_traits<VariableType>::float_type const* __restrict__ volume_old,
-						  typename variable_traits<VariableType>::float_type* __restrict__       volume_new,
-						  t8_locidx_t* adapt_data,
-						  int nb_new_elements) {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (i >= nb_new_elements) return;
-
-  int diff = adapt_data[i + 1] - adapt_data[i];
-  int nb_elements_sum = max(1, diff);
-
-  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.25 : (diff == 1 ? 1.0 : 4.0)));
-  if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
-    volume_new[i] = volume_old[adapt_data[i]] * 0.25;
-  }
-
-  for (int k=0; k<variable_traits<VariableType>::nb_variables; k++) {
-    variables_new[k][i] = 0.0;
-
-    for (int j = 0; j < nb_elements_sum; j++) {
-      variables_new[k][i] += variables_old.get(k)[adapt_data[i] + j] / static_cast<typename variable_traits<VariableType>::float_type>(nb_elements_sum);
-    }
-  }
-}
-
 template<typename VariableType, typename StepType, size_t dim>
-void t8gpu::MeshManager<VariableType, StepType, dim>::compute_edge_connectivity() {
+void t8gpu::MeshManager<VariableType, StepType, dim>::compute_face_connectivity() {
   m_face_neighbors.clear();
   m_face_normals.clear();
   m_face_area.clear();
@@ -412,7 +414,8 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
   m_device_ranks = m_ranks;
   m_device_indices = m_indices;
 
-  compute_edge_connectivity();
+  this->compute_face_connectivity();
+
   m_device_face_neighbors = m_face_neighbors;
   m_device_face_normals = m_face_normals;
   m_device_face_area = m_face_area;

@@ -323,21 +323,11 @@ namespace t8gpu {
       thrust::host_vector<float_type>* element_refinement_criteria;
     };
 
-    void compute_edge_connectivity();
+    void compute_face_connectivity();
 
     static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
 					const int is_family, const int num_elements, t8_element_t* elements[]);
   };
-
-  template<typename VariableType>
-  __global__ void adapt_variables_and_volume(MemoryAccessorOwn<VariableType> variables_old,
-					     std::array<typename variable_traits<VariableType>::float_type* __restrict__, variable_traits<VariableType>::nb_variables> variables_new,
-					     typename variable_traits<VariableType>::float_type const* __restrict__ volume_old,
-					     typename variable_traits<VariableType>::float_type* __restrict__       volume_new,
-					     t8_locidx_t* adapt_data,
-					     int nb_new_elements);
-
-
 } // namespace t8gpu
 
 #include "mesh_manager.inl"
