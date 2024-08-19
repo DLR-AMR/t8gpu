@@ -6,7 +6,7 @@
 #ifndef MESH_MANAGER_H
 #define MESH_MANAGER_H
 
-#include <memory_manager.h>
+#include <memory/memory_manager.h>
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
 #include <thrust/device_vector.h>

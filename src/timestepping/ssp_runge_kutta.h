@@ -2,7 +2,7 @@
 #define TIMESTEPPING_SSP_RUNGE_KUTTA_H
 
 #include <cuda/std/array>
-#include <memory_manager.h>
+#include <memory/memory_manager.h>
 
 namespace t8gpu::timestepping {
 

@@ -3,11 +3,11 @@
 ///        handles GPU memory allocation as well as the
 ///        MemoryAccessor{Own,All} helper accessor classes.
 
-#ifndef MEMORY_MANAGER_H
-#define MEMORY_MANAGER_H
+#ifndef MEMORY_MEMORY_MANAGER_H
+#define MEMORY_MEMORY_MANAGER_H
 
 #include <utils/meta.h>
-#include <shared_device_vector.h>
+#include <memory/shared_device_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <tuple>
@@ -415,6 +415,6 @@ namespace t8gpu {
 
 } // namespace t8gpu
 
-#include <memory_manager.inl>
+#include "memory_manager.inl"
 
-#endif // MEMORY_MANAGER_H
+#endif // MEMORY_MEMORY_MANAGER_H

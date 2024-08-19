@@ -1,8 +1,8 @@
 /// @file shared_device_vector.h
 /// @brief This header file declares the shared device vector class
 
-#ifndef SHARED_DEVICE_VECTOR_H
-#define SHARED_DEVICE_VECTOR_H
+#ifndef MEMORY_SHARED_DEVICE_VECTOR_H
+#define MEMORY_SHARED_DEVICE_VECTOR_H
 
 #include <array>
 #include <sc_mpi.h>
@@ -335,6 +335,6 @@ namespace t8gpu {
   };
 } // namespace t8gpu
 
-#include <shared_device_vector.inl>
+#include "shared_device_vector.inl"
 
-#endif // SHARED_DEVICE_VECTOR_H
+#endif // MEMORY_SHARED_DEVICE_VECTOR_H

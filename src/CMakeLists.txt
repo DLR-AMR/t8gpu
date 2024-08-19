@@ -1,12 +1,12 @@
 add_executable(t8gpu)
 target_sources(t8gpu PRIVATE
-  memory_manager.h
-  memory_manager.inl
+  main.cu
+  memory/memory_manager.h
+  memory/memory_manager.inl
+  memory/shared_device_vector.h
+  memory/shared_device_vector.inl
   mesh_manager.h
   mesh_manager.inl
-  main.cu
-  shared_device_vector.h
-  shared_device_vector.inl
   solvers/compressible_euler/kernels.cu
   solvers/compressible_euler/kernels.h
   solvers/compressible_euler/solver.cu

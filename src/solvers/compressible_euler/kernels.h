@@ -2,7 +2,7 @@
 #define SOLVERS_COMPRESSIBLE_EULER_KERNELS_H
 
 #include <solvers/compressible_euler/solver.h>
-#include <memory_manager.h>
+#include <memory/memory_manager.h>
 #include <mesh_manager.h>
 
 namespace t8gpu {

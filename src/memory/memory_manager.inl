@@ -1,4 +1,4 @@
-#include <memory_manager.h>
+#include "memory_manager.h"
 
 template<typename VariableType, typename StepType>
 t8gpu::MemoryManager<VariableType, StepType>::MemoryManager(size_t nb_elements, sc_MPI_Comm comm) : m_device_buffer(nb_elements, comm) {}
