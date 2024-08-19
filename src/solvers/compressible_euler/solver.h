@@ -35,14 +35,34 @@ namespace t8gpu {
     static constexpr size_t dim = 3;
     using float_type = variable_traits<VariableList>::float_type;
 
+    /// @brief Constructor for the CompressibleEulerSolver class.
+    ///
+    /// This class takes ownership of the cmesh and forest given and
+    /// the constructor computes the necessary face information and
+    /// allocates space to store all of the variables.
     CompressibleEulerSolver(sc_MPI_Comm comm,
 			    t8_scheme_cxx_t* scheme,
 			    t8_cmesh_t cmesh,
 			    t8_forest_t forest);
+
+    /// @brief Destructor.
+    ///
+    /// This destructor frees the resouces related to the forest,
+    /// cmest, variables and connectivity information.
     ~CompressibleEulerSolver();
 
+    /// @brief This function does one step of the simulation
+    ///
+    /// @param delta_t The time step to advance the simulation.
     void iterate(float_type delta_t);
 
+    /// @brief Save the density field to a vkt formatted file.
+    ///
+    /// @param [in] prefix   specifies the prefix used to saved the vtk
+    ///             file.
+    ///
+    /// This member function saves the current simulation step in the
+    /// vtk file format.
     void save_vtk(std::string prefix) const;
 
   private:
