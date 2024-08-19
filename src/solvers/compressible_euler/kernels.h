@@ -7,18 +7,38 @@
 
 namespace t8gpu {
 
+  /// @brief This kernel computes the kepes flux at every faces and
+  ///        adds every contribution to the fluxes variables. The flux
+  ///        variable must be beforehand set to zeros.
+  ///
+  /// @param [in]  variables       all variables.
+  /// @param [out] fluxes          flux contributions for each face of each
+  ///                              element are added up in these variables.
+  /// @param [in]  connectivity    face connectivity information.
+  /// @param [out] speed_estimates wave speed estimates based on the HLL
+  ///                              flux are written in this variable for
+  ///                              each face.
+  /// @param [in] num_faces        The number of faces own by the rank.
   __global__ void kepes_compute_fluxes(t8gpu::MemoryAccessorAll<t8gpu::VariableList> variables,
 				       t8gpu::MemoryAccessorAll<t8gpu::VariableList> fluxes,
 				       t8gpu::MeshConnectivityAccessor<typename t8gpu::variable_traits<t8gpu::VariableList>::float_type, 3> connectivity,
 				       typename t8gpu::variable_traits<t8gpu::VariableList>::float_type* __restrict__ speed_estimates,
 				       int num_faces);
 
+  /// @brief A simple density gradient estimator that can be used to
+  ///        construct a refinement criterion. It estimates the
+  ///        density gradient at each faces and sets the first flux
+  ///        variable to a mean gradient between its adjacent faces.
+  ///
+  /// @param [in]  data_next   The conserved variables.
+  /// @param [out] data_fluxes The first flux variable is where the
+  ///                          gradient estimation will be computed.
+  /// @param [in] connectivity Face connectivity infurmation.
+  /// @param [in] num_faces    The number of faces owned by the rank.
   __global__ void estimate_gradient(t8gpu::MemoryAccessorAll<t8gpu::VariableList> data_next,
 				    t8gpu::MemoryAccessorAll<t8gpu::VariableList> data_fluxes,
-				    typename t8gpu::variable_traits<t8gpu::VariableList>::float_type const* __restrict__ normal,
-				    typename t8gpu::variable_traits<t8gpu::VariableList>::float_type const* __restrict__ area,
-				    int const* e_idx, int* rank,
-				    t8_locidx_t* indices, int nb_edges);
+				    t8gpu::MeshConnectivityAccessor<typename t8gpu::variable_traits<VariableList>::float_type, 3> connectivity,
+				    int num_faces);
 
 }
 

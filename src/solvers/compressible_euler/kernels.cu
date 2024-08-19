@@ -324,12 +324,10 @@ __global__ void t8gpu::kepes_compute_fluxes(MemoryAccessorAll<VariableList> vari
 
 __global__ void t8gpu::estimate_gradient(MemoryAccessorAll<VariableList> data_next,
 					 MemoryAccessorAll<VariableList> data_fluxes,
-					 typename variable_traits<VariableList>::float_type const* __restrict__ normal,
-					 typename variable_traits<VariableList>::float_type const* __restrict__ area,
-					 int const* e_idx, int* rank,
-					 t8_locidx_t* indices, int nb_edges) {
+					 MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, 3> connectivity,
+					 int num_faces) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= nb_edges) return;
+  if (i >= num_faces) return;
 
   using float_type = typename variable_traits<VariableList>::float_type;
 
@@ -338,11 +336,13 @@ __global__ void t8gpu::estimate_gradient(MemoryAccessorAll<VariableList> data_ne
 
   auto rho_gradient = data_fluxes.get(Rho);
 
-  int l_rank  = rank[e_idx[2 * i]];
-  int l_index = indices[e_idx[2 * i]];
+  auto [l_idx, r_idx] = connectivity.get_face_neighbor_indices(i);
 
-  int r_rank  = rank[e_idx[2 * i + 1]];
-  int r_index = indices[e_idx[2 * i + 1]];
+  int l_rank  = connectivity.get_element_owner_rank(l_idx);
+  int l_index = connectivity.get_element_owner_remote_index(l_idx);
+
+  int r_rank  = connectivity.get_element_owner_rank(r_idx);
+  int r_index = connectivity.get_element_owner_remote_index(r_idx);
 
   float_type rho_l = rho[l_rank][l_index];
   float_type rho_r = rho[r_rank][r_index];
