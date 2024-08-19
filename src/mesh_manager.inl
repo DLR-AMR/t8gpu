@@ -59,6 +59,8 @@ t8gpu::MeshManager<VariableType, StepType, dim>::MeshManager(sc_MPI_Comm comm,
   t8_forest_set_user_data(m_forest, forest_user_data);
 
   m_element_refinement_criteria.resize(m_num_local_elements);
+
+  this->compute_connectivity_information();
  }
 
 template<typename VariableType, typename StepType, size_t dim>
