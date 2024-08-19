@@ -1,6 +1,4 @@
-#include <compressible_euler_solver.h>
-#include <utils/profiling.h>
-
+#include <solvers/compressible_euler/solver.h>
 #include <cstdio>
 #include <string>
 
@@ -15,31 +13,23 @@ int main(int argc, char* argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &nb_ranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+  // We create a dummy frame so that destructors of solver class are
+  // called before MPI finalize.
   {
-    t8gpu::CompressibleEulerSolver advection_solver {};
+    size_t dim = 3;
+    sc_MPI_Comm comm = MPI_COMM_WORLD;
+    t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();
+    t8_cmesh_t cmesh = t8_cmesh_new_periodic(comm, int{dim});
+    t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 5, true, comm);
 
-    T8GPU_TIMER_START(iterations);
+    t8gpu::CompressibleEulerSolver solver {comm, scheme, cmesh, forest};
 
-    size_t i = 0;
-    double t = 0;
-    t8gpu::CompressibleEulerSolver::float_type delta_t = 0;
-     double t_max = 0.75;
-    for (; t < t_max; t += delta_t, i++) {
-      if (rank == 0)
-	std::cout << "t:" << t << ", delta_t:" << delta_t << std::endl;
-
-      delta_t = advection_solver.compute_timestep();
-      advection_solver.iterate(delta_t);
+    t8gpu::CompressibleEulerSolver::float_type delta_t = 0.005f;
+    for (size_t i=0; i<1000; i++) {
+      solver.iterate(delta_t);
     }
-    if (rank == 0)
-      std::cout << "t:" << t << ", delta_t:" << delta_t << std::endl;
 
-    T8GPU_TIMER_STOP(iterations);
-
-    char buffer[256];
-    std::snprintf(buffer, sizeof(buffer), "advection_step_%05zu", i + 1);
-    std::string prefix {buffer};
-    advection_solver.save_vtk(prefix);
+    solver.save_vtk("density");
   }
 
   sc_finalize();
