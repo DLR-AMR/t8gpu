@@ -32,8 +32,11 @@ namespace t8gpu {
 
   class CompressibleEulerSolver {
   public:
-    static constexpr size_t dim = 3;
     using float_type = variable_traits<VariableList>::float_type;
+    static constexpr size_t dim = 3;
+    static constexpr size_t min_level = 5;
+    static constexpr size_t max_level = 9;
+    static constexpr float_type cfl = static_cast<float_type>(0.7);
 
     /// @brief Constructor for the CompressibleEulerSolver class.
     ///
@@ -65,6 +68,25 @@ namespace t8gpu {
     /// vtk file format.
     void save_vtk(std::string prefix) const;
 
+    /// @brief Computes the integral of the quantity of interest.
+    ///
+    /// @return returns the integral on all the ranks.
+    ///
+    /// This member function computes the total integral on the domain
+    /// of the quantity of interest. It can be used for sanity check
+    /// in Debug mode to assert the conservativity of the scheme.
+    [[nodiscard]] float_type compute_integral() const;
+
+    /// @brief compute the timestep accoring to the CFL condition.
+    ///
+    /// @return timestep.
+    ///
+    /// This member function returns the maximum timestep according to
+    /// the CFL condition and using maximum wave speed estimates. This
+    /// function uses the last wave speed estimates (so the ones
+    /// computed at the last step of the last timestepping).
+    [[nodiscard]] float_type compute_timestep() const;
+
   private:
     sc_MPI_Comm m_comm;
 
@@ -72,6 +94,9 @@ namespace t8gpu {
 
     thrust::device_vector<float_type> m_device_face_speed_estimate;
 
+    /** The most up to date timestep is stored in the 'next´ step, to
+	advance the simulation, the 'next´ and 'prev´ step pointers
+	are swaped */
     StepList next = Step0;
     StepList prev = Step3;
   };

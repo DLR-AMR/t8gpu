@@ -113,3 +113,38 @@ void CompressibleEulerSolver::save_vtk(std::string prefix) const {
 
 
 CompressibleEulerSolver::~CompressibleEulerSolver() {}
+
+CompressibleEulerSolver::float_type CompressibleEulerSolver::compute_integral() const {
+  int num_local_elements = m_mesh_manager.get_num_local_elements();
+  float_type local_integral = 0.0;
+  float_type const* mem {m_mesh_manager.get_own_variable(next, Rho)};
+  thrust::host_vector<float_type> variable(num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(variable.data(), mem, sizeof(float_type)*num_local_elements, cudaMemcpyDeviceToHost));
+  thrust::host_vector<float_type> volume(num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), m_mesh_manager.get_own_volume(), sizeof(float_type)*num_local_elements, cudaMemcpyDeviceToHost));
+
+  for (t8_locidx_t i=0; i<num_local_elements; i++) {
+    local_integral += volume[i] * variable[i];
+  }
+  float_type global_integral {};
+  if constexpr (std::is_same<float_type, double>::value) {
+    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, m_comm);
+  } else {
+    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_FLOAT, MPI_SUM, m_comm);
+  }
+  return global_integral;
+}
+
+CompressibleEulerSolver::float_type CompressibleEulerSolver::compute_timestep() const {
+  float_type local_speed_estimate = thrust::reduce(m_device_face_speed_estimate.begin(),
+						   m_device_face_speed_estimate.end(),
+						   float_type{0.0}, thrust::maximum<float_type>());
+  float_type global_speed_estimate {};
+  if constexpr (std::is_same<float_type, double>::value) {
+    MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_DOUBLE, MPI_MAX, m_comm);
+  } else {
+    MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_FLOAT, MPI_MAX, m_comm);
+  }
+
+  return  cfl*static_cast<float_type>(std::pow(static_cast<float_type>(0.5), max_level))/global_speed_estimate;
+}
