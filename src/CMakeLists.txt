@@ -5,8 +5,8 @@ target_sources(t8gpu PRIVATE
   memory/memory_manager.inl
   memory/shared_device_vector.h
   memory/shared_device_vector.inl
-  mesh_manager.h
-  mesh_manager.inl
+  mesh/mesh_manager.h
+  mesh/mesh_manager.inl
   solvers/compressible_euler/kernels.cu
   solvers/compressible_euler/kernels.h
   solvers/compressible_euler/solver.cu

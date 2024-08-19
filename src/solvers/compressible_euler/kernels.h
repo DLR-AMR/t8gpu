@@ -3,7 +3,7 @@
 
 #include <solvers/compressible_euler/solver.h>
 #include <memory/memory_manager.h>
-#include <mesh_manager.h>
+#include <mesh/mesh_manager.h>
 
 namespace t8gpu {
 

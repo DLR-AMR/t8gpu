@@ -1,5 +1,6 @@
+#include "mesh_manager.h"
+
 #include <array>
-#include <mesh_manager.h>
 #include <thrust/host_vector.h>
 #include <type_traits>
 

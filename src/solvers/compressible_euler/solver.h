@@ -7,7 +7,7 @@
 
 #include <t8.h>
 #include <thrust/device_vector.h>
-#include <mesh_manager.h>
+#include <mesh/mesh_manager.h>
 
 namespace t8gpu {
 

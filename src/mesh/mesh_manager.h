@@ -340,6 +340,6 @@ namespace t8gpu {
 
 } // namespace t8gpu
 
-#include <mesh_manager.inl>
+#include "mesh_manager.inl"
 
 #endif // MESH_MANAGER_H
