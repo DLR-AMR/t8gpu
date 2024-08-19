@@ -428,7 +428,8 @@ t8gpu::MeshConnectivityAccessor<typename t8gpu::MeshManager<VariableType, StepTy
     thrust::raw_pointer_cast(m_device_indices.data()),
     thrust::raw_pointer_cast(m_device_face_neighbors.data()),
     thrust::raw_pointer_cast(m_device_face_normals.data()),
-    thrust::raw_pointer_cast(m_device_face_area.data())
+    thrust::raw_pointer_cast(m_device_face_area.data()),
+    m_num_local_faces
   };
 }
 

@@ -138,13 +138,13 @@ __device__ static void kepes_compute_diffusion_matrix(float_type u_L[5],
 
 }
 
-__global__ void t8gpu::kepes_compute_fluxes(MemoryAccessorAll<VariableList> variables,
+__global__ void t8gpu::kepes_compute_fluxes(MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, CompressibleEulerSolver::dim> connectivity,
+					    MemoryAccessorAll<VariableList> variables,
 					    MemoryAccessorAll<VariableList> fluxes,
-					    MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, CompressibleEulerSolver::dim> connectivity,
-					    typename variable_traits<VariableList>::float_type* __restrict__ speed_estimates,
-					    int num_faces) {
+					    typename variable_traits<VariableList>::float_type* __restrict__ speed_estimates) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= num_faces) return;
+  const int num_local_faces = connectivity.get_num_local_faces();
+  if (i >= num_local_faces) return;
 
   using float_type = typename variable_traits<VariableList>::float_type;
 
@@ -322,12 +322,12 @@ __global__ void t8gpu::kepes_compute_fluxes(MemoryAccessorAll<VariableList> vari
   atomicAdd(&fluxes_rho_e[r_rank][r_index],  rho_e_flux);
 }
 
-__global__ void t8gpu::estimate_gradient(MemoryAccessorAll<VariableList> data_next,
-					 MemoryAccessorAll<VariableList> data_fluxes,
-					 MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, 3> connectivity,
-					 int num_faces) {
+__global__ void t8gpu::estimate_gradient(MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, 3> connectivity,
+					 MemoryAccessorAll<VariableList> data_next,
+					 MemoryAccessorAll<VariableList> data_fluxes) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= num_faces) return;
+  const int num_local_faces = connectivity.get_num_local_faces();
+  if (i >= num_local_faces) return;
 
   using float_type = typename variable_traits<VariableList>::float_type;
 
