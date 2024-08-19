@@ -21,25 +21,14 @@ struct numerical_constants<double> {
 
 using nc = numerical_constants<variable_traits<VariableList>::float_type>;
 
-__device__ static float ln_mean(float aL, float aR) {
-  float Xi = aR/aL;
-  float u = (Xi*(Xi-2.0f)+1.0f)/(Xi*(Xi+2.0f)+1.0f);
+template<typename float_type>
+__device__ static float_type ln_mean(float_type aL, float_type aR) {
+  float_type Xi = aR/aL;
+  float_type u = (Xi*(Xi-float_type{2.0})+float_type{1.0})/(Xi*(Xi+float_type{2.0})+float_type{1.0});
 
-  float eps = 1.0e-4f;
+  float_type eps = float_type{1.0e-4};
   if (u < eps) {
-    return (aL+aR)*52.50f/(105.0f + u*(35.0f + u*(21.0f + u*15.0f)));
-  } else {
-    return (aR-aL)/logf(Xi);
-  }
-}
-
-__device__ static double ln_mean(double aL, double aR) {
-  double Xi = aR/aL;
-  double u = (Xi*(Xi-2.0)+1.0)/(Xi*(Xi+2.0)+1.0);
-
-  double eps = 1.0e-4;
-  if (u < eps) {
-    return (aL+aR)*52.50/(105.0 + u*(35.0 + u*(21.0 + u*15.0)));
+    return (aL+aR)*float_type{52.50}/(float_type{105.0} + u*(float_type{35.0} + u*(float_type{21.0} + u*float_type{15.0})));
   } else {
     return (aR-aL)/log(Xi);
   }
@@ -81,9 +70,9 @@ __device__ static void kepes_compute_flux(float_type u_L[5],
   float_type beta_R = nc::half*u_R[0]/p_R;
 
   float_type rho_MEAN  = nc::half*(u_L[0]+u_R[0]);
-  rhoHat    = ln_mean(u_L[0],u_R[0]);
+  rhoHat    = ln_mean<float_type>(u_L[0],u_R[0]);
   float_type beta_MEAN = nc::half*(beta_L+beta_R);
-  float_type beta_Hat  = ln_mean(beta_L,beta_R);
+  float_type beta_Hat  = ln_mean<float_type>(beta_L,beta_R);
 
   uHat      = nc::half*(velU_L+velU_R);
   vHat      = nc::half*(velV_L+velV_R);
