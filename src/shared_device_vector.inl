@@ -2,7 +2,10 @@
 
 /// default implementation
 template<typename T>
-inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(size_t size, sc_MPI_Comm comm) : m_size(size), m_comm(comm), m_capacity(size) {
+inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(size_t size, sc_MPI_Comm comm)
+  : m_size {size},
+    m_comm {comm},
+    m_capacity {size} {
   MPI_Comm_size(m_comm, &m_nb_ranks);
   MPI_Comm_rank(m_comm, &m_rank);
 
@@ -41,13 +44,14 @@ inline t8gpu::SharedDeviceVector<T>::~SharedDeviceVector() {
 }
 
 template<typename T>
-inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(SharedDeviceVector<T>&& other) : m_rank(other.m_rank),
-											 m_nb_ranks(other.m_nb_ranks),
-											 m_size(other.m_size),
-											 m_capacity(other.m_capacity),
-											 m_handles(std::move(other.m_handles)),
-											 m_arrays(other.m_arrays),
-											 m_device_arrays(std::move(other.m_device_arrays)) {
+inline t8gpu::SharedDeviceVector<T>::SharedDeviceVector(SharedDeviceVector<T>&& other)
+  : m_rank {other.m_rank},
+    m_nb_ranks {other.m_nb_ranks},
+    m_size {other.m_size},
+    m_capacity {other.m_capacity},
+    m_handles {std::move(other.m_handles)},
+    m_arrays {other.m_arrays},
+    m_device_arrays {std::move(other.m_device_arrays)} {
   for (int i=0; i<m_nb_ranks; i++) {
     other.m_arrays[i] = nullptr;
   }
@@ -133,7 +137,10 @@ template<typename T>
 
 // Specialization for std::array<T, N>
 template<typename T, size_t N>
-inline t8gpu::SharedDeviceVector<std::array<T, N>>::SharedDeviceVector(size_t size, sc_MPI_Comm comm) : m_size(size), m_comm(comm), m_capacity(size) {
+inline t8gpu::SharedDeviceVector<std::array<T, N>>::SharedDeviceVector(size_t size, sc_MPI_Comm comm)
+  : m_size {size},
+    m_comm {comm},
+    m_capacity {size} {
   MPI_Comm_size(m_comm, &m_nb_ranks);
   MPI_Comm_rank(m_comm, &m_rank);
 
@@ -181,15 +188,15 @@ inline t8gpu::SharedDeviceVector<std::array<T, N>>::~SharedDeviceVector() {
 }
 
 template<typename T, size_t N>
-inline t8gpu::SharedDeviceVector<std::array<T, N>>::SharedDeviceVector(SharedDeviceVector<std::array<T, N>>&& other) : m_rank(other.m_rank),
-														       m_nb_ranks(other.m_nb_ranks),
-														       m_size(other.m_size),
-														       m_capacity(other.m_capacity),
-														       m_handles(std::move(other.m_handles)),
-														       m_allocations(other.m_allocations),
-														       m_arrays(other.m_arrays),
-
-														       m_device_arrays(std::move(other.m_device_arrays)) {
+inline t8gpu::SharedDeviceVector<std::array<T, N>>::SharedDeviceVector(SharedDeviceVector<std::array<T, N>>&& other)
+  : m_rank {other.m_rank},
+    m_nb_ranks {other.m_nb_ranks},
+    m_size {other.m_size},
+    m_capacity {other.m_capacity},
+    m_handles {std::move(other.m_handles)},
+    m_allocations {other.m_allocations},
+    m_arrays {other.m_arrays},
+    m_device_arrays {std::move(other.m_device_arrays)} {
   for (int i=0; i<m_nb_ranks; i++) {
     other.m_allocations[i] = nullptr;
   }

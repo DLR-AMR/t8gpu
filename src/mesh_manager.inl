@@ -22,11 +22,11 @@ t8gpu::MeshManager<VariableType, StepType, dim>::MeshManager(sc_MPI_Comm comm,
 							     t8_scheme_cxx_t* scheme,
 							     t8_cmesh_t cmesh,
 							     t8_forest_t forest)
-  : m_comm(comm),
-    m_scheme(scheme),
-    m_cmesh(cmesh),
-    m_forest(forest),
-    t8gpu::MemoryManager<VariableType, StepType>(t8_forest_get_local_num_elements(forest), comm) {
+  : m_comm {comm},
+    m_scheme {scheme},
+    m_cmesh {cmesh},
+    m_forest {forest},
+    t8gpu::MemoryManager<VariableType, StepType> {static_cast<size_t>(t8_forest_get_local_num_elements(forest)), comm} {
 
   MPI_Comm_size(m_comm, &m_nb_ranks);
   MPI_Comm_rank(m_comm, &m_rank);
