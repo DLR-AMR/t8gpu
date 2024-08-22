@@ -456,7 +456,7 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::save_variable_to_vtk(t8gpu
 
   t8_vtk_data_field_t vtk_data_field {};
   vtk_data_field.type = T8_VTK_SCALAR;
-  strcpy(vtk_data_field.description, "density"); // TODO: be able to retrieve variable name as a string.
+  std::strncpy(vtk_data_field.description, "density", BUFSIZ);
   if constexpr (std::is_same_v<float_type, double>) { // no need for conversion
     vtk_data_field.data = element_variable.data();
     t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
@@ -485,6 +485,53 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::save_variable_to_vtk(t8gpu
 			    1,     /* num_data */
 			    &vtk_data_field);
   }
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+[[nodiscard]] t8gpu::MeshManager<VariableType, StepType, dim>::HostVariableInfo t8gpu::MeshManager<VariableType, StepType, dim>::get_host_scalar_variable(t8gpu::MeshManager<VariableType, StepType, dim>::step_index_type step, t8gpu::MeshManager<VariableType, StepType, dim>::variable_index_type variable, const std::string& name) const {
+  std::unique_ptr<float_type[]> data = std::make_unique<float_type[]>(m_num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(data.get(), this->get_own_variable(step, variable), sizeof(float_type)*m_num_local_elements, cudaMemcpyDeviceToHost));
+  if constexpr (std::is_same_v<float_type, double>) { // no need for type conversion.
+    return {T8_VTK_SCALAR, std::move(data), name};
+  } else { // we need to cast from float to double.
+    std::unique_ptr<double[]> data_double = std::make_unique<double[]>(m_num_local_elements);
+    for (t8_locidx_t i=0; i<m_num_local_elements; i++)
+      data_double[i] = static_cast<double>(data[i]);
+    return {T8_VTK_SCALAR, std::move(data_double), name};
+  }
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+[[nodiscard]] t8gpu::MeshManager<VariableType, StepType, dim>::HostVariableInfo t8gpu::MeshManager<VariableType, StepType, dim>::get_host_vector_variable(t8gpu::MeshManager<VariableType, StepType, dim>::step_index_type step, std::array<t8gpu::MeshManager<VariableType, StepType, dim>::variable_index_type, 3> variables, const std::string& name) const {
+  std::unique_ptr<float_type[]> data = std::make_unique<float_type[]>(3*m_num_local_elements);
+  for (size_t i=0; i<3; i++)
+    T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(data.get() + i*m_num_local_elements, this->get_own_variable(step, variables[i]), sizeof(float_type)*m_num_local_elements, cudaMemcpyDeviceToHost));
+
+  std::unique_ptr<double[]> data_interleaved = std::make_unique<double[]>(3*m_num_local_elements);
+  for (int i=0; i<m_num_local_elements; i++) {
+    for (size_t j=0; j<3; j++) {
+      data_interleaved[3*i+j] = static_cast<double>(data[m_num_local_elements*j + i]);
+    }
+  }
+  return {T8_VTK_VECTOR, std::move(data_interleaved), name};
+}
+
+template<typename VariableType, typename StepType, size_t dim>
+void t8gpu::MeshManager<VariableType, StepType, dim>::save_variables_to_vtk(std::vector<t8gpu::MeshManager<VariableType, StepType, dim>::HostVariableInfo> host_variables, const std::string& prefix) const {
+  std::vector<t8_vtk_data_field_t> vtk_data_fields(host_variables.size());
+  for (size_t i=0; i<host_variables.size(); i++)
+    vtk_data_fields[i] = host_variables[i].m_vtk_data_field_info_struct;
+
+    t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
+			    true,  /* write_treeid */
+			    true,  /* write_mpirank */
+			    true,  /* write_level */
+			    true,  /* write_element_id */
+			    false, /* write_ghost */
+			    false, /* write_curved */
+			    false, /* do_not_use_API */
+			    static_cast<int>(host_variables.size()), /* num_data */
+			    vtk_data_fields.data());
 }
 
 template<typename VariableType>

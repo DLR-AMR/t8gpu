@@ -107,8 +107,15 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
   T8GPU_CUDA_CHECK_LAST_ERROR();
 }
 
-void CompressibleEulerSolver::save_vtk(std::string prefix) const {
-  m_mesh_manager.save_variable_to_vtk(next, Rho, prefix);
+void CompressibleEulerSolver::save_conserved_variables_to_vtk(std::string prefix) const {
+  std::array<VariableList, 3> momentum = {Rho_v1, Rho_v2, Rho_v3};
+
+  std::vector<MeshManager<VariableList, StepList, 3>::HostVariableInfo> variables;
+  variables.push_back(m_mesh_manager.get_host_scalar_variable(next, Rho, "density"));
+  variables.push_back(m_mesh_manager.get_host_scalar_variable(next, Rho_e, "energy"));
+  variables.push_back(m_mesh_manager.get_host_vector_variable(next, momentum, "momentum"));
+
+  m_mesh_manager.save_variables_to_vtk(std::move(variables), prefix);
 }
 
 

@@ -7,10 +7,13 @@
 #define MESH_MANAGER_H
 
 #include <memory/memory_manager.h>
+#include <memory>
 #include <t8.h>
+#include <t8_vtk.h>
 #include <t8_forest/t8_forest.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <vector>
 
 namespace t8gpu {
 
@@ -282,8 +285,80 @@ namespace t8gpu {
     ///             file.
     ///
     /// This member function saves the current simulation step in the
-    /// vtk file format.
+    /// vtk file format. To save multiple variables in the same VTK
+    /// file, use the member function save_variables_to_vtk instead.
     void save_variable_to_vtk(step_index_type step, variable_index_type variable, const std::string& prefix) const;
+
+    /// @brief Host copy variable memory owning wrapper around the
+    /// type t8_vtk_data_field_t.
+    ///
+    /// This class represents a vector or scalar field stored on the
+    /// CPU of one of the variables. This class can only be created by
+    /// the parent class MeshManager through the member function
+    /// get_host_{scalar,vector}_variable and used to save them in a
+    /// VTK file using the member function save_variables_to_vtk.
+    /// From the perspective of the user, this class is opaque
+    /// (meaning the user cannot construct nor modify any instance of
+    /// this class). One of the objective of this class is to stick
+    /// with the RAII paradigm while providing a way for the user to
+    /// manually select the variable that should be exported into a
+    /// VTK file.
+    class HostVariableInfo {
+      friend t8gpu::MeshManager<VariableType, StepType, dim>;
+
+      /// @brief Constructor only accessible through the MeshManager
+      ///        class. This constructor takes ownership of the data
+      ///        array.
+      HostVariableInfo(t8_vtk_data_type_t data_type, std::unique_ptr<double[]>&& data, const std::string& name)
+	: m_data {std::move(data)} {
+	m_vtk_data_field_info_struct.type = data_type;
+	m_vtk_data_field_info_struct.data = m_data.get();
+	std::strncpy(m_vtk_data_field_info_struct.description, name.c_str(), BUFSIZ);
+      }
+
+    public:
+      /// @brief default constructor needed to be able to construct
+      ///        vectors of HostVariableInfo structs.
+      HostVariableInfo() = default;
+
+      /// @brief default move constructor needed to be able to
+      ///        construct vectors of HostVariableInfo structs.
+      HostVariableInfo(HostVariableInfo&&) = default;
+
+      /// @brief default destructor.
+      ~HostVariableInfo() = default;
+
+    private:
+      /** unique pointer owning variable data */
+      std::unique_ptr<double[]> m_data;
+      /** vtk struct referencing m_data */
+      t8_vtk_data_field_t m_vtk_data_field_info_struct;
+    };
+
+    /// @brief Copy a scalar variable on the CPU in order to later
+    ///        save it as a VTK file.
+    ///
+    /// @param [in] step     specifies the step from which to choose the
+    ///                      variable.
+    /// @param [in] variable specifies the variable to get.
+    /// @param [in] name     a name to reference the variable.
+    [[nodiscard]] HostVariableInfo get_host_scalar_variable(step_index_type step, variable_index_type variable, const std::string& name) const;
+
+    /// @brief Copy a vectorial variable on the CPU in order to later
+    ///        save it as a VTK file.
+    ///
+    /// @param [in] step     specifies the step from which to choose the
+    ///                      variable.
+    /// @param [in] variable specifies the variables to aggregate into
+    ///                      a vector field.
+    /// @param [in] name     a name to reference the variable.
+    [[nodiscard]] HostVariableInfo get_host_vector_variable(step_index_type step, std::array<variable_index_type, 3> variable, const std::string& name) const;
+
+    /// @brief Save a list of variables to a VTK file.
+    ///
+    /// @param [in] host_variables specifies the list of variables to save.
+    /// @param [in] prefix         specifies the prefix used to saved the vtk.
+    void save_variables_to_vtk(std::vector<HostVariableInfo> host_variables, const std::string& prefix) const;
 
     /// @brief get a connectivity struct that can be passed and used
     ///        on the GPU.

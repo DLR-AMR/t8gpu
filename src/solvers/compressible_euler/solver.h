@@ -66,7 +66,7 @@ namespace t8gpu {
     ///
     /// This member function saves the current simulation step in the
     /// vtk file format.
-    void save_vtk(std::string prefix) const;
+    void save_conserved_variables_to_vtk(std::string prefix) const;
 
     /// @brief Computes the integral of the quantity of interest.
     ///
@@ -92,6 +92,7 @@ namespace t8gpu {
 
     MeshManager<VariableList, StepList, dim> m_mesh_manager;
 
+    /** We compute wave speed estimates in the Roe-averaged state */
     thrust::device_vector<float_type> m_device_face_speed_estimate;
 
     /** The most up to date timestep is stored in the 'next´ step, to
