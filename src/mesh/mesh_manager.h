@@ -42,8 +42,15 @@ namespace t8gpu {
     /// @brief get the number of local faces.
     ///
     /// @return the number of faces.
-    [[nodiscard]] __device__ __host__ inline int get_num_local_faces() const {
+    [[nodiscard]] __device__ __host__ inline t8_locidx_t get_num_local_faces() const {
       return m_num_local_faces;
+    }
+
+    /// @brief get the number of local boundary faces.
+    ///
+    /// @return the number of boundary faces.
+    [[nodiscard]] __device__ __host__ inline t8_locidx_t get_num_local_boundary_faces() const {
+      return m_num_local_boundary_faces;
     }
 
     /// @brief get the surface of a face.
@@ -53,6 +60,15 @@ namespace t8gpu {
     /// @return the surface of the face.
     [[nodiscard]] __device__ inline float_type get_face_surface(int face_idx) const {
       return m_face_surfaces[face_idx];
+    }
+
+    /// @brief get the surface of a boundary face.
+    ///
+    /// @param face_idx the boundary face index.
+    ///
+    /// @return the surface of the boundary face.
+    [[nodiscard]] __device__ inline float_type get_boundary_face_surface(int face_idx) const {
+      return m_face_surfaces[m_num_local_faces + face_idx];
     }
 
     /// @brief get the normal of a face.
@@ -68,6 +84,21 @@ namespace t8gpu {
       }
       return normal;
     }
+
+    /// @brief get the normal of a boundary face.
+    ///
+    /// @param face_idx the boundary face index.
+    ///
+    /// @return the normal of the boundary face specified as a
+    ///         dim-element array.
+    [[nodiscard]] __device__ inline std::array<float_type, dim> get_boundary_face_normal(int face_idx) const {
+      std::array<float_type, dim> normal {};
+      for (int k=0; k<dim; k++) {
+	normal[k] = m_face_normals[dim*(m_num_local_faces + face_idx)+k];
+      }
+      return normal;
+    }
+
 
     /// @brief get index of face neighbor elements.
     ///
@@ -90,6 +121,19 @@ namespace t8gpu {
     ///          get the owning rank.
     [[nodiscard]] __device__ inline std::array<t8_locidx_t, 2> get_face_neighbor_indices(int face_idx) const {
       return {m_face_neighbors[2*face_idx], m_face_neighbors[2*face_idx+1]};
+    }
+
+    /// @brief get index of the local element neighbors of a face.
+    ///
+    /// @param face_idx the face index.
+    ///
+    /// @return the index of the face neighbor element. This index is
+    ///         a local index as boundary faces are owned by the rank
+    ///         that owns its only neighbor element. That's why the
+    ///         member function get_boundary_face_neighbors_rank does
+    ///         not exist.
+    [[nodiscard]] __device__ inline t8_locidx_t get_boundary_face_neighbor_index(int face_idx) const {
+      return m_face_neighbors[2*m_num_local_faces + face_idx];
     }
 
     /// @brief get the owning rank of an element.
@@ -121,20 +165,23 @@ namespace t8gpu {
     const t8_locidx_t* m_face_neighbors;
     const float_type*  m_face_normals;
     const float_type*  m_face_surfaces;
-    const int          m_num_local_faces;
+    const t8_locidx_t  m_num_local_faces;
+    const t8_locidx_t  m_num_local_boundary_faces;
 
     MeshConnectivityAccessor(const int*         ranks,
 			     const t8_locidx_t* indices,
 			     const t8_locidx_t* face_neighbors,
 			     const float_type*  face_normals,
 			     const float_type*  face_surfaces,
-			     const int          num_local_faces)
+			     const t8_locidx_t  num_local_faces,
+			     const t8_locidx_t  num_local_boundary_faces)
       : m_ranks {ranks},
 	m_indices {indices},
 	m_face_neighbors {face_neighbors},
 	m_face_normals {face_normals},
 	m_face_surfaces {face_surfaces},
-	m_num_local_faces {num_local_faces} {}
+	m_num_local_faces {num_local_faces},
+	m_num_local_boundary_faces {num_local_boundary_faces} {}
   };
 
   ///
@@ -365,13 +412,16 @@ namespace t8gpu {
     [[nodiscard]] MeshConnectivityAccessor<float_type, dim> get_connectivity_information() const;
 
     /// @brief get the number of elements owned by this rank.
-    [[nodiscard]] int get_num_local_elements() const;
+    [[nodiscard]] t8_locidx_t get_num_local_elements() const;
 
     /// @brief get the number of ghost elements for this rank.
-    [[nodiscard]] int get_num_ghost_elements() const;
+    [[nodiscard]] t8_locidx_t get_num_ghost_elements() const;
 
     /// @brief get the number of faces owned by this rank.
-    [[nodiscard]] int get_num_local_faces() const;
+    [[nodiscard]] t8_locidx_t get_num_local_faces() const;
+
+    /// @brief get the number of boundary faces owned by this rank.
+    [[nodiscard]] t8_locidx_t get_num_local_boundary_faces() const;
 
   private:
 
@@ -388,27 +438,28 @@ namespace t8gpu {
     t8_locidx_t m_num_local_elements;
     t8_locidx_t m_num_ghost_elements;
     t8_locidx_t m_num_local_faces;
+    t8_locidx_t m_num_local_boundary_faces;
 
+    // TODO: remove CPU copied variables.
     thrust::host_vector<int>           m_ranks;
     thrust::device_vector<int>         m_device_ranks;
     thrust::host_vector<t8_locidx_t>   m_indices;
     thrust::device_vector<t8_locidx_t> m_device_indices;
 
-    thrust::host_vector<t8_locidx_t>   m_face_neighbors;
-    thrust::device_vector<t8_locidx_t> m_device_face_neighbors;
-    thrust::host_vector<float_type>    m_face_normals;
-    thrust::device_vector<float_type>  m_device_face_normals;
-    thrust::host_vector<float_type>    m_face_area;
-    thrust::device_vector<float_type>  m_device_face_area;
+    thrust::device_vector<t8_locidx_t> m_device_face_neighbors; /** inner faces neighbor elements */
+    thrust::device_vector<float_type>  m_device_face_normals;   /** inner and boundary faces normals */
+    thrust::device_vector<float_type>  m_device_face_area;      /** inner and boundary faces area */
 
     thrust::host_vector<float_type>    m_element_refinement_criteria;
     thrust::device_vector<float_type>  m_device_refinement_criteria;
 
+    /// @brief Struct to store user data passed to t8code callback
+    ///        functions.
     struct UserData {
       thrust::host_vector<float_type>* element_refinement_criteria;
     };
 
-    void compute_face_connectivity();
+    // void compute_face_connectivity();
 
     static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
 					const int is_family, const int num_elements, t8_element_t* elements[]);
