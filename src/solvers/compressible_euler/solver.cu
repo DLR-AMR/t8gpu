@@ -57,6 +57,15 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
+ const int boundary_num_blocks = m_mesh_manager.get_num_local_boundary_faces() / thread_block_size;
+ reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
+									   m_mesh_manager.get_own_variables(prev),
+									   m_mesh_manager.get_own_variables(Fluxes),
+									   thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
+
   // step 1
   const int SSP_num_blocks = (m_mesh_manager.get_num_local_elements() + thread_block_size - 1) / thread_block_size;
   timestepping::SSP_3RK_step1<VariableList><<<SSP_num_blocks, thread_block_size>>>(m_mesh_manager.get_own_variables(prev),
@@ -77,6 +86,14 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
+  reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
+									    m_mesh_manager.get_own_variables(Step1),
+									    m_mesh_manager.get_own_variables(Fluxes),
+									    thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
+
   // step 2
   timestepping::SSP_3RK_step2<VariableList><<<SSP_num_blocks, thread_block_size>>>(m_mesh_manager.get_own_variables(prev),
 										   m_mesh_manager.get_own_variables(Step1),
@@ -93,6 +110,14 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
 								 m_mesh_manager.get_all_variables(Step2),
 								 m_mesh_manager.get_all_variables(Fluxes),
 								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
+
+ reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
+									   m_mesh_manager.get_own_variables(Step2),
+									   m_mesh_manager.get_own_variables(Fluxes),
+									   thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);

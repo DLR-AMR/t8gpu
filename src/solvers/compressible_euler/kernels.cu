@@ -322,6 +322,174 @@ __global__ void t8gpu::kepes_compute_fluxes(MeshConnectivityAccessor<typename va
   atomicAdd(&fluxes_rho_e[r_rank][r_index],  rho_e_flux);
 }
 
+__global__ void t8gpu::reflective_boundary_condition(MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, CompressibleEulerSolver::dim> connectivity,
+						     MemoryAccessorOwn<VariableList> variables,
+						     MemoryAccessorOwn<VariableList> fluxes,
+						     typename variable_traits<VariableList>::float_type* __restrict__ speed_estimates) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  const int num_local_faces = connectivity.get_num_local_boundary_faces();
+  if (i >= num_local_faces) return;
+
+  using float_type = typename variable_traits<VariableList>::float_type;
+
+  float_type face_surface = connectivity.get_boundary_face_surface(i);
+
+  auto e_idx = connectivity.get_boundary_face_neighbor_index(i);
+
+  auto [nx, ny, nz] = connectivity.get_boundary_face_normal(i);
+
+  auto [rho, rho_v1, rho_v2, rho_v3, rho_e] = variables.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+
+  float_type rho_l    = rho[e_idx];
+  float_type rho_vx_l = rho_v1[e_idx];
+  float_type rho_vy_l = rho_v2[e_idx];
+  float_type rho_vz_l = rho_v3[e_idx];
+  float_type rho_e_l  = rho_e[e_idx];
+
+  float_type rho_r    = rho_l;
+  float_type rho_vx_r = rho_vx_l;
+  float_type rho_vy_r = rho_vy_l;
+  float_type rho_vz_r = rho_vz_l;
+  float_type rho_e_r  = rho_e_l;
+
+  float_type n[3] = {nx, ny, nz};
+
+  // We set the first tangential to be a vector different than the normal.
+  float_type t1[3] = {ny, nz, -nx};
+
+  float_type dot_product = n[0]*t1[0] + n[1]*t1[1] + n[2]*t1[2];
+
+  // We then project back to the tangential plane.
+  t1[0] -= dot_product*n[0];
+  t1[1] -= dot_product*n[1];
+  t1[2] -= dot_product*n[2];
+
+  // The last basis vector is the cross product of the first two.
+  float_type t2[3] = {
+    n[1]*t1[2]-n[2]*t1[1],
+    n[2]*t1[0]-n[0]*t1[2],
+    n[0]*t1[1]-n[1]*t1[0]
+  };
+
+  // rotate from (x,y,z) basis to local basis (n,t1,t2)
+  float_type u_L[5] = {
+    rho_l,
+    rho_vx_l*n[0] + rho_vy_l*n[1] + rho_vz_l*n[2],
+    rho_vx_l*t1[0] + rho_vy_l*t1[1] + rho_vz_l*t1[2],
+    rho_vx_l*t2[0] + rho_vy_l*t2[1] + rho_vz_l*t2[2],
+    rho_e_l
+  };
+
+  float_type u_R[5] = {
+    rho_r,
+    -(rho_vx_r*n[0] + rho_vy_r*n[1] + rho_vz_r*n[2]),
+    rho_vx_r*t1[0] + rho_vy_r*t1[1] + rho_vz_r*t1[2],
+    rho_vx_r*t2[0] + rho_vy_r*t2[1] + rho_vz_r*t2[2],
+    rho_e_r
+  };
+
+  float_type F_star[5];
+
+  float_type RHat[5][5];
+  float_type DHat[5];
+
+  float_type uHat;
+  float_type vHat;
+  float_type wHat;
+  float_type aHat;
+  float_type rhoHat;
+  float_type hHat;
+  float_type p1Hat;
+  kepes_compute_diffusion_matrix(u_L,
+				 u_R,
+				 F_star,
+				 RHat,
+				 DHat,
+				 uHat,
+				 vHat,
+				 wHat,
+				 aHat,
+				 rhoHat,
+				 hHat,
+				 p1Hat);
+
+  speed_estimates[i] = abs(uHat) + aHat;
+
+
+  float_type kappa = float_type{1.4}; // remove this constant
+  float_type kappaM1 = kappa - nc::one;
+
+  float_type sRho_L = nc::one/u_L[0];
+  float_type sRho_R = nc::one/u_R[0];
+
+  float_type Vel_L[3] = {u_L[1]*sRho_L, u_L[2]*sRho_L, u_L[3]*sRho_L};
+  float_type Vel_R[3] = {u_R[1]*sRho_R, u_R[2]*sRho_R, u_R[3]*sRho_R};
+
+  float_type p_L = kappaM1*(u_L[4]-nc::half*(u_L[1]*Vel_L[0] + u_L[2]*Vel_L[1] + u_L[3]*Vel_L[2]));
+  float_type p_R = kappaM1*(u_R[4]-nc::half*(u_R[1]*Vel_R[0] + u_R[2]*Vel_R[1] + u_R[3]*Vel_R[2]));
+
+  float_type sL =  log(p_L) - kappa*log(u_L[0]);
+  float_type sR =  log(p_R) - kappa*log(u_R[0]);
+
+  float_type rho_pL = u_L[0]/p_L;
+  float_type rho_pR = u_R[0]/p_R;
+
+  float_type vL[5];
+  float_type vR[5];
+  float_type vJump[5];
+  float_type diss[5];
+
+  vL[0] =  (kappa-sL)/(kappaM1) - nc::half*rho_pL*(Vel_L[0]*Vel_L[0] + Vel_L[1]*Vel_L[1] + Vel_L[2]*Vel_L[2]);
+  vR[0] =  (kappa-sR)/(kappaM1) - nc::half*rho_pR*(Vel_R[0]*Vel_R[0] + Vel_R[1]*Vel_R[1] + Vel_R[2]*Vel_R[2]);
+
+  vL[1] = rho_pL*Vel_L[0];
+  vR[1] = rho_pR*Vel_R[0];
+
+  vL[2] = rho_pL*Vel_L[1];
+  vR[2] = rho_pR*Vel_R[1];
+
+  vL[3] = rho_pL*Vel_L[2];
+  vR[3] = rho_pR*Vel_R[2];
+
+  vR[4] = -rho_pR;
+  vL[4] = -rho_pL;
+
+  for (size_t k=0; k<5; k++) {
+    vJump[k] = vR[k] - vL[k];
+  }
+  for (size_t k=0; k<5; k++) {
+    diss[k]  = DHat[k]*(RHat[0][k]*vJump[0] + RHat[1][k]*vJump[1] + RHat[2][k]*vJump[2] + RHat[3][k]*vJump[3] + RHat[4][k]*vJump[4]);
+  }
+
+  float_type diss_[5];
+  for (size_t k=0; k<5; k++)
+    diss_[k] = RHat[k][0]*diss[0] + RHat[k][1]*diss[1] + RHat[k][2]*diss[2] + RHat[k][3]*diss[3] + RHat[k][4]*diss[4];
+
+  // Compute entropy stable numerical flux
+  float_type F[5];
+  for (size_t k=0; k<5; k++)
+    F[k] = F_star[k] - nc::half*diss_[k];
+
+  float_type rho_flux    = face_surface*F[0];
+  float_type rho_v1_flux = face_surface*F[1];
+  float_type rho_v2_flux = face_surface*F[2];
+  float_type rho_v3_flux = face_surface*F[3];
+  float_type rho_e_flux  = face_surface*F[4];
+
+  // rotate back from (n,t1,t2) to (x,y,z) basis.
+  float_type rho_vx_flux = rho_v1_flux*n[0] + rho_v2_flux*t1[0] * rho_v3_flux*t2[0];
+  float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] * rho_v3_flux*t2[1];
+  float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] * rho_v3_flux*t2[2];
+
+  auto [fluxes_rho, fluxes_rho_v1, fluxes_rho_v2, fluxes_rho_v3, fluxes_rho_e] = fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+
+  atomicAdd(&fluxes_rho[e_idx], -rho_flux);
+  atomicAdd(&fluxes_rho_v1[e_idx], -rho_vx_flux);
+  atomicAdd(&fluxes_rho_v2[e_idx], -rho_vy_flux);
+  atomicAdd(&fluxes_rho_v3[e_idx], -rho_vz_flux);
+  atomicAdd(&fluxes_rho_e[e_idx], -rho_e_flux);
+}
+
 __global__ void t8gpu::estimate_gradient(MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, 3> connectivity,
 					 MemoryAccessorAll<VariableList> data_next,
 					 MemoryAccessorAll<VariableList> data_fluxes) {

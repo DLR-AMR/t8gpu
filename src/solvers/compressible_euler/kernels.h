@@ -23,6 +23,11 @@ namespace t8gpu {
 				       t8gpu::MemoryAccessorAll<t8gpu::VariableList> fluxes,
 				       typename t8gpu::variable_traits<t8gpu::VariableList>::float_type* __restrict__ speed_estimates);
 
+  __global__ void reflective_boundary_condition(t8gpu::MeshConnectivityAccessor<typename t8gpu::variable_traits<t8gpu::VariableList>::float_type, 3> connectivity,
+						t8gpu::MemoryAccessorOwn<t8gpu::VariableList> variables,
+						t8gpu::MemoryAccessorOwn<t8gpu::VariableList> fluxes,
+						typename t8gpu::variable_traits<t8gpu::VariableList>::float_type* __restrict__ speed_estimates);
+
   /// @brief A simple density gradient estimator that can be used to
   ///        construct a refinement criterion. It estimates the
   ///        density gradient at each faces and sets the first flux
