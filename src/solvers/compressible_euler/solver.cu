@@ -48,20 +48,20 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
 
   // compute fluxes
   constexpr int thread_block_size = 256;
-  const int fluxes_num_blocks = m_mesh_manager.get_num_local_faces() / thread_block_size;
+  const int fluxes_num_blocks = (m_mesh_manager.get_num_local_faces() + (thread_block_size - 1)) / thread_block_size;
   kepes_compute_fluxes<<<fluxes_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
 								 m_mesh_manager.get_all_variables(prev),
 								 m_mesh_manager.get_all_variables(Fluxes),
 								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
-  cudaDeviceSynchronize();
-  MPI_Barrier(m_comm);
 
- const int boundary_num_blocks = m_mesh_manager.get_num_local_boundary_faces() / thread_block_size;
- reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
-									   m_mesh_manager.get_own_variables(prev),
-									   m_mesh_manager.get_own_variables(Fluxes),
-									   thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  const int boundary_num_blocks = (m_mesh_manager.get_num_local_boundary_faces() + (thread_block_size - 1)) / thread_block_size;
+  if (m_mesh_manager.get_num_local_boundary_faces() > 0) {
+    reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
+									      m_mesh_manager.get_own_variables(prev),
+									      m_mesh_manager.get_own_variables(Fluxes),
+									      thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  }
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
@@ -83,13 +83,13 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
 								 m_mesh_manager.get_all_variables(Fluxes),
 								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
-  cudaDeviceSynchronize();
-  MPI_Barrier(m_comm);
 
-  reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
-									    m_mesh_manager.get_own_variables(Step1),
-									    m_mesh_manager.get_own_variables(Fluxes),
-									    thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  if (m_mesh_manager.get_num_local_boundary_faces() > 0) {
+    reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
+									      m_mesh_manager.get_own_variables(Step1),
+									      m_mesh_manager.get_own_variables(Fluxes),
+									      thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  }
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
@@ -111,13 +111,13 @@ void CompressibleEulerSolver::iterate(float_type delta_t) {
 								 m_mesh_manager.get_all_variables(Fluxes),
 								 thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
-  cudaDeviceSynchronize();
-  MPI_Barrier(m_comm);
 
- reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
-									   m_mesh_manager.get_own_variables(Step2),
-									   m_mesh_manager.get_own_variables(Fluxes),
-									   thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  if (m_mesh_manager.get_num_local_boundary_faces() > 0) {
+    reflective_boundary_condition<<<boundary_num_blocks, thread_block_size>>>(m_mesh_manager.get_connectivity_information(),
+									      m_mesh_manager.get_own_variables(Step2),
+									      m_mesh_manager.get_own_variables(Fluxes),
+									      thrust::raw_pointer_cast(m_device_face_speed_estimate.data()));
+  }
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
