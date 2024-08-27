@@ -24,23 +24,50 @@ CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm,
     double center[3];
     t8_forest_element_centroid(forest, tree_idx, element, center);
 
-    float_type sigma = float_type{0.05}/sqrt(float_type{2.0});
+    float_type sigma = float_type{0.2}/sqrt(float_type{2.0});
     float_type gamma = float_type{1.4};
 
-    double x = center[0]-0.5;
-    double y = center[1]-0.5;
+    float_type x = static_cast<float_type>(center[0]);
+    float_type y = static_cast<float_type>(center[1]);
+    float_type z = static_cast<float_type>(center[2]);
 
-    float_type v1 = static_cast<float_type>(std::abs(y) < 0.25 ? -0.5 : 0.5);
-    float_type v2 = static_cast<float_type>(0.1*sin(4.0*M_PI*x)*(exp(-((y-0.25)/(2*sigma))*((y-0.25)/(2*sigma)))+exp(-((y+0.25)/(2*sigma))*((y+0.25)/(2*sigma)))));
+    float_type r = sqrt(x*x + y*y + z*z);
 
-    rho[e_idx]    = static_cast<float_type>(std::abs(y) < 0.25 ? 2.0 : 1.0);
-    rho_v1[e_idx] = rho[e_idx]*v1;
-    rho_v2[e_idx] = rho[e_idx]*v2;
-    rho_v3[e_idx] = static_cast<float_type>(0.0);
-    rho_e[e_idx]  = float_type{2.0}/(gamma-float_type{1.0}) + float_type{0.5}*(rho_v1[e_idx] * rho_v1[e_idx] + rho_v2[e_idx] * rho_v2[e_idx]) / rho[e_idx];
+    // vector normal to the surface of the globe.
+    std::array<float_type, 3> e_r = {x/r, y/r, z/r};
+
+    // first tangent vector to surface of the globe. cross_prod(e_r, e_z) / norm(...)
+    // This vector is tangent to a latitude of the globe.
+    std::array<float_type, 3> e_phi = {
+      e_r[1]/sqrt(e_r[1]*e_r[1] + e_r[0]*e_r[0]),
+      -e_r[0]/sqrt(e_r[1]*e_r[1] + e_r[0]*e_r[0]),
+      static_cast<float_type>(0.0)
+    };
+
+    // second tangent vector cross_prod(e_r, u_phi)
+    // This vector is tangent to a longitude line.
+    std::array<float_type, 3> e_theta = {
+      e_r[1]*e_phi[2] - e_r[2]*e_phi[1],
+      e_r[2]*e_phi[0] - e_r[0]*e_phi[2],
+      e_r[0]*e_phi[1] - e_r[1]*e_phi[0]
+    };
+
+    float_type phi = static_cast<float_type>((y >= 0.0) ? acos(x/sqrt(x*x + y*y))
+                                                        : 2.0*M_PI - acos(x/sqrt(x*x + y*y)));
+
+    float_type theta = asin(z/r);
+    // We set the initial condition to for a Kelvin-Helmholtz test case.
+    float_type v_phi = static_cast<float_type>(r*cos(theta)*(theta < 0 ? -0.5 : 0.5));
+    float_type v_theta = static_cast<float_type>(0.5*r*sin(1.0*phi)*(exp(-(theta/(2*sigma))*(theta/(2*sigma)))));
+
+    rho[e_idx]    = static_cast<float_type>(theta < 0.0 ? 2.0 : 1.0);
+
+    rho_v1[e_idx] = rho[e_idx]*(v_phi*e_phi[0] + v_theta*e_theta[0]);
+    rho_v2[e_idx] = rho[e_idx]*(v_phi*e_phi[1] + v_theta*e_theta[1]);
+    rho_v3[e_idx] = rho[e_idx]*(v_phi*e_phi[2] + v_theta*e_theta[2]);
+
+    rho_e[e_idx]  = float_type{2.5}/(gamma-float_type{1.0}) + float_type{0.5}*(rho_v1[e_idx] * rho_v1[e_idx] + rho_v2[e_idx] * rho_v2[e_idx] + rho_v3[e_idx] * rho_v3[e_idx]) / rho[e_idx];
   });
-
-  m_mesh_manager.compute_connectivity_information();
 }
 
 void CompressibleEulerSolver::iterate(float_type delta_t) {
