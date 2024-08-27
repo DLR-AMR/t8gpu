@@ -360,7 +360,7 @@ namespace t8gpu {
 	: m_data {std::move(data)} {
 	m_vtk_data_field_info_struct.type = data_type;
 	m_vtk_data_field_info_struct.data = m_data.get();
-	std::strncpy(m_vtk_data_field_info_struct.description, name.c_str(), BUFSIZ);
+	std::strncpy(m_vtk_data_field_info_struct.description, name.c_str(), BUFSIZ - 1);
       }
 
     public:
