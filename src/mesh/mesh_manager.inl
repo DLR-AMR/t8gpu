@@ -569,16 +569,17 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::save_variables_to_vtk(std:
   for (size_t i=0; i<host_variables.size(); i++)
     vtk_data_fields[i] = host_variables[i].m_vtk_data_field_info_struct;
 
-    t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
-			    true,  /* write_treeid */
-			    true,  /* write_mpirank */
-			    true,  /* write_level */
-			    true,  /* write_element_id */
-			    false, /* write_ghost */
-			    false, /* write_curved */
-			    false, /* do_not_use_API */
-			    static_cast<int>(host_variables.size()), /* num_data */
-			    vtk_data_fields.data());
+  MPI_Barrier(m_comm);
+  t8_forest_write_vtk_ext(m_forest, prefix.c_str(),
+			  true,  /* write_treeid */
+			  true,  /* write_mpirank */
+			  true,  /* write_level */
+			  true,  /* write_element_id */
+			  false, /* write_ghost */
+			  false, /* write_curved */
+			  false, /* do_not_use_API */
+			  static_cast<int>(host_variables.size()), /* num_data */
+			  vtk_data_fields.data());
 }
 
 template<typename VariableType>
