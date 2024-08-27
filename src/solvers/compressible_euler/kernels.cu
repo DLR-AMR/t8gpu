@@ -187,6 +187,12 @@ __global__ void t8gpu::kepes_compute_fluxes(MeshConnectivityAccessor<typename va
   t1[1] -= dot_product*n[1];
   t1[2] -= dot_product*n[2];
 
+  float_type t1_norm = sqrt(t1[0]*t1[0] + t1[1]*t1[1] + t1[2]*t1[2]);
+
+  t1[0] /= t1_norm;
+  t1[1] /= t1_norm;
+  t1[2] /= t1_norm;
+
   // The last basis vector is the cross product of the first two.
   float_type t2[3] = {
     n[1]*t1[2]-n[2]*t1[1],
@@ -300,9 +306,9 @@ __global__ void t8gpu::kepes_compute_fluxes(MeshConnectivityAccessor<typename va
   float_type rho_e_flux  = face_surface*F[4];
 
   // rotate back from (n,t1,t2) to (x,y,z) basis.
-  float_type rho_vx_flux = rho_v1_flux*n[0] + rho_v2_flux*t1[0] * rho_v3_flux*t2[0];
-  float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] * rho_v3_flux*t2[1];
-  float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] * rho_v3_flux*t2[2];
+  float_type rho_vx_flux = rho_v1_flux*n[0] + rho_v2_flux*t1[0] + rho_v3_flux*t2[0];
+  float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] + rho_v3_flux*t2[1];
+  float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] + rho_v3_flux*t2[2];
 
   auto [fluxes_rho, fluxes_rho_v1, fluxes_rho_v2, fluxes_rho_v3, fluxes_rho_e] = fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
@@ -363,6 +369,12 @@ __global__ void t8gpu::reflective_boundary_condition(MeshConnectivityAccessor<ty
   t1[0] -= dot_product*n[0];
   t1[1] -= dot_product*n[1];
   t1[2] -= dot_product*n[2];
+
+  float_type t1_norm = sqrt(t1[0]*t1[0] + t1[1]*t1[1] + t1[2]*t1[2]);
+
+  t1[0] /= t1_norm;
+  t1[1] /= t1_norm;
+  t1[2] /= t1_norm;
 
   // The last basis vector is the cross product of the first two.
   float_type t2[3] = {
@@ -477,9 +489,9 @@ __global__ void t8gpu::reflective_boundary_condition(MeshConnectivityAccessor<ty
   float_type rho_e_flux  = face_surface*F[4];
 
   // rotate back from (n,t1,t2) to (x,y,z) basis.
-  float_type rho_vx_flux = rho_v1_flux*n[0] + rho_v2_flux*t1[0] * rho_v3_flux*t2[0];
-  float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] * rho_v3_flux*t2[1];
-  float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] * rho_v3_flux*t2[2];
+  float_type rho_vx_flux = rho_v1_flux*n[0] + rho_v2_flux*t1[0] + rho_v3_flux*t2[0];
+  float_type rho_vy_flux = rho_v1_flux*n[1] + rho_v2_flux*t1[1] + rho_v3_flux*t2[1];
+  float_type rho_vz_flux = rho_v1_flux*n[2] + rho_v2_flux*t1[2] + rho_v3_flux*t2[2];
 
   auto [fluxes_rho, fluxes_rho_v1, fluxes_rho_v2, fluxes_rho_v3, fluxes_rho_e] = fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
