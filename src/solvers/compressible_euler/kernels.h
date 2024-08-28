@@ -23,6 +23,17 @@ namespace t8gpu {
 				       t8gpu::MemoryAccessorAll<t8gpu::VariableList> fluxes,
 				       typename t8gpu::variable_traits<t8gpu::VariableList>::float_type* __restrict__ speed_estimates);
 
+  /// @brief This kernel computes the kepes flux at every boundary
+  ///        faces using reflective boundary conditions and adds every
+  ///        contribution to the fluxes variables.
+  ///
+  /// @param [in]  connectivity    face connectivity information.
+  /// @param [in]  variables       owned variables.
+  /// @param [out] fluxes          flux contributions for each face of each
+  ///                              element are added up in these variables.
+  /// @param [out] speed_estimates wave speed estimates based on the HLL
+  ///                              flux are written in this variable for
+  ///                              each face.
   __global__ void reflective_boundary_condition(t8gpu::MeshConnectivityAccessor<typename t8gpu::variable_traits<t8gpu::VariableList>::float_type, 3> connectivity,
 						t8gpu::MemoryAccessorOwn<t8gpu::VariableList> variables,
 						t8gpu::MemoryAccessorOwn<t8gpu::VariableList> fluxes,

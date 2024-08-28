@@ -10,7 +10,7 @@ CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm,
 						 t8_forest_t forest)
   : m_comm {comm},
     m_mesh_manager {comm, scheme, cmesh, forest},
-    m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces()) {
+    m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() + m_mesh_manager.get_num_local_boundary_faces()) {
 
   m_mesh_manager.initialize_variables([](MemoryAccessorOwn<VariableList>& accessor,
 					 t8_forest_t forest,

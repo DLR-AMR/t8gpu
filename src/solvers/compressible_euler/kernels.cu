@@ -425,7 +425,7 @@ __global__ void t8gpu::reflective_boundary_condition(MeshConnectivityAccessor<ty
 				 hHat,
 				 p1Hat);
 
-  speed_estimates[i] = abs(uHat) + aHat;
+  speed_estimates[connectivity.get_num_local_faces() + i] = abs(uHat) + aHat;
 
 
   float_type kappa = float_type{1.4}; // remove this constant
