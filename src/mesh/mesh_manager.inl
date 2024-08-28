@@ -52,7 +52,6 @@ t8gpu::MeshManager<VariableType, StepType, dim>::MeshManager(sc_MPI_Comm comm,
   m_device_ranks = m_ranks;
   m_device_indices = m_indices;
 
-  // UserData* forest_user_data = static_cast<UserData*>(malloc(sizeof(UserData)));
   UserData* forest_user_data = new UserData();
   assert(forest_user_data != nullptr);
 
@@ -113,9 +112,6 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::initialize_variables(Func 
   float_type* device_element_data_ptr {this->get_own_variable(static_cast<StepType>(0), static_cast<VariableType>(0))};
   T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_data_ptr, 0, (nb_variables*nb_steps+1)*sizeof(float_type)*m_num_local_elements));
 
-  // m_element_refinement_criteria.resize(m_num_local_elements);
-  // m_device_element_refinement_criteria.resize(m_num_local_elements);
-
   // copy new shared element variables
   for (size_t k=0; k<nb_variables; k++) {
     this->set_variable(static_cast<StepType>(0), static_cast<VariableType>(k), host_variables[k]);
@@ -172,9 +168,9 @@ __global__ void adapt_variables_and_volume(t8gpu::MemoryAccessorOwn<VariableType
   int diff = adapt_data[i + 1] - adapt_data[i];
   int nb_elements_sum = max(1, diff);
 
-  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.25 : (diff == 1 ? 1.0 : 4.0)));
+  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.125 : (diff == 1 ? 1.0 : 8.0)));
   if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
-    volume_new[i] = volume_old[adapt_data[i]] * 0.25;
+    volume_new[i] = volume_old[adapt_data[i]] * 0.125;
   }
 
   for (int k=0; k<t8gpu::variable_traits<VariableType>::nb_variables; k++) {
@@ -187,7 +183,7 @@ __global__ void adapt_variables_and_volume(t8gpu::MemoryAccessorOwn<VariableType
 }
 
 template<typename VariableType, typename StepType, size_t dim>
-void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_vector<typename t8gpu::MeshManager<VariableType, StepType, dim>::float_type>& refinement_criteria, StepType step) {
+void t8gpu::MeshManager<VariableType, StepType, dim>::adapt(const thrust::host_vector<typename t8gpu::MeshManager<VariableType, StepType, dim>::float_type>& refinement_criteria, typename t8gpu::MeshManager<VariableType, StepType, dim>::step_index_type step) {
   t8_forest_ref(m_forest);
   assert(t8_forest_is_committed(m_forest));
 
@@ -304,11 +300,6 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::refine(const thrust::host_
   this->resize(num_new_elements);
 
   m_element_refinement_criteria.resize(num_new_elements);
-  m_device_refinement_criteria.resize(num_new_elements);
-
-  // // fill fluxes device element variable
-  // float_type* device_element_rho_fluxes_ptr {this->get_own_variable(Fluxes, Rho)};
-  // T8GPU_CUDA_CHECK_ERROR(cudaMemset(device_element_rho_fluxes_ptr, 0, 5*sizeof(float_type)*num_new_elements)); // cleanup tampered with flux variable
 
   for (int k=0; k<nb_variables; k++) {
     this->set_variable(step, static_cast<VariableType>(k), new_variables[k]);
@@ -372,7 +363,6 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
         t8_locidx_t* neighbor_ids {};
         t8_element_t** neighbors {};
         t8_eclass_scheme_c* neigh_scheme {};
-
         t8_forest_leaf_face_neighbors(m_forest, tree_idx, element, &neighbors, face_idx, &dual_faces, &num_neighbors, &neighbor_ids, &neigh_scheme,
                                       true);
 
@@ -424,7 +414,6 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
   m_num_local_faces = static_cast<t8_locidx_t>(face_area.size());
   m_num_local_boundary_faces = static_cast<t8_locidx_t>(boundary_face_area.size());
 
-  // m_device_face_neighbors = face_neighbors;
   // we concatenate the inner and boundary face normals.
   m_device_face_neighbors.resize(face_neighbors.size() + boundary_face_neighbors.size());
   cudaMemcpy(thrust::raw_pointer_cast(m_device_face_neighbors.data()),
@@ -436,7 +425,6 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
 	     boundary_face_neighbors.size()*sizeof(t8_locidx_t),
 	     cudaMemcpyHostToDevice);
 
-  // m_device_face_normals = face_normals;
   // we concatenate the inner and boundary face normals.
   m_device_face_normals.resize(face_normals.size() + boundary_face_normals.size());
   cudaMemcpy(thrust::raw_pointer_cast(m_device_face_normals.data()),
@@ -448,7 +436,6 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
 	     boundary_face_normals.size()*sizeof(float_type),
 	     cudaMemcpyHostToDevice);
 
-  // m_device_face_area = face_area;
   // we concatenate the inner and boundary face area.
   m_device_face_area.resize(face_area.size() + boundary_face_area.size());
   cudaMemcpy(thrust::raw_pointer_cast(m_device_face_area.data()),
@@ -668,7 +655,6 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::partition(step_index_type 
 
   // resize shared and own element variables
   this->resize(num_new_elements);
-  m_device_refinement_criteria.resize(num_new_elements);
 
   for (int k=0; k<t8gpu::variable_traits<VariableType>::nb_variables; k++) {
     this->set_variable(step, static_cast<VariableType>(k), new_variables[k]);

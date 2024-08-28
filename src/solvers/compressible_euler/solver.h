@@ -59,6 +59,10 @@ namespace t8gpu {
     /// @param delta_t The time step to advance the simulation.
     void iterate(float_type delta_t);
 
+    /// @brief This function refines or coarsens mesh elements
+    ///        according to an approximation of the gradient.
+    void adapt();
+
     /// @brief Save the density field to a vkt formatted file.
     ///
     /// @param [in] prefix   specifies the prefix used to saved the vtk

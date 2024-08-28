@@ -502,7 +502,7 @@ __global__ void t8gpu::reflective_boundary_condition(MeshConnectivityAccessor<ty
   atomicAdd(&fluxes_rho_e[e_idx], -rho_e_flux);
 }
 
-__global__ void t8gpu::estimate_gradient(MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, 3> connectivity,
+__global__ void t8gpu::estimate_gradient(MeshConnectivityAccessor<typename variable_traits<VariableList>::float_type, CompressibleEulerSolver::dim> connectivity,
 					 MemoryAccessorAll<VariableList> data_next,
 					 MemoryAccessorAll<VariableList> data_fluxes) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;

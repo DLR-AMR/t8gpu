@@ -48,7 +48,7 @@ namespace t8gpu {
   /// @param [out] data_fluxes The first flux variable is where the
   ///                          gradient estimation will be computed.
   /// @param [in] connectivity Face connectivity infurmation.
-  __global__ void estimate_gradient(t8gpu::MeshConnectivityAccessor<typename t8gpu::variable_traits<VariableList>::float_type, 3> connectivity,
+  __global__ void estimate_gradient(t8gpu::MeshConnectivityAccessor<typename t8gpu::variable_traits<VariableList>::float_type, CompressibleEulerSolver::dim> connectivity,
 				    t8gpu::MemoryAccessorAll<t8gpu::VariableList> data_next,
 				    t8gpu::MemoryAccessorAll<t8gpu::VariableList> data_fluxes);
 

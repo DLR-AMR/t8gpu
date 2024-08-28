@@ -241,8 +241,8 @@ namespace t8gpu {
     using step_index_type = typename step_traits<StepType>::index_type;
     static constexpr size_t nb_steps = step_traits<StepType>::nb_steps;
 
-    static constexpr t8_locidx_t max_level = 9;
-    static constexpr t8_locidx_t min_level = 6;
+    static constexpr t8_locidx_t min_level = 2;
+    static constexpr t8_locidx_t max_level = 4;
 
     /// @brief Constructor of the MeshManager class.
     ///
@@ -282,7 +282,7 @@ namespace t8gpu {
     template<typename Func>
     void initialize_variables(Func func);
 
-    /// @brief refine the mesh according to a user  specified criteria.
+    /// @brief adapt the mesh according to a user  specified criteria.
     ///
     /// @param [in] refinement_criteria specifies the refinement, 0 to
     ///                                 mean do not refine or coarsen,
@@ -296,7 +296,7 @@ namespace t8gpu {
     /// recompute the connectivity information and to discard any
     /// other object related to connectivity initialized before the
     /// refinement.
-    void refine(const thrust::host_vector<float_type>& refinement_criteria, StepType step);
+    void adapt(const thrust::host_vector<float_type>& refinement_criteria, step_index_type step);
 
     /// @brief repartition the elements among the ranks.
     ///
@@ -451,15 +451,12 @@ namespace t8gpu {
     thrust::device_vector<float_type>  m_device_face_area;      /** inner and boundary faces area */
 
     thrust::host_vector<float_type>    m_element_refinement_criteria;
-    thrust::device_vector<float_type>  m_device_refinement_criteria;
 
     /// @brief Struct to store user data passed to t8code callback
     ///        functions.
     struct UserData {
       thrust::host_vector<float_type>* element_refinement_criteria;
     };
-
-    // void compute_face_connectivity();
 
     static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
 					const int is_family, const int num_elements, t8_element_t* elements[]);

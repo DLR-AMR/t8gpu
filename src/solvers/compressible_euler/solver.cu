@@ -207,3 +207,47 @@ CompressibleEulerSolver::float_type CompressibleEulerSolver::compute_timestep() 
 
   return  cfl*static_cast<float_type>(std::pow(static_cast<float_type>(0.5), max_level))/global_speed_estimate;
 }
+
+__global__ static void compute_refinement_criteria(typename variable_traits<VariableList>::float_type const* __restrict__ fluxes_rho,
+						   typename variable_traits<VariableList>::float_type const* __restrict__ volume,
+						   typename variable_traits<VariableList>::float_type* __restrict__ criteria, int num_elements) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i >= num_elements) return;
+
+  criteria[i] = fluxes_rho[i] / cbrt(volume[i]);
+}
+
+void CompressibleEulerSolver::adapt() {
+  constexpr int thread_block_size = 256;
+  const int gradient_num_blocks = (m_mesh_manager.get_num_local_faces() + (thread_block_size - 1)) / thread_block_size;
+  estimate_gradient<<<gradient_num_blocks, thread_block_size>>>(
+	m_mesh_manager.get_connectivity_information(),
+	m_mesh_manager.get_all_variables(next),
+	m_mesh_manager.get_all_variables(Fluxes)); // reuse flux variable here
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
+
+  thrust::device_vector<float_type> device_element_refinement_criteria(m_mesh_manager.get_num_local_elements());
+
+  const int fluxes_num_blocks = (m_mesh_manager.get_num_local_elements() + (thread_block_size - 1)) / thread_block_size;
+  compute_refinement_criteria<<<fluxes_num_blocks, thread_block_size>>>(
+	m_mesh_manager.get_own_variable(Fluxes, Rho),
+	m_mesh_manager.get_own_volume(),
+	// thrust::raw_pointer_cast(m_device_element_refinement_criteria.data()),
+	thrust::raw_pointer_cast(device_element_refinement_criteria.data()),
+	m_mesh_manager.get_num_local_elements());
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+
+  // m_element_refinement_criteria = m_device_element_refinement_criteria;
+  // m_element_refinement_criteria = device_element_refinement_criteria;
+  thrust::host_vector<float_type> element_refinement_criteria = device_element_refinement_criteria;
+
+  T8GPU_CUDA_CHECK_ERROR(cudaMemset(m_mesh_manager.get_own_variable(Fluxes, Rho), 0, sizeof(float_type)*m_mesh_manager.get_num_local_elements()));
+
+  // m_mesh_manager.refine(m_element_refinement_criteria, next);
+  m_mesh_manager.adapt(element_refinement_criteria, next);
+  m_mesh_manager.compute_connectivity_information();
+  m_device_face_speed_estimate.resize(m_mesh_manager.get_num_local_faces() + m_mesh_manager.get_num_local_boundary_faces());
+}
