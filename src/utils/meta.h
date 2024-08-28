@@ -13,7 +13,7 @@ namespace t8gpu::meta {
   ///        static field is true only if all of the types stripped
   ///        from cv supplied are equal.
   ///
-  /// @tparam Ts... the types to check
+  /// @tparam Ts... the types to check.
   ///
   /// Here are a few usage examples:
   ///
@@ -39,11 +39,11 @@ namespace t8gpu::meta {
   /// @brief is_explicitly_convertible_to is a bool integral constant
   ///        whose value represents whether the type T can be
   ///        explicitly statically casted to U. This is more
-  ///        permissive that std::is_convertible which only is true
+  ///        permissive than std::is_convertible which only is true
   ///        for implicit casts.
   ///
-  /// @tparam T the type to be converted from
-  /// @tparam U the type to be converted to
+  /// @tparam T the type to be converted from.
+  /// @tparam U the type to be converted to.
   ///
   template<typename T, typename U, typename = void>
   struct is_explicitly_convertible_to : std::false_type {};
