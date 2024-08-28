@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
 project(T8GPU
   DESCRIPTION "A miniapp to test t8code meshing capabilities with GPUs"
   LANGUAGES C CXX CUDA)
 
-option(T8GPU_BUILD_DOCUMENTATION "Build t8gpu developper documentation" ON)
+option(T8GPU_BUILD_DOCUMENTATION "Build t8gpu developper documentation" OFF)
 
 set(CMAKE_CUDA_ARCHITECTURES 86)
 set(CMAKE_CXX_STANDARD 17)
