@@ -1,5 +1,9 @@
 # t8gpu
 
+<p align="center">
+  <img width="450px" src=AMR_example.png>
+</p>
+
 A C++ finite volume framework using t8code targetting GPUs.
 
 > [!CAUTION]
