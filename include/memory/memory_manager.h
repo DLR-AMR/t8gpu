@@ -26,7 +26,7 @@ namespace t8gpu {
 
   template<class VariableType>
   struct variable_traits<VariableType, typename std::enable_if_t<std::is_enum_v<VariableType>>> {
-    using float_type = float;
+    using float_type = double;
     using index_type = VariableType;
     static constexpr size_t nb_variables = VariableType::nb_variables;
   };

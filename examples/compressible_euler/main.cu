@@ -1,6 +1,7 @@
-#include <solvers/compressible_euler/solver.h>
 #include <cstdio>
 #include <string>
+
+#include "solver.h"
 
 int main(int argc, char* argv[]) {
   int mpiret = sc_MPI_Init(&argc, &argv);
@@ -24,12 +25,17 @@ int main(int argc, char* argv[]) {
 
     t8gpu::CompressibleEulerSolver solver {comm, scheme, cmesh, forest};
 
-    t8gpu::CompressibleEulerSolver::float_type delta_t = 0.005f;
-    for (size_t i=0; i<1000; i++) {
-      solver.iterate(delta_t);
-    }
+    t8gpu::CompressibleEulerSolver::float_type delta_t = 0.0005f;
 
-    solver.save_vtk("density");
+    for (size_t i=0; i<20'000; i++) {
+      if (i % 100 == 0) {
+	solver.adapt();
+      }
+      solver.iterate(delta_t);
+      if (i % 100 == 0) {
+	solver.save_conserved_variables_to_vtk("conserved_variables" + std::to_string(i / 100));
+      }
+    }
   }
 
   sc_finalize();

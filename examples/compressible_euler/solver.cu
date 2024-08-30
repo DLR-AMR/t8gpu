@@ -1,6 +1,7 @@
-#include <solvers/compressible_euler/solver.h>
-#include <solvers/compressible_euler/kernels.h>
 #include <utils/cuda.h>
+
+#include "solver.h"
+#include "kernels.h"
 
 using namespace t8gpu;
 
@@ -58,7 +59,7 @@ CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm comm,
     float_type theta = asin(z/r);
     // We set the initial condition to for a Kelvin-Helmholtz test case.
     float_type v_phi = static_cast<float_type>(r*cos(theta)*(theta < 0 ? -0.5 : 0.5));
-    float_type v_theta = static_cast<float_type>(0.5*r*sin(1.0*phi)*(exp(-(theta/(2*sigma))*(theta/(2*sigma)))));
+    float_type v_theta = static_cast<float_type>(0.5*r*sin(2.0*phi)*(exp(-(theta/(2*sigma))*(theta/(2*sigma)))));
 
     rho[e_idx]    = static_cast<float_type>(theta < 0.0 ? 2.0 : 1.0);
 

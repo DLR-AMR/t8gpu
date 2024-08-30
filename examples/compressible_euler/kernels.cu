@@ -1,4 +1,4 @@
-#include <solvers/compressible_euler/kernels.h>
+#include "kernels.h"
 
 using namespace t8gpu;
 
