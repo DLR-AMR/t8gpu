@@ -4,12 +4,12 @@
   <img width="450px" src=AMR_example.png>
 </p>
 
-A C++ finite volume framework using t8code targetting GPUs.
+A C++ finite volume header-only library using t8code targeting GPUs.
 
 > [!CAUTION]
 > This repository is still work in progress. Therefore, the API is subject to changes and the user guide is still missing. Feel free to leave feedback/suggestions.
 
-## Build
+## Install
 
 ### Requirements
 
@@ -32,17 +32,18 @@ The most common build options are described here:
 | Option                             | Description                        |
 | ---------------------------------- | ---------------------------------- |
 | -DT8GPU_BUILD_DOCUMENTATION=ON/OFF | Build the Doxygen documentation    |
+| -DT8GPU_BUILD_EXAMPLES=ON/OFF      | Build the example executables      |
 | -DCMAKE_CXX_FLAGS="..."            | Set additional c++ compiler flags  |
 | -DCMAKE_CUDA_FLAGS="..."           | Set additional cuda compiler flags |
 
-### Build and install t8gpu
+### Build examples and install t8gpu
 
 ```
 cmake --build build/ --parallel
 cmake --build build/ --target install
 ```
 
-## Run
+## Run the examples
 
 > [!NOTE]
 > For better performance using multiple MPI ranks, it is heavily recommended to use the [MPS server](https://docs.nvidia.com/deploy/mps/). To launch the MPS server, simply run:
@@ -54,7 +55,20 @@ cmake --build build/ --target install
 > ```
 
 ```
-mpirun -n 8 ./build/src/t8gpu
+mpirun -n 8 ./build/examples/compressible_euler/kelvin_helmholtz
 ```
 
 ## Getting started
+
+### Including t8gpu in a CMake-based project
+
+As t8gpu is a header-only library, linking against it requires only adding the installed include directory to the compiler include directories. However, for CMake based projects, we recommend doing the following to get all the necessary compiler flags, simply add to your ``CMakeLists.txt``:
+
+```
+find_package(t8gpu REQUIRED)
+target_link_libraries(your_target PRIVATE t8gpu)
+```
+
+You might need to provide the CMake variable ``T8GPU_ROOT`` to let CMake know where t8gpu was installed.
+
+### Quickstart tutorial
