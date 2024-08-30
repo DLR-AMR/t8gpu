@@ -16,7 +16,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 add_library(t8gpu INTERFACE)
 
-target_include_directories(t8gpu INTERFACE include)
+target_include_directories(t8gpu
+  INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>)
 
 target_compile_options(t8gpu
   INTERFACE
@@ -27,10 +30,10 @@ target_compile_options(t8gpu
     $<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>
     --expt-relaxed-constexpr)
 
-set_target_properties(t8gpu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
 find_package(T8CODE REQUIRED)
 target_link_libraries(t8gpu INTERFACE T8CODE::T8)
+
+include(cmake/install.cmake)
 
 if(T8GPU_BUILD_DOCUMENTATION)
   add_subdirectory(docs)

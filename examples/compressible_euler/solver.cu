@@ -1,7 +1,8 @@
-#include <utils/cuda.h>
+#include <t8gpu/utils/cuda.h>
+#include <t8gpu/timestepping/ssp_runge_kutta.h>
 
-#include "solver.h"
 #include "kernels.h"
+#include "solver.h"
 
 using namespace t8gpu;
 

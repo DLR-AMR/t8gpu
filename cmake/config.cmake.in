@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(T8CODE CONFIG)
+
+set(T8GPU_BUILD_DOCUMENTATION @T8GPU_BUILD_DOCUMENTATION@)
+set(T8GPU_BUILD_EXAMPLES @T8GPU_BUILD_EXAMPLES@)
+
+include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@-targets.cmake")
+
+check_required_components(@PROJECT_NAME@)

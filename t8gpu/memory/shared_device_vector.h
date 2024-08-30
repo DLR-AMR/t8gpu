@@ -5,11 +5,11 @@
 #define MEMORY_SHARED_DEVICE_VECTOR_H
 
 #include <array>
-#include <sc_mpi.h>
+#include <sc.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <utility>
-#include <utils/cuda.h>
+#include <t8gpu/utils/cuda.h>
 
 namespace t8gpu {
   ///

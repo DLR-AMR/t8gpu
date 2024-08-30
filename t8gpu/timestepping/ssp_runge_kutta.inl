@@ -1,5 +1,3 @@
-#include <timestepping/ssp_runge_kutta.h>
-
 namespace t8gpu::timestepping {
 
   template<typename ft>

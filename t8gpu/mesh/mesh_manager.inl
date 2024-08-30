@@ -4,9 +4,8 @@
 #include <thrust/host_vector.h>
 #include <type_traits>
 
-#include <utils/cuda.h>
-#include <utils/profiling.h>
-#include <timestepping/ssp_runge_kutta.h>
+#include <t8gpu/utils/cuda.h>
+#include <t8gpu/utils/profiling.h>
 
 #include <t8.h>
 #include <t8_cmesh.h>

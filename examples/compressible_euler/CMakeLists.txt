@@ -5,4 +5,5 @@ add_executable(kelvin_helmholtz
   solver.cu
   solver.h)
 
+set_target_properties(kelvin_helmholtz PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 target_link_libraries(kelvin_helmholtz t8gpu)

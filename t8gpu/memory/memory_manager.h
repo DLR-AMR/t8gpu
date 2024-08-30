@@ -6,8 +6,8 @@
 #ifndef MEMORY_MEMORY_MANAGER_H
 #define MEMORY_MEMORY_MANAGER_H
 
-#include <utils/meta.h>
-#include <memory/shared_device_vector.h>
+#include <t8gpu/utils/meta.h>
+#include <t8gpu/memory/shared_device_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <tuple>

@@ -6,7 +6,7 @@
 #ifndef MESH_MANAGER_H
 #define MESH_MANAGER_H
 
-#include <memory/memory_manager.h>
+#include <t8gpu/memory/memory_manager.h>
 #include <memory>
 #include <t8.h>
 #include <t8_vtk.h>

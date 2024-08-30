@@ -1,8 +1,8 @@
 #ifndef SOLVERS_COMPRESSIBLE_EULER_KERNELS_H
 #define SOLVERS_COMPRESSIBLE_EULER_KERNELS_H
 
-#include <memory/memory_manager.h>
-#include <mesh/mesh_manager.h>
+#include <t8gpu/memory/memory_manager.h>
+#include <t8gpu/mesh/mesh_manager.h>
 
 #include "solver.h"
 

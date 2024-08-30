@@ -1,7 +1,7 @@
 #ifndef TIMESTEPPING_SSP_RUNGE_KUTTA_H
 #define TIMESTEPPING_SSP_RUNGE_KUTTA_H
 
-#include <memory/memory_manager.h>
+#include <t8gpu/memory/memory_manager.h>
 
 namespace t8gpu::timestepping {
 
