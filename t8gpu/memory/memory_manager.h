@@ -6,8 +6,8 @@
 #ifndef MEMORY_MEMORY_MANAGER_H
 #define MEMORY_MEMORY_MANAGER_H
 
-#include <t8gpu/utils/meta.h>
 #include <t8gpu/memory/shared_device_vector.h>
+#include <t8gpu/utils/meta.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <tuple>
@@ -26,8 +26,8 @@ namespace t8gpu {
 
   template<class VariableType>
   struct variable_traits<VariableType, typename std::enable_if_t<std::is_enum_v<VariableType>>> {
-    using float_type = double;
-    using index_type = VariableType;
+    using float_type                     = double;
+    using index_type                     = VariableType;
     static constexpr size_t nb_variables = VariableType::nb_variables;
   };
 
@@ -36,8 +36,8 @@ namespace t8gpu {
 
   template<class StepType>
   struct step_traits<StepType, typename std::enable_if_t<std::is_enum_v<StepType>>> {
-    using float_type = float;
-    using index_type = StepType;
+    using float_type                 = float;
+    using index_type                 = StepType;
     static constexpr size_t nb_steps = StepType::nb_steps;
   };
 
@@ -82,18 +82,21 @@ namespace t8gpu {
   template<typename VariableType>
   class MemoryAccessorOwn {
     // Friend classesthat can instantiate this a class.
-    template<typename VT, typename ST> friend class MemoryManager;
-    template<typename VT, typename ST, size_t dim_> friend class MeshManager;
-  public:
-    using variable_index_type = typename variable_traits<VariableType>::index_type;
-    using float_type = typename variable_traits<VariableType>::float_type;
+    template<typename VT, typename ST>
+    friend class MemoryManager;
+    template<typename VT, typename ST, size_t dim_>
+    friend class MeshManager;
+
+   public:
+    using variable_index_type            = typename variable_traits<VariableType>::index_type;
+    using float_type                     = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
     /// @brief copy constructor.
-    MemoryAccessorOwn(const MemoryAccessorOwn& other) = default;
+    MemoryAccessorOwn(MemoryAccessorOwn const& other) = default;
 
     /// @brief assignment operator.
-    MemoryAccessorOwn& operator=(const MemoryAccessorOwn& other) = default;
+    MemoryAccessorOwn& operator=(MemoryAccessorOwn const& other) = default;
 
     /// @brief getter function to access variable data.
     ///
@@ -101,7 +104,10 @@ namespace t8gpu {
     ///
     /// @return device pointer to variable data.
     template<typename T>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type*> get(T i) {
+    [[nodiscard]] __device__
+        __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
+                                         float_type*>
+        get(T i) {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
@@ -111,7 +117,10 @@ namespace t8gpu {
     ///
     /// @return device pointer to variable data.
     template<typename T>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const*> get(T i) const {
+    [[nodiscard]] __device__
+        __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
+                                         float_type const*>
+        get(T i) const {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
@@ -125,8 +134,13 @@ namespace t8gpu {
     /// This function is meant to be used in conjunction with c++ 17
     /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type*, sizeof...(Ts)>> get(Ts... is) {
-      return { get(static_cast<variable_index_type>(is))... };
+    [[nodiscard]] __device__ __host__ inline std::enable_if_t<
+        t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
+                                                    variable_index_type> &&
+            t8gpu::meta::all_same_v<Ts...>,
+        std::array<float_type*, sizeof...(Ts)>>
+    get(Ts... is) {
+      return {get(static_cast<variable_index_type>(is))...};
     }
 
     /// @brief getter function to access multiple variables at the
@@ -139,11 +153,16 @@ namespace t8gpu {
     /// This function is meant to be used in conjunction with c++ 17
     /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const*, sizeof...(Ts)>> get(Ts... is) const {
-      return {  get(static_cast<variable_index_type>(is))... };
+    [[nodiscard]] __device__ __host__ inline std::enable_if_t<
+        t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
+                                                    variable_index_type> &&
+            t8gpu::meta::all_same_v<Ts...>,
+        std::array<float_type const*, sizeof...(Ts)>>
+    get(Ts... is) const {
+      return {get(static_cast<variable_index_type>(is))...};
     }
 
-  private:
+   private:
     std::array<float_type*, nb_variables> m_pointers;
 
     /// @brief constructor of MemoryAccessorOwn
@@ -190,19 +209,21 @@ namespace t8gpu {
   template<typename VariableType>
   class MemoryAccessorAll {
     // Friend classesthat can instantiate this a class.
-    template<typename VT, typename ST> friend class MemoryManager;
-    template<typename VT, typename ST, size_t dim_> friend class MeshManager;
+    template<typename VT, typename ST>
+    friend class MemoryManager;
+    template<typename VT, typename ST, size_t dim_>
+    friend class MeshManager;
 
-  public:
-    using variable_index_type = typename variable_traits<VariableType>::index_type;
-    using float_type = typename variable_traits<VariableType>::float_type;
+   public:
+    using variable_index_type            = typename variable_traits<VariableType>::index_type;
+    using float_type                     = typename variable_traits<VariableType>::float_type;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
     /// @brief copy constructor.
-    MemoryAccessorAll(const MemoryAccessorAll& other) = default;
+    MemoryAccessorAll(MemoryAccessorAll const& other) = default;
 
     /// @brief assignment operator.
-    MemoryAccessorAll& operator=(const MemoryAccessorAll& other) = default;
+    MemoryAccessorAll& operator=(MemoryAccessorAll const& other) = default;
 
     /// @brief getter function to access variable data.
     ///
@@ -210,7 +231,10 @@ namespace t8gpu {
     ///
     /// @return an array of device pointer to variable data.
     template<typename T>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type* const*> get(T i) {
+    [[nodiscard]] __device__
+        __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
+                                         float_type* const*>
+        get(T i) {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
@@ -220,7 +244,10 @@ namespace t8gpu {
     ///
     /// @return an array of device pointer to variable data.
     template<typename T>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>, float_type const* const*> get(T i) const {
+    [[nodiscard]] __device__
+        __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
+                                         float_type const* const*>
+        get(T i) const {
       return m_pointers[static_cast<variable_index_type>(i)];
     }
 
@@ -234,8 +261,13 @@ namespace t8gpu {
     /// This function is meant to be used in conjunction with c++ 17
     /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type* const*, sizeof...(Ts)>> get(Ts... is) {
-      return { get(static_cast<variable_index_type>(is))... };
+    [[nodiscard]] __device__ __host__ inline std::enable_if_t<
+        t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
+                                                    variable_index_type> &&
+            t8gpu::meta::all_same_v<Ts...>,
+        std::array<float_type* const*, sizeof...(Ts)>>
+    get(Ts... is) {
+      return {get(static_cast<variable_index_type>(is))...};
     }
 
     /// @brief getter function to access multiple variables at the
@@ -248,11 +280,16 @@ namespace t8gpu {
     /// This function is meant to be used in conjunction with c++ 17
     /// structured bindings to get multiple variable at the same time.
     template<typename... Ts>
-    [[nodiscard]] __device__ __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type, variable_index_type> && t8gpu::meta::all_same_v<Ts...>, std::array<float_type const* const*, sizeof...(Ts)>> get(Ts... is) const {
-      return { get(static_cast<variable_index_type>(is))... };
+    [[nodiscard]] __device__ __host__ inline std::enable_if_t<
+        t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
+                                                    variable_index_type> &&
+            t8gpu::meta::all_same_v<Ts...>,
+        std::array<float_type const* const*, sizeof...(Ts)>>
+    get(Ts... is) const {
+      return {get(static_cast<variable_index_type>(is))...};
     }
 
-  private:
+   private:
     std::array<float_type* const*, nb_variables> m_pointers;
 
     /// @brief constructor of MemoryAccessorAll
@@ -281,12 +318,12 @@ namespace t8gpu {
   /// and StepType.
   template<typename VariableType, typename StepType>
   class MemoryManager {
-  public:
-    using float_type = typename variable_traits<VariableType>::float_type;
-    using variable_index_type = typename variable_traits<VariableType>::index_type;
+   public:
+    using float_type                     = typename variable_traits<VariableType>::float_type;
+    using variable_index_type            = typename variable_traits<VariableType>::index_type;
     static constexpr size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
-    using step_index_type = typename step_traits<StepType>::index_type;
+    using step_index_type            = typename step_traits<StepType>::index_type;
     static constexpr size_t nb_steps = step_traits<StepType>::nb_steps;
 
     /// @brief Constructor of the MemoryManager class.
@@ -303,14 +340,18 @@ namespace t8gpu {
     /// @param [in]   step     the step for which the variable is set.
     /// @param [in]   variable the name of the variable to set.
     /// @param [in]   buffer   the GPU buffer to copy from.
-    void set_variable(step_index_type step, variable_index_type variable, const thrust::device_vector<float_type>& buffer);
+    void set_variable(step_index_type                          step,
+                      variable_index_type                      variable,
+                      thrust::device_vector<float_type> const& buffer);
 
     /// @brief set a variable.
     ///
     /// @param [in]   step     the step for which the variable is set.
     /// @param [in]   variable the name of the variable to set.
     /// @param [in]   buffer   the CPU buffer to copy from.
-    void set_variable(step_index_type step, variable_index_type variable, const thrust::host_vector<float_type>& buffer);
+    void set_variable(step_index_type                        step,
+                      variable_index_type                    variable,
+                      thrust::host_vector<float_type> const& buffer);
 
     /// @brief set a variable.
     ///
@@ -319,16 +360,15 @@ namespace t8gpu {
     /// @param [in]   buffer   the CPU buffer to copy from (raw pointer).
     void set_variable(step_index_type step, variable_index_type variable, float_type* buffer);
 
-
     /// @brief set the volume variable.
     ///
     /// @param [in]   buffer   the CPU buffer to copy from.
-    void set_volume(const thrust::host_vector<float_type>& buffer);
+    void set_volume(thrust::host_vector<float_type> const& buffer);
 
     /// @brief set the volume variable.
     ///
     /// @param [in]   buffer   the GPU buffer to copy from.
-    void set_volume(const thrust::device_vector<float_type>& buffer);
+    void set_volume(thrust::device_vector<float_type> const& buffer);
 
     /// @brief set the volume variable.
     ///
@@ -409,12 +449,12 @@ namespace t8gpu {
     /// variable data (and do for instance interpolation).
     inline void resize(size_t new_size);
 
-  private:
-    t8gpu::SharedDeviceVector<std::array<float_type, nb_variables*nb_steps+1>> m_device_buffer;
+   private:
+    t8gpu::SharedDeviceVector<std::array<float_type, nb_variables * nb_steps + 1>> m_device_buffer;
   };
 
-} // namespace t8gpu
+}  // namespace t8gpu
 
 #include "memory_manager.inl"
 
-#endif // MEMORY_MEMORY_MANAGER_H
+#endif  // MEMORY_MEMORY_MANAGER_H

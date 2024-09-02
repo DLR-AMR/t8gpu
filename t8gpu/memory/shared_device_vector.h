@@ -4,18 +4,18 @@
 #ifndef MEMORY_SHARED_DEVICE_VECTOR_H
 #define MEMORY_SHARED_DEVICE_VECTOR_H
 
-#include <array>
 #include <sc.h>
+#include <t8gpu/utils/cuda.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <array>
 #include <utility>
-#include <t8gpu/utils/cuda.h>
 
 namespace t8gpu {
   ///
   /// @brief A class that implements a shared array
   ///
-  ///This class creates a shared vetor of device memory by providing
+  /// This class creates a shared vetor of device memory by providing
   /// most of the `std::vector` interface. Each MPI rank handles its
   /// owm local gpu allocation. However, as all of these allocation
   /// are done on the same GPU, each rank can retrieve device pointers
@@ -40,7 +40,7 @@ namespace t8gpu {
   ///          std::move on it.
   template<typename T>
   class SharedDeviceVector {
-  public:
+   public:
     /// @brief Constructor of the shared device array
     ///
     /// @param [in]         size size of the GPU allocation
@@ -57,13 +57,13 @@ namespace t8gpu {
     ///
     /// Steal the GPU allocations of `other` and leaves other in a valid state as necessary
     inline SharedDeviceVector(SharedDeviceVector&& other);
-    inline SharedDeviceVector(const SharedDeviceVector& other) = delete;
+    inline SharedDeviceVector(SharedDeviceVector const& other) = delete;
 
     /// @brief Move assignment operator
     ///
     /// Steal the GPU allocations of `other` and leaves other in a valid state as necessary
     inline SharedDeviceVector& operator=(SharedDeviceVector&& other);
-    inline SharedDeviceVector& operator=(const SharedDeviceVector& other) = delete;
+    inline SharedDeviceVector& operator=(SharedDeviceVector const& other) = delete;
 
     /// @brief Resizes the allocation to `new_size`
     /// @param [in]         new_size new size of the vector
@@ -83,14 +83,14 @@ namespace t8gpu {
     /// This member function converts a thrust host array to a shared
     /// device vector. This function is expensive ás host to device
     /// memory copy operation is necessary.
-    inline const SharedDeviceVector<T>& operator=(const thrust::host_vector<T>& other);
+    inline SharedDeviceVector<T> const& operator=(thrust::host_vector<T> const& other);
 
     /// @brief conversion operator
     ///
     /// This member function converts a thrust device array to a
     /// shared device vector. This function is expensive ás device to
     /// device memory copy operation is necessary.
-    inline const SharedDeviceVector<T>& operator=(const thrust::device_vector<T>& other);
+    inline SharedDeviceVector<T> const& operator=(thrust::device_vector<T> const& other);
 
     /// @brief Returns the size of the allocation
     ///
@@ -144,7 +144,8 @@ namespace t8gpu {
     /// invalided as soon as the resize member function is invoked as
     /// reallocation might be necessary.
     [[nodiscard]] inline T const* const* get_all() const;
-  private:
+
+   private:
     struct Handle {
       cudaIpcMemHandle_t handle;
       bool               need_open_ipc;
@@ -175,7 +176,7 @@ namespace t8gpu {
   ///          default implementation.
   template<typename T, size_t N>
   class SharedDeviceVector<std::array<T, N>> {
-  public:
+   public:
     /// @brief Constructor of the shared device array
     ///
     /// @param [in]         size size of the GPU allocation
@@ -192,13 +193,13 @@ namespace t8gpu {
     ///
     /// Steal the GPU allocations of `other` and leaves other in a valid state as necessary
     inline SharedDeviceVector(SharedDeviceVector&& other);
-    inline SharedDeviceVector(const SharedDeviceVector& other) = delete;
+    inline SharedDeviceVector(SharedDeviceVector const& other) = delete;
 
     /// @brief Move assignment operator
     ///
     /// Steal the GPU allocations of `other` and leaves other in a valid state as necessary
     inline SharedDeviceVector& operator=(SharedDeviceVector&& other);
-    inline SharedDeviceVector& operator=(const SharedDeviceVector& other) = delete;
+    inline SharedDeviceVector& operator=(SharedDeviceVector const& other) = delete;
 
     /// @brief Resizes the allocation to `new_size`
     /// @param [in]         new_size new size of the vector
@@ -225,7 +226,7 @@ namespace t8gpu {
     /// @warning This function does not check if the vector has the
     ///          capacity to fit num_elements. You might need to
     ///          resize the shared vector beforehand.
-    inline void copy(size_t index, const thrust::host_vector<T>& vector);
+    inline void copy(size_t index, thrust::host_vector<T> const& vector);
 
     /// @brief copy device to device
     ///
@@ -239,7 +240,7 @@ namespace t8gpu {
     /// @warning This function does not check if the vector has the
     ///          capacity to fit num_elements. You might need to
     ///          resize the shared vector beforehand.
-    inline void copy(size_t index, const thrust::device_vector<T>& vector);
+    inline void copy(size_t index, thrust::device_vector<T> const& vector);
 
     /// @brief copy device to device
     ///
@@ -315,7 +316,8 @@ namespace t8gpu {
     /// invalided as soon as the resize member function is invoked as
     /// reallocation might be necessary.
     [[nodiscard]] inline T const* const* get_all(int index) const;
-  private:
+
+   private:
     struct Handle {
       cudaIpcMemHandle_t handle;
       size_t             capacity;
@@ -333,8 +335,8 @@ namespace t8gpu {
     thrust::host_vector<T*>     m_arrays;
     thrust::device_vector<T*>   m_device_arrays;
   };
-} // namespace t8gpu
+}  // namespace t8gpu
 
 #include "shared_device_vector.inl"
 
-#endif // MEMORY_SHARED_DEVICE_VECTOR_H
+#endif  // MEMORY_SHARED_DEVICE_VECTOR_H

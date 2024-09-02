@@ -6,13 +6,13 @@
 #ifndef MESH_MANAGER_H
 #define MESH_MANAGER_H
 
-#include <t8gpu/memory/memory_manager.h>
-#include <memory>
 #include <t8.h>
-#include <t8_vtk.h>
 #include <t8_forest/t8_forest.h>
+#include <t8_vtk.h>
+#include <t8gpu/memory/memory_manager.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <memory>
 #include <vector>
 
 namespace t8gpu {
@@ -29,22 +29,20 @@ namespace t8gpu {
   template<typename float_type, size_t dim>
   class MeshConnectivityAccessor {
     /// Friend class that can instantiate this a class.
-    template<typename VT, typename ST, size_t dim_> friend class MeshManager;
+    template<typename VT, typename ST, size_t dim_>
+    friend class MeshManager;
 
-  public:
-
+   public:
     /// @brief copy constructor.
-    MeshConnectivityAccessor(const MeshConnectivityAccessor& other) = default;
+    MeshConnectivityAccessor(MeshConnectivityAccessor const& other) = default;
 
     /// @brief assignment constructor.
-    MeshConnectivityAccessor& operator=(const MeshConnectivityAccessor& other) = default;
+    MeshConnectivityAccessor& operator=(MeshConnectivityAccessor const& other) = default;
 
     /// @brief get the number of local faces.
     ///
     /// @return the number of faces.
-    [[nodiscard]] __device__ __host__ inline t8_locidx_t get_num_local_faces() const {
-      return m_num_local_faces;
-    }
+    [[nodiscard]] __device__ __host__ inline t8_locidx_t get_num_local_faces() const { return m_num_local_faces; }
 
     /// @brief get the number of local boundary faces.
     ///
@@ -78,9 +76,9 @@ namespace t8gpu {
     /// @return the normal of the face specified as a dim-element
     ///         array.
     [[nodiscard]] __device__ inline std::array<float_type, dim> get_face_normal(int face_idx) const {
-      std::array<float_type, dim> normal {};
-      for (int k=0; k<dim; k++) {
-	normal[k] = m_face_normals[dim*face_idx+k];
+      std::array<float_type, dim> normal{};
+      for (int k = 0; k < dim; k++) {
+        normal[k] = m_face_normals[dim * face_idx + k];
       }
       return normal;
     }
@@ -92,13 +90,12 @@ namespace t8gpu {
     /// @return the normal of the boundary face specified as a
     ///         dim-element array.
     [[nodiscard]] __device__ inline std::array<float_type, dim> get_boundary_face_normal(int face_idx) const {
-      std::array<float_type, dim> normal {};
-      for (int k=0; k<dim; k++) {
-	normal[k] = m_face_normals[dim*(m_num_local_faces + face_idx)+k];
+      std::array<float_type, dim> normal{};
+      for (int k = 0; k < dim; k++) {
+        normal[k] = m_face_normals[dim * (m_num_local_faces + face_idx) + k];
       }
       return normal;
     }
-
 
     /// @brief get index of face neighbor elements.
     ///
@@ -120,7 +117,7 @@ namespace t8gpu {
     ///          get the remote index and get_element_owner_rank to
     ///          get the owning rank.
     [[nodiscard]] __device__ inline std::array<t8_locidx_t, 2> get_face_neighbor_indices(int face_idx) const {
-      return {m_face_neighbors[2*face_idx], m_face_neighbors[2*face_idx+1]};
+      return {m_face_neighbors[2 * face_idx], m_face_neighbors[2 * face_idx + 1]};
     }
 
     /// @brief get index of the local element neighbors of a face.
@@ -133,7 +130,7 @@ namespace t8gpu {
     ///         member function get_boundary_face_neighbors_rank does
     ///         not exist.
     [[nodiscard]] __device__ inline t8_locidx_t get_boundary_face_neighbor_index(int face_idx) const {
-      return m_face_neighbors[2*m_num_local_faces + face_idx];
+      return m_face_neighbors[2 * m_num_local_faces + face_idx];
     }
 
     /// @brief get the owning rank of an element.
@@ -159,29 +156,29 @@ namespace t8gpu {
       return m_indices[element_idx];
     }
 
-  private:
-    const int*         m_ranks;
-    const t8_locidx_t* m_indices;
-    const t8_locidx_t* m_face_neighbors;
-    const float_type*  m_face_normals;
-    const float_type*  m_face_surfaces;
-    const t8_locidx_t  m_num_local_faces;
-    const t8_locidx_t  m_num_local_boundary_faces;
+   private:
+    int const*         m_ranks;
+    t8_locidx_t const* m_indices;
+    t8_locidx_t const* m_face_neighbors;
+    float_type const*  m_face_normals;
+    float_type const*  m_face_surfaces;
+    t8_locidx_t const  m_num_local_faces;
+    t8_locidx_t const  m_num_local_boundary_faces;
 
-    MeshConnectivityAccessor(const int*         ranks,
-			     const t8_locidx_t* indices,
-			     const t8_locidx_t* face_neighbors,
-			     const float_type*  face_normals,
-			     const float_type*  face_surfaces,
-			     const t8_locidx_t  num_local_faces,
-			     const t8_locidx_t  num_local_boundary_faces)
-      : m_ranks {ranks},
-	m_indices {indices},
-	m_face_neighbors {face_neighbors},
-	m_face_normals {face_normals},
-	m_face_surfaces {face_surfaces},
-	m_num_local_faces {num_local_faces},
-	m_num_local_boundary_faces {num_local_boundary_faces} {}
+    MeshConnectivityAccessor(int const*         ranks,
+                             t8_locidx_t const* indices,
+                             t8_locidx_t const* face_neighbors,
+                             float_type const*  face_normals,
+                             float_type const*  face_surfaces,
+                             t8_locidx_t const  num_local_faces,
+                             t8_locidx_t const  num_local_boundary_faces)
+        : m_ranks{ranks},
+          m_indices{indices},
+          m_face_neighbors{face_neighbors},
+          m_face_normals{face_normals},
+          m_face_surfaces{face_surfaces},
+          m_num_local_faces{num_local_faces},
+          m_num_local_boundary_faces{num_local_boundary_faces} {}
   };
 
   ///
@@ -233,12 +230,12 @@ namespace t8gpu {
   ///
   template<typename VariableType, typename StepType, size_t dim>
   class MeshManager : public MemoryManager<VariableType, StepType> {
-  public:
-    using float_type = typename variable_traits<VariableType>::float_type;
-    using variable_index_type = typename variable_traits<VariableType>::index_type;
+   public:
+    using float_type                  = typename variable_traits<VariableType>::float_type;
+    using variable_index_type         = typename variable_traits<VariableType>::index_type;
     static constexpr int nb_variables = variable_traits<VariableType>::nb_variables;
 
-    using step_index_type = typename step_traits<StepType>::index_type;
+    using step_index_type            = typename step_traits<StepType>::index_type;
     static constexpr size_t nb_steps = step_traits<StepType>::nb_steps;
 
     static constexpr t8_locidx_t min_level = 1;
@@ -253,17 +250,13 @@ namespace t8gpu {
     ///
     /// This constructor initializes a MeshManager class taking
     /// ownership of the coarse mesh cmesh and forest.
-    MeshManager(sc_MPI_Comm comm,
-		t8_scheme_cxx_t* scheme,
-		t8_cmesh_t cmesh,
-		t8_forest_t forest);
+    MeshManager(sc_MPI_Comm comm, t8_scheme_cxx_t* scheme, t8_cmesh_t cmesh, t8_forest_t forest);
 
     /// @brief Destructor of the MeshManager class.
     ///
     /// This destructor releases all of the resources owned,
     /// i.e. cmesh, forest and user data associated to the forest.
     ~MeshManager();
-
 
     /// @brief member function to initialize the variables.
     ///
@@ -296,7 +289,7 @@ namespace t8gpu {
     /// recompute the connectivity information and to discard any
     /// other object related to connectivity initialized before the
     /// refinement.
-    void adapt(const thrust::host_vector<float_type>& refinement_criteria, step_index_type step);
+    void adapt(thrust::host_vector<float_type> const& refinement_criteria, step_index_type step);
 
     /// @brief repartition the elements among the ranks.
     ///
@@ -334,7 +327,7 @@ namespace t8gpu {
     /// This member function saves the current simulation step in the
     /// vtk file format. To save multiple variables in the same VTK
     /// file, use the member function save_variables_to_vtk instead.
-    void save_variable_to_vtk(step_index_type step, variable_index_type variable, const std::string& prefix) const;
+    void save_variable_to_vtk(step_index_type step, variable_index_type variable, std::string const& prefix) const;
 
     /// @brief Host copy variable memory owning wrapper around the
     /// type t8_vtk_data_field_t.
@@ -356,14 +349,14 @@ namespace t8gpu {
       /// @brief Constructor only accessible through the MeshManager
       ///        class. This constructor takes ownership of the data
       ///        array.
-      HostVariableInfo(t8_vtk_data_type_t data_type, std::unique_ptr<double[]>&& data, const std::string& name)
-	: m_data {std::move(data)} {
-	m_vtk_data_field_info_struct.type = data_type;
-	m_vtk_data_field_info_struct.data = m_data.get();
-	std::strncpy(m_vtk_data_field_info_struct.description, name.c_str(), BUFSIZ - 1);
+      HostVariableInfo(t8_vtk_data_type_t data_type, std::unique_ptr<double[]>&& data, std::string const& name)
+          : m_data{std::move(data)} {
+        m_vtk_data_field_info_struct.type = data_type;
+        m_vtk_data_field_info_struct.data = m_data.get();
+        std::strncpy(m_vtk_data_field_info_struct.description, name.c_str(), BUFSIZ - 1);
       }
 
-    public:
+     public:
       /// @brief default constructor needed to be able to construct
       ///        vectors of HostVariableInfo structs.
       HostVariableInfo() = default;
@@ -375,7 +368,7 @@ namespace t8gpu {
       /// @brief default destructor.
       ~HostVariableInfo() = default;
 
-    private:
+     private:
       /** unique pointer owning variable data */
       std::unique_ptr<double[]> m_data;
       /** vtk struct referencing m_data */
@@ -389,7 +382,9 @@ namespace t8gpu {
     ///                      variable.
     /// @param [in] variable specifies the variable to get.
     /// @param [in] name     a name to reference the variable.
-    [[nodiscard]] HostVariableInfo get_host_scalar_variable(step_index_type step, variable_index_type variable, const std::string& name) const;
+    [[nodiscard]] HostVariableInfo get_host_scalar_variable(step_index_type     step,
+                                                            variable_index_type variable,
+                                                            std::string const&  name) const;
 
     /// @brief Copy a vectorial variable on the CPU in order to later
     ///        save it as a VTK file.
@@ -399,13 +394,15 @@ namespace t8gpu {
     /// @param [in] variable specifies the variables to aggregate into
     ///                      a vector field.
     /// @param [in] name     a name to reference the variable.
-    [[nodiscard]] HostVariableInfo get_host_vector_variable(step_index_type step, std::array<variable_index_type, 3> variable, const std::string& name) const;
+    [[nodiscard]] HostVariableInfo get_host_vector_variable(step_index_type                    step,
+                                                            std::array<variable_index_type, 3> variable,
+                                                            std::string const&                 name) const;
 
     /// @brief Save a list of variables to a VTK file.
     ///
     /// @param [in] host_variables specifies the list of variables to save.
     /// @param [in] prefix         specifies the prefix used to saved the vtk.
-    void save_variables_to_vtk(std::vector<HostVariableInfo> host_variables, const std::string& prefix) const;
+    void save_variables_to_vtk(std::vector<HostVariableInfo> host_variables, std::string const& prefix) const;
 
     /// @brief get a connectivity struct that can be passed and used
     ///        on the GPU.
@@ -423,8 +420,7 @@ namespace t8gpu {
     /// @brief get the number of boundary faces owned by this rank.
     [[nodiscard]] t8_locidx_t get_num_local_boundary_faces() const;
 
-  private:
-
+   private:
     /// We make the base class resize member function private.
     using MemoryManager<VariableType, StepType>::resize;
 
@@ -450,7 +446,7 @@ namespace t8gpu {
     thrust::device_vector<float_type>  m_device_face_normals;   /** inner and boundary faces normals */
     thrust::device_vector<float_type>  m_device_face_area;      /** inner and boundary faces area */
 
-    thrust::host_vector<float_type>    m_element_refinement_criteria;
+    thrust::host_vector<float_type> m_element_refinement_criteria;
 
     /// @brief Struct to store user data passed to t8code callback
     ///        functions.
@@ -458,11 +454,17 @@ namespace t8gpu {
       thrust::host_vector<float_type>* element_refinement_criteria;
     };
 
-    static int adapt_callback_iteration(t8_forest_t forest, t8_forest_t forest_from, t8_locidx_t which_tree, t8_locidx_t lelement_id, t8_eclass_scheme_c* ts,
-					const int is_family, const int num_elements, t8_element_t* elements[]);
+    static int adapt_callback_iteration(t8_forest_t         forest,
+                                        t8_forest_t         forest_from,
+                                        t8_locidx_t         which_tree,
+                                        t8_locidx_t         lelement_id,
+                                        t8_eclass_scheme_c* ts,
+                                        int const           is_family,
+                                        int const           num_elements,
+                                        t8_element_t*       elements[]);
   };
-} // namespace t8gpu
+}  // namespace t8gpu
 
 #include "mesh_manager.inl"
 
-#endif // MESH_MANAGER_H
+#endif  // MESH_MANAGER_H

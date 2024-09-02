@@ -6,47 +6,44 @@
 #define SOLVERS_COMPRESSIBLE_EULER_SOLVER_H
 
 #include <t8.h>
-#include <thrust/device_vector.h>
 #include <t8gpu/mesh/mesh_manager.h>
+#include <thrust/device_vector.h>
 
 namespace t8gpu {
 
   enum VariableList {
-    Rho,    // density
-    Rho_v1, // x-component of momentum
-    Rho_v2, // y-component of momentum
-    Rho_v3, // z-component of momentum
-    Rho_e,  // energy
+    Rho,     // density
+    Rho_v1,  // x-component of momentum
+    Rho_v2,  // y-component of momentum
+    Rho_v3,  // z-component of momentum
+    Rho_e,   // energy
     nb_variables,
   };
 
   // defines the number of duplicates per variables that we need
   enum StepList {
-    Step0,  // used for RK3 timestepping
-    Step1,  // used for RK3 timestepping
-    Step2,  // used for RK3 timestepping
-    Step3,  // used for RK3 timestepping
-    Fluxes, // used to store fluxes
+    Step0,   // used for RK3 timestepping
+    Step1,   // used for RK3 timestepping
+    Step2,   // used for RK3 timestepping
+    Step3,   // used for RK3 timestepping
+    Fluxes,  // used to store fluxes
     nb_steps
   };
 
   class CompressibleEulerSolver {
-  public:
-    using float_type = variable_traits<VariableList>::float_type;
-    static constexpr size_t dim = 3;
-    static constexpr size_t min_level = 5;
-    static constexpr size_t max_level = 9;
-    static constexpr float_type cfl = static_cast<float_type>(0.7);
+   public:
+    using float_type                      = variable_traits<VariableList>::float_type;
+    static constexpr size_t     dim       = 3;
+    static constexpr size_t     min_level = 5;
+    static constexpr size_t     max_level = 9;
+    static constexpr float_type cfl       = static_cast<float_type>(0.7);
 
     /// @brief Constructor for the CompressibleEulerSolver class.
     ///
     /// This class takes ownership of the cmesh and forest given and
     /// the constructor computes the necessary face information and
     /// allocates space to store all of the variables.
-    CompressibleEulerSolver(sc_MPI_Comm comm,
-			    t8_scheme_cxx_t* scheme,
-			    t8_cmesh_t cmesh,
-			    t8_forest_t forest);
+    CompressibleEulerSolver(sc_MPI_Comm comm, t8_scheme_cxx_t* scheme, t8_cmesh_t cmesh, t8_forest_t forest);
 
     /// @brief Destructor.
     ///
@@ -91,7 +88,7 @@ namespace t8gpu {
     /// computed at the last step of the last timestepping).
     [[nodiscard]] float_type compute_timestep() const;
 
-  private:
+   private:
     sc_MPI_Comm m_comm;
 
     MeshManager<VariableList, StepList, dim> m_mesh_manager;
@@ -100,12 +97,12 @@ namespace t8gpu {
     thrust::device_vector<float_type> m_device_face_speed_estimate;
 
     /** The most up to date timestep is stored in the 'next´ step, to
-	advance the simulation, the 'next´ and 'prev´ step pointers
-	are swaped */
+        advance the simulation, the 'next´ and 'prev´ step pointers
+        are swaped */
     StepList next = Step0;
     StepList prev = Step3;
   };
 
-} // namespace t8gpu
+}  // namespace t8gpu
 
-#endif // SOLVERS_COMPRESSIBLE_EULER_SOLVER_H
+#endif  // SOLVERS_COMPRESSIBLE_EULER_SOLVER_H
