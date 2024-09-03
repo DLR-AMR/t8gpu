@@ -2,8 +2,8 @@
 /// @brief This header file declares a simple finite volume solver for
 ///        the compressible Euler equations
 
-#ifndef SOLVERS_COMPRESSIBLE_EULER_SOLVER_H
-#define SOLVERS_COMPRESSIBLE_EULER_SOLVER_H
+#ifndef EXAMPLES_COMPRESSIBLE_EULER_SOLVER_H
+#define EXAMPLES_COMPRESSIBLE_EULER_SOLVER_H
 
 #include <t8.h>
 #include <t8gpu/mesh/mesh_manager.h>
@@ -105,4 +105,4 @@ namespace t8gpu {
 
 }  // namespace t8gpu
 
-#endif  // SOLVERS_COMPRESSIBLE_EULER_SOLVER_H
+#endif  // EXAMPLES_COMPRESSIBLE_EULER_SOLVER_H

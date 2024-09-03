@@ -1,5 +1,5 @@
-#ifndef SOLVERS_COMPRESSIBLE_EULER_KERNELS_H
-#define SOLVERS_COMPRESSIBLE_EULER_KERNELS_H
+#ifndef EXAMPLES_COMPRESSIBLE_EULER_KERNELS_H
+#define EXAMPLES_COMPRESSIBLE_EULER_KERNELS_H
 
 #include <t8gpu/memory/memory_manager.h>
 #include <t8gpu/mesh/mesh_manager.h>
@@ -59,4 +59,4 @@ namespace t8gpu {
 
 }  // namespace t8gpu
 
-#endif  // SOLVERS_COMPRESSIBLE_EULER_KERNELS_H
+#endif  // EXAMPLES_COMPRESSIBLE_EULER_KERNELS_H
