@@ -3,8 +3,8 @@
 ///        handles t8code meshes as well as the
 ///        MeshConnectivityAccessor helper class.
 
-#ifndef MESH_MANAGER_H
-#define MESH_MANAGER_H
+#ifndef MESH_MESH_MANAGER_H
+#define MESH_MESH_MANAGER_H
 
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
@@ -467,4 +467,4 @@ namespace t8gpu {
 
 #include "mesh_manager.inl"
 
-#endif  // MESH_MANAGER_H
+#endif  // MESH_MESH_MANAGER_H
