@@ -27,42 +27,43 @@ namespace t8gpu {
 
   /// @brief Templated type representing a subgrid.
   ///
-  /// @tparam extents_... The extents of the subgrid.
+  /// @tparam extents... The extents of the subgrid.
   ///
   /// This templated struct defines the grid dimension as well as the
-  /// data access pattern (row major).
-  template<size_t... extents_>
+  /// data access pattern (column major).
+  template<int... extents>
   struct Subgrid {
-    static constexpr std::array<size_t, sizeof...(extents_)> extents = {extents_...};
-
     /// @brief get the rank of the subgrid (i.e. the number of dimensions).
-    static constexpr inline int rank() { return sizeof...(extents_); }
+    static constexpr int rank = sizeof...(extents);
+
+    /// @brief the number of elements in the subgrid.
+    static constexpr int size = (extents * ...);
 
     /// @brief get the extent of the subgrid in a given dimension.
     ///
-    /// @param dim The dimension for which we want to fetch the extent.
-    static constexpr inline int extent(size_t dim) { return extents[dim]; }
+    /// @ptaram dim The dimension for which we want to fetch the extent.
+    template<int dim>
+    static constexpr int extent = meta::argpack_at_v<dim, extents...>;
 
     /// @brief get the size of the grid (i.e. the product of all the extents).
-    static constexpr inline int size() { return (extents_ * ...); }
+    // static constexpr inline __device__ int size() { return (extents * ...); }
 
     /// @brief get the stride of a dimension.
     ///
-    /// @param [in] i dimension.
+    /// @tparam [in] i dimension.
     ///
-    /// We use row major ordering.
-    static constexpr inline int stride(size_t i) { return i == (rank() - 1) ? 1 : extent(i + 1) * stride(i + 1); }
+    /// We use *column major* ordering to match CUDA grid ordering
+    /// (i.e. the first index changes the fastest).
+    template<int i>
+    static constexpr int stride = meta::argpack_mul_to_v<i, extents...>;
 
-    /// @brief from a rank()-dim multi-index, retrieve the flat index.
+    /// @brief from a rank-dim multi-index, retrieve the flat index.
     ///
-    /// @tparam [in] is the indices.
-    template<typename... Ts>
-    static constexpr std::enable_if_t<(sizeof...(Ts) == rank()) && std::conjunction_v<std::is_integral<Ts>...>, int>
-    flat_index(Ts... is) {
-      std::array<int, rank()> indices = {{is...}};
-      int                     index   = 0;
-      for (int i = 0; i < rank(); i++) index += stride(i) * indices[i];
-      return index;
+    /// @param [in] i,j,k the indices.
+    static constexpr inline int flat_index(int i,
+                                           int j,
+                                           int k) {  // TODO: make that function rank agnostic using variadic templates.
+      return stride<0> * i + stride<1> * j + stride<2> * k;
     }
 
     /// @brief Simple wrapper class around a array to access subgrid data.
@@ -81,9 +82,9 @@ namespace t8gpu {
       /// @param [in] is the indices into the subgrid.
       template<typename... Ts>
       [[nodiscard]] inline __device__
-          std::enable_if_t<(sizeof...(Ts) == rank()) && std::conjunction_v<std::is_integral<Ts>...>, float_type&>
+          std::enable_if_t<(sizeof...(Ts) == rank) && std::conjunction_v<std::is_integral<Ts>...>, float_type&>
           operator()(size_t e_idx, Ts... is) {
-        return m_data[e_idx * size() + flat_index(is...)];
+        return m_data[e_idx * size + flat_index(is...)];
       }
 
       /// @brief Retrieve data corresponding to a subgrid element.
@@ -92,14 +93,18 @@ namespace t8gpu {
       /// @param [in] is the indices into the subgrid.
       template<typename... Ts>
       [[nodiscard]] inline __device__
-          std::enable_if_t<(sizeof...(Ts) == rank()) && std::conjunction_v<std::is_integral<Ts>...>, float_type const&>
+          std::enable_if_t<(sizeof...(Ts) == rank) && std::conjunction_v<std::is_integral<Ts>...>, float_type const&>
           operator()(size_t e_idx, Ts... is) const {
-        return m_data[e_idx * size() + flat_index(is...)];
+        return m_data[e_idx * size + flat_index(is...)];
       }
+
+      operator float_type*() { return m_data; }
+
+      operator float_type const*() const { return m_data; }
 
      private:
       /// @brief Constructor accessible only to the necessary classes.
-      Accessor(float_type* data) : m_data{data} {}
+      Accessor(float_type const* data) : m_data{const_cast<float_type*>(data)} {}
 
       float_type* m_data;
 
@@ -108,6 +113,9 @@ namespace t8gpu {
 
       template<typename VariableType, typename SubgridType>
       friend class SubgridMemoryAccessorAll;
+
+      template<typename VariableType, typename StepType, typename SubgridType>
+      friend class SubgridMemoryManager;
     };
 
     template<typename float_type>

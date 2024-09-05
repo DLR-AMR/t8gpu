@@ -3,11 +3,11 @@
 template<typename VariableType, typename StepType, typename SubgridType>
 t8gpu::SubgridMemoryManager<VariableType, StepType, SubgridType>::SubgridMemoryManager(size_t      nb_elements,
                                                                                        sc_MPI_Comm comm)
-    : m_device_buffer(nb_elements * SubgridType::size(), comm), m_device_volume(nb_elements, comm) {}
+    : m_device_buffer(nb_elements * SubgridType::size, comm), m_device_volume(nb_elements, comm) {}
 
 template<typename VariableType, typename StepType, typename SubgridType>
 void t8gpu::SubgridMemoryManager<VariableType, StepType, SubgridType>::resize(size_t new_size) {
-  m_device_buffer.resize(new_size * SubgridType::size());
+  m_device_buffer.resize(new_size * SubgridType::size);
   m_device_buffer.resize(new_size);
 }
 
