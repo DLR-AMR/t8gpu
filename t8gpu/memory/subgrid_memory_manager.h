@@ -15,6 +15,7 @@
 #include <array>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace t8gpu {
 
@@ -45,9 +46,6 @@ namespace t8gpu {
     template<int dim>
     static constexpr int extent = meta::argpack_at_v<dim, extents...>;
 
-    /// @brief get the size of the grid (i.e. the product of all the extents).
-    // static constexpr inline __device__ int size() { return (extents * ...); }
-
     /// @brief get the stride of a dimension.
     ///
     /// @tparam [in] i dimension.
@@ -59,12 +57,12 @@ namespace t8gpu {
 
     /// @brief from a rank-dim multi-index, retrieve the flat index.
     ///
-    /// @param [in] i,j,k the indices.
-    static constexpr inline int flat_index(int i,
-                                           int j,
-                                           int k) {  // TODO: make that function rank agnostic using variadic templates.
-      return stride<0> * i + stride<1> * j + stride<2> * k;
+    /// @param [in] is the indices.
+    template<typename... Ts>
+    static constexpr inline int flat_index(Ts... is) {
+      return flat_index_impl<Ts...>(is..., std::make_integer_sequence<int, sizeof...(is)>{});
     }
+
 
     /// @brief Simple wrapper class around a array to access subgrid data.
     template<typename float_type>
@@ -120,6 +118,12 @@ namespace t8gpu {
 
     template<typename float_type>
     using accessor_type = Accessor<float_type>;
+
+  private:
+    template<typename... Ts, int... I>
+    static constexpr inline int flat_index_impl(Ts... is, std::integer_sequence<int, I...>) {
+      return ((stride<I>*is) + ...);
+    }
   };
 
   /// Forward declaration of MemoryManager class needed to make it a
