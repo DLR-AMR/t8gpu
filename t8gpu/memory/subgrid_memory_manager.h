@@ -96,13 +96,17 @@ namespace t8gpu {
         return m_data[e_idx * size + flat_index(is...)];
       }
 
-      operator float_type*() { return m_data; }
+      /// @brief Conversion operator to retrieve the underlying
+      ///        pointer.
+      explicit operator float_type*() { return m_data; }
 
-      operator float_type const*() const { return m_data; }
+      /// @brief Conversion operator to retrieve the underlying
+      ///        pointer.
+      explicit operator float_type const*() const { return m_data; }
 
      private:
       /// @brief Constructor accessible only to the necessary classes.
-      Accessor(float_type const* data) : m_data{const_cast<float_type*>(data)} {}
+      __device__ __host__ Accessor(float_type const* data) : m_data{const_cast<float_type*>(data)} {}
 
       float_type* m_data;
 
@@ -302,9 +306,9 @@ namespace t8gpu {
   template<typename VariableType, typename SubgridType>
   class SubgridMemoryAccessorAll {
     // Friend classesthat can instantiate this a class.
-    template<typename VT, typename ST>
+    template<typename VT, typename ST, typename SubgridType_>
     friend class SubgridMemoryManager;
-    template<typename VT, typename ST, size_t dim_>
+    template<typename VT, typename ST, typename SubgridType_>
     friend class SubgridMeshManager;
 
    public:
