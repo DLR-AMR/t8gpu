@@ -114,34 +114,79 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callba
 }
 
 template<typename VariableType>
-__global__ void adapt_variables_and_volume(
-    t8gpu::MemoryAccessorOwn<VariableType>                         variables_old,
-    std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
-               t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
+__global__ void adapt_volume(
     typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
     typename t8gpu::variable_traits<VariableType>::float_type* __restrict__ volume_new,
     t8_locidx_t* adapt_data,
     int          nb_new_elements) {
-  // int const i = blockIdx.x * blockDim.x + threadIdx.x;
+  int const i = blockIdx.x * blockDim.x + threadIdx.x;
 
-  // if (i >= nb_new_elements) return;
+  if (i >= nb_new_elements) return;
 
-  // int diff            = adapt_data[i + 1] - adapt_data[i];
-  // int nb_elements_sum = max(1, diff);
+  int diff            = adapt_data[i + 1] - adapt_data[i];
+  int nb_elements_sum = max(1, diff);
 
-  // volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.125 : (diff == 1 ? 1.0 : 8.0)));
-  // if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
-  //   volume_new[i] = volume_old[adapt_data[i]] * 0.125;
-  // }
+  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.125 : (diff == 1 ? 1.0 : 8.0)));
+  if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
+    volume_new[i] = volume_old[adapt_data[i]] * 0.125;
+  }
+}
 
-  // for (int k = 0; k < t8gpu::variable_traits<VariableType>::nb_variables; k++) {
-  //   variables_new[k][i] = 0.0;
+template<typename VariableType, typename SubgridType>
+__global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType> variables_old,
+				std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
+				t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
+				t8_locidx_t* adapt_data) {
+  int const e_idx = blockIdx.x;
 
-  //   for (int j = 0; j < nb_elements_sum; j++) {
-  //     variables_new[k][i] += variables_old.get(k)[adapt_data[i] + j] /
-  //                            static_cast<typename t8gpu::variable_traits<VariableType>::float_type>(nb_elements_sum);
-  //   }
-  // }
+  int const i = threadIdx.x;
+  int const j = threadIdx.y;
+  int const k = threadIdx.z;
+
+  // We can afford an if statement here as every thread in a thread block takes the same path.
+  if ((adapt_data[e_idx + 1] == adapt_data[e_idx]) || (e_idx > 0 && (adapt_data[e_idx] == adapt_data[e_idx - 1]))) { // refinement
+
+    int refinement_index = 0; // the index of the refined element in {0, ..., 7} in z-order.
+    while (e_idx - refinement_index >= 0 && adapt_data[e_idx - refinement_index] == adapt_data[e_idx])
+      refinement_index++;
+
+    int I = ((refinement_index-1) & 0b1);
+    int J = ((refinement_index-1) & 0b10) >> 1;
+    int K = ((refinement_index-1) & 0b100) >> 2;
+
+    for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] =
+	variables_old.get(l)(adapt_data[e_idx],
+			     I*blockDim.x/2 + i/2,
+			     J*blockDim.y/2 + j/2,
+			     K*blockDim.z/2 + k/2);
+    }
+
+  } else if ((adapt_data[e_idx + 1] - adapt_data[e_idx]) > 1) { // coarsening
+    int I = (i & 0b10) >> 1;
+    int J = (i & 0b10) >> 1;
+    int K = (i & 0b10) >> 1;
+
+    int z_index = I | (J << 1) | (K << 2);
+
+    for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] = 0.0;
+
+      for (int ii = 0; ii<2; ii++) {
+	for (int jj = 0; jj<2; jj++) {
+	  for (int kk = 0; kk<2; kk++) {
+	    variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] +=
+	      variables_old.get(l)(adapt_data[e_idx] + z_index, 2*(i & 0b1) + ii, 2*(j & 0b1) + jj, 2*(k & 0b1) + kk);
+	  }
+	}
+      }
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] /= 8.0;
+    }
+  } else { // no refinement, no coarsening
+    for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] = variables_old.get(l)(adapt_data[e_idx], i, j, k);
+    }
+  }
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
@@ -232,8 +277,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   }
   element_adapt_data[new_idx] = old_idx;
 
-  t8gpu::MeshManager<VariableType, StepType, dim>::UserData* forest_user_data{
-      static_cast<t8gpu::MeshManager<VariableType, StepType, dim>::UserData*>(t8_forest_get_user_data(m_forest))};
+  t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData* forest_user_data{
+      static_cast<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData*>(t8_forest_get_user_data(m_forest))};
   assert(forest_user_data != nullptr);
 
   t8_forest_set_user_data(adapted_forest, forest_user_data);
@@ -246,39 +291,48 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
     new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + k * num_new_elements * SubgridType::size;
   }
 
-  // thrust::device_vector<float_type> device_element_volume_adapted(num_new_elements);
-  // t8_locidx_t*                      device_element_adapt_data{};
-  // T8GPU_CUDA_CHECK_ERROR(cudaMalloc(&device_element_adapt_data, (num_new_elements + 1) * sizeof(t8_locidx_t)));
-  // T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(device_element_adapt_data,
-  //                                   element_adapt_data.data(),
-  //                                   element_adapt_data.size() * sizeof(t8_locidx_t),
-  //                                   cudaMemcpyHostToDevice));
-  // int const thread_block_size = 256;
-  // int const adapt_num_blocks  = (num_new_elements + thread_block_size - 1) / thread_block_size;
-  // adapt_variables_and_volume<VariableType>
-  //     <<<adapt_num_blocks, thread_block_size>>>(this->get_own_variables(step),
-  //                                               new_variables,
-  //                                               this->get_own_volume(),
-  //                                               thrust::raw_pointer_cast(device_element_volume_adapted.data()),
-  //                                               device_element_adapt_data,
-  //                                               num_new_elements);
-  // T8GPU_CUDA_CHECK_LAST_ERROR();
-  // T8GPU_CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
+  thrust::device_vector<float_type> device_element_volume_adapted(num_new_elements);
+  t8_locidx_t*                      device_element_adapt_data{};
+  T8GPU_CUDA_CHECK_ERROR(cudaMalloc(&device_element_adapt_data, (num_new_elements + 1) * sizeof(t8_locidx_t)));
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(device_element_adapt_data,
+                                    element_adapt_data.data(),
+                                    element_adapt_data.size() * sizeof(t8_locidx_t),
+                                    cudaMemcpyHostToDevice));
 
-  // // resize shared and owned element variables
-  // this->resize(num_new_elements);
+  int const thread_block_size = 256;
+  int const adapt_num_blocks  = (num_new_elements + thread_block_size - 1) / thread_block_size;
+  adapt_volume<VariableType>
+      <<<adapt_num_blocks, thread_block_size>>>(this->get_own_volume(),
+                                                thrust::raw_pointer_cast(device_element_volume_adapted.data()),
+                                                device_element_adapt_data,
+                                                num_new_elements);
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  T8GPU_CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
 
-  // m_element_refinement_criteria.resize(num_new_elements);
+  /////// ADAPT VARIABLES
+  dim3 dimGrid(num_new_elements);
+  dim3 dimBlock(4, 4, 4);
+  adapt_variables<VariableType>
+    <<<dimGrid, dimBlock>>>(this->get_own_variables(step),
+			    new_variables,
+			    device_element_adapt_data);
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  ///////
 
-  // for (int k = 0; k < nb_variables; k++) {
-  //   this->set_variable(step, static_cast<VariableType>(k), new_variables[k]);
-  // }
-  // this->set_volume(std::move(device_element_volume_adapted));
+  // resize shared and owned element variables
+  this->resize(num_new_elements);
 
-  // m_forest = adapted_forest;
+  m_element_refinement_criteria.resize(num_new_elements);
 
-  // m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
-  // m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
+  for (int k = 0; k < nb_variables; k++) {
+    this->set_variable(step, static_cast<VariableType>(k), new_variables[k]);
+  }
+  this->set_volume(std::move(device_element_volume_adapted));
+
+  m_forest = adapted_forest;
+
+  m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>

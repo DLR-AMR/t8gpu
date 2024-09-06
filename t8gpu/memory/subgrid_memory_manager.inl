@@ -27,7 +27,7 @@ template<typename VariableType, typename StepType, typename SubgridType>
 void t8gpu::SubgridMemoryManager<VariableType, StepType, SubgridType>::set_variable(step_index_type     step,
                                                                                     variable_index_type variable,
                                                                                     float_type*         buffer) {
-  m_device_buffer.copy(step * nb_variables + variable, buffer, m_device_buffer.size());
+  m_device_buffer.copy(step * nb_variables + variable, buffer, m_device_buffer.size() * SubgridType::size);
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
