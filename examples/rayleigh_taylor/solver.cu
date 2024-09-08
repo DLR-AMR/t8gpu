@@ -14,12 +14,24 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
     m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() +
 				 m_mesh_manager.get_num_local_boundary_faces()) {
 
-  dim3 dimGrid = {m_mesh_manager.get_num_local_elements()};
-  dim3 dimBlock = {4, 4, 4};
+  m_mesh_manager.initialize_variables([](MemoryAccessorOwn<VariableList>& accessor,
+                                         t8_forest_t                      forest,
+                                         t8_locidx_t                      tree_idx,
+                                         t8_element_t const*              element,
+                                         t8_locidx_t                      e_idx) {
+    using float_type = float_type;
 
-  init_variable<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variable(next, Rho));
-  T8GPU_CUDA_CHECK_LAST_ERROR();
-  cudaDeviceSynchronize();
+    auto rho = accessor.get(Rho);
+
+    double center[3];
+    t8_forest_element_centroid(forest, tree_idx, element, center);
+
+    float_type x = static_cast<float_type>(center[0]);
+    float_type y = static_cast<float_type>(center[1]);
+    float_type z = static_cast<float_type>(center[2]);
+
+    rho[e_idx] = static_cast<float_type>((x < 0.5) ? 0.0 : 1.0);
+  });
 }
 
 void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {

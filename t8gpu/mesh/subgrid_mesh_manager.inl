@@ -93,6 +93,75 @@ t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::~SubgridMeshMana
   t8_cmesh_destroy(&m_cmesh);
 }
 
+template<typename VariableType, typename SubgridType>
+__global__ void copy_variables_coarse_mesh_to_fine(typename t8gpu::variable_traits<VariableType>::float_type const** coarse_variables,
+			       t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType> fine_variables,
+			       t8_locidx_t num_local_elements) {
+  int const i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= num_local_elements)
+    return;
+
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    for (size_t p=0; p<SubgridType::template extent<0>; p++) {
+      for (size_t q=0; q<SubgridType::template extent<0>; q++) {
+	for (size_t r=0; r<SubgridType::template extent<0>; r++) {
+	  fine_variables.get(k)(i, p, q, r) = coarse_variables[k][i];
+	}
+      }
+    }
+  }
+}
+
+template<typename VariableType, typename StepType, typename SubgridType>
+template<typename Func>
+void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::initialize_variables(Func func) {
+
+  std::array<thrust::host_vector<float_type>, nb_variables> host_variables {};
+  for (size_t k=0; k<nb_variables; k++) {
+    host_variables[k].resize(m_num_local_elements);
+  }
+
+  std::array<float_type*, nb_variables> array {};
+  for (size_t k=0; k<nb_variables; k++) {
+    array[k] = thrust::raw_pointer_cast(host_variables[k].data());
+  }
+  MemoryAccessorOwn<VariableType> host_variable_memory {array};
+
+  t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(m_forest);
+  t8_locidx_t element_idx = 0;
+  for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
+    t8_eclass_t tree_class {t8_forest_get_tree_class(m_forest, tree_idx)};
+    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(m_forest, tree_class)};
+
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(m_forest, tree_idx)};
+    for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
+      const t8_element_t* element {t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
+
+      func(host_variable_memory, m_forest, tree_idx, element, element_idx);
+
+      element_idx++;
+    }
+  }
+
+  thrust::device_vector<float_type> coarse_variables(m_num_local_elements*VariableType::nb_variables);
+
+  thrust::host_vector<float_type*> all_coarse_variables(VariableType::nb_variables);
+  for (size_t k=0; k<VariableType::nb_variables; k++) {
+    all_coarse_variables[k] = thrust::raw_pointer_cast(coarse_variables.data()) + k*m_num_local_elements;
+
+    cudaMemcpy(all_coarse_variables[k], array[k], sizeof(float_type)*m_num_local_elements, cudaMemcpyHostToDevice);
+  }
+
+  thrust::device_vector<float_type const*> device_all_coarse_variables = all_coarse_variables;
+
+  // copy new shared element variables
+  constexpr int thread_block_size = 256;
+  int const num_blocks = (m_num_local_elements + (thread_block_size - 1)) / thread_block_size;
+  copy_variables_coarse_mesh_to_fine<VariableType, SubgridType><<<num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_all_coarse_variables.data()),
+												   this->get_own_variables(static_cast<StepType>(0)),
+												   m_num_local_elements);
+}
+
 template<typename VariableType, typename StepType, typename SubgridType>
 int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callback_iteration(t8_forest_t         forest,
 											     t8_forest_t         forest_from,

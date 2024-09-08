@@ -46,6 +46,11 @@ namespace t8gpu {
   template<typename VariableType, typename StepType>
   class MemoryManager;
 
+  /// Forward declaration of MemoryManager class needed to make it a
+  /// friend class of the MemoryAccessor{Own,All}.
+  template<typename VariableType, typename StepType, typename SubgridType>
+  class SubgridMemoryManager;
+
   /// Forward declaration of MeshManager class needed to make it a
   /// friend class of the MemoryAccessor{Own,All}.
   template<typename VariableType, typename StepType, size_t dim>
@@ -86,6 +91,8 @@ namespace t8gpu {
     friend class MemoryManager;
     template<typename VT, typename ST, size_t dim_>
     friend class MeshManager;
+    template<typename VT, typename ST, typename SubgridType>
+    friend class SubgridMeshManager;
 
    public:
     using variable_index_type            = typename variable_traits<VariableType>::index_type;

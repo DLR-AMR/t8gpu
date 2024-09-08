@@ -261,6 +261,23 @@ namespace t8gpu {
     /// i.e. cmesh, forest and user data associated to the forest.
     ~SubgridMeshManager();
 
+    /// @brief member function to initialize the variables.
+    ///
+    /// @param [in] func specifies the function used to initialize the
+    ///                  variables.
+    ///
+    /// The Func function can either be a lambda, function pointer
+    /// (something that is callable). It must have the following
+    /// signature:
+    ///
+    /// void func(MemoryAccessorOwn<VariableList>& accessor,
+    ///           t8_forest_t forest,
+    ///           t8_locidx_t tree_idx,
+    ///           const t8_element_t* element,
+    ///           t8_locidx_t e_idx);
+    template<typename Func>
+    void initialize_variables(Func func);
+
     /// @brief adapt the mesh according to a user  specified criteria.
     ///
     /// @param [in] refinement_criteria specifies the refinement, 0 to
