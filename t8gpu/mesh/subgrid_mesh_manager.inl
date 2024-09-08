@@ -185,9 +185,6 @@ __global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, Su
     for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
       variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] =
 	variables_old.get(l)(adapt_data[e_idx],
-			     // I*blockDim.x/2 + i/2,
-			     // J*blockDim.y/2 + j/2,
-			     // K*blockDim.z/2 + k/2);
 			     I*SubgridType::template extent<0>/2 + i/2,
 			     J*SubgridType::template extent<1>/2 + j/2,
 			     K*SubgridType::template extent<2>/2 + k/2);
@@ -507,9 +504,6 @@ void add_face(t8_locidx_t face_idx,
     face_area.push_back(
 			static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
 			static_cast<float_type>(num_neighbors));
-
-    // std::cerr << "I have to implement this." << std::endl;
-    // exit(1);
   }
 
 }
@@ -563,8 +557,6 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
     t8_eclass_t         tree_class = t8_forest_get_tree_class(m_forest, tree_idx);
     t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(m_forest, tree_class)};
 
-    // t8_element_t* parent = static_cast<t8_element_t*>(malloc(eclass_scheme->t8_element_size()));
-
     t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(m_forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
       t8_element_t const* element{t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
@@ -589,16 +581,6 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
 
         for (int i = 0; i < num_neighbors; i++) { // we treat the case when the neighboring element is a ghost element.
           if (neighbor_ids[i] >= m_num_local_elements && m_rank < m_ranks[neighbor_ids[i]]) {
-	    // face_neighbors.push_back(element_idx);
-	    // face_neighbors.push_back(neighbor_ids[i]);
-	    // double face_normal[dim];
-	    // t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
-	    // for (size_t k = 0; k < dim; k++) {
-	    //   face_normals.push_back(static_cast<float_type>(face_normal[k]));
-	    // }
-	    // face_area.push_back(
-	    // 			static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)) /
-	    // 			static_cast<float_type>(num_neighbors));
 	    add_face<float_type, SubgridType>(face_idx,
 					      num_neighbors,
 					      m_forest,
@@ -622,11 +604,6 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
             ((neighbor_ids[0] > element_idx) ||
              (neighbor_ids[0] < element_idx &&
               neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
-	    // double coord_in[3] = {0.0, 0.0, 0.0};
-	    // double coord_out[3];
-	    // t8_forest_element_from_ref_coords(m_forest, tree_idx, element, coord_in, 1, coord_out);
-	    // std::cout << "coord_out:" << coord_out[0] << ", " << coord_out[1] << ", " << coord_out[2] << std::endl;
-
 	  add_face<float_type, SubgridType>(face_idx,
 					    num_neighbors,
 					    m_forest,
@@ -642,15 +619,6 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
 					    face_neighbors,
 					    face_normals,
 					    face_area);
-          // face_neighbors.push_back(element_idx);
-          // face_neighbors.push_back(neighbor_ids[0]);
-          // double face_normal[dim];
-          // t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
-          // for (size_t k = 0; k < dim; k++) {
-          //   face_normals.push_back(static_cast<float_type>(face_normal[k]));
-          // }
-          // face_area.push_back(
-          //     static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)));
         }
         neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
         T8_FREE(neighbors);

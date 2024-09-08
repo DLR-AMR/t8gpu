@@ -1,8 +1,6 @@
 #include <cstdio>
 #include <string>
 
-// #include "solver.h"
-
 #include <t8.h>
 #include <t8gpu/mesh/subgrid_mesh_manager.h>
 
@@ -32,8 +30,6 @@ __global__ void init_variable(typename Subgrid<4, 4, 4>::Accessor<float_type> m)
   int const k = threadIdx.z;
 
   m(e_idx, i, j, k) = (e_idx == 1 && i ==0 && j==0 && k==0) ? 1.0 : 0.0;
-  // m(e_idx, i, j, k) = i + 4*j + 16*k;
-  // m(e_idx, i, j, k) = 0;
 }
 
 #define NX (1.0)
@@ -135,9 +131,6 @@ __global__ void compute_outer_fluxes(SubgridMeshConnectivityAccessor<float_type,
 
   int double_stride = (level_difference == 0) ? 2 : 1;
 
-  // if (i == 0 && j == 0 && level_difference == 0)
-  //   printf("level difference:%i\n", level_difference);
-
   int offset[3] = {
     face_neighbor_offset[3*f_idx],
     face_neighbor_offset[3*f_idx+1],
@@ -180,8 +173,6 @@ __global__ void compute_outer_fluxes(SubgridMeshConnectivityAccessor<float_type,
     stride_j[2] = 1;
   }
   if (nx == -1.0) {
-    // anchor_r[0] = 3;
-
     stride_i[1] = 1;
     stride_j[2] = 1;
   }
@@ -194,8 +185,6 @@ __global__ void compute_outer_fluxes(SubgridMeshConnectivityAccessor<float_type,
   }
 
   if (ny == -1.0) {
-    // anchor_r[1] = 3;
-
     stride_i[0] = 1;
     stride_j[2] = 1;
   }
@@ -208,13 +197,9 @@ __global__ void compute_outer_fluxes(SubgridMeshConnectivityAccessor<float_type,
   }
 
   if (nz == -1.0) {
-    // anchor_r[2] = 3;
-
     stride_i[0] = 1;
     stride_j[1] = 1;
   }
-
-  // printf("offset:%i,%i,%i, stride_i:%i,%i,%i, stride_j:%i,%i,%i, double_stride:%i\n", offset[0], offset[1], offset[2], stride_i[0], stride_i[1], stride_i[2], stride_j[0], stride_j[1], stride_j[2], double_stride);
 
   int l_i = anchor_l[0] + i*stride_i[0] + j*stride_j[0];
   int l_j = anchor_l[1] + i*stride_i[1] + j*stride_j[1];
@@ -223,8 +208,6 @@ __global__ void compute_outer_fluxes(SubgridMeshConnectivityAccessor<float_type,
   int r_i = anchor_r[0] + double_stride*(i*stride_i[0] + j*stride_j[0])/2;
   int r_j = anchor_r[1] + double_stride*(i*stride_i[1] + j*stride_j[1])/2;
   int r_k = anchor_r[2] + double_stride*(i*stride_i[2] + j*stride_j[2])/2;
-
- // printf("offset:%i,%i,%i, stride_i:%i,%i,%i\n", offset[0], offset[1], offset[2], r_i, r_j, r_k);
 
   float_type rho_left = rho_l(l_index, l_i, l_j, l_k);
 
@@ -254,7 +237,6 @@ __global__ void euler_update_density(typename Subgrid<4, 4, 4>::Accessor<float_t
   int const j = threadIdx.y;
   int const k = threadIdx.z;
 
-  // float_type volume = 1.0/(8.0*8.0*8.0);
   float_type volume = volumes[e_idx] / static_cast<float_type>(Subgrid<4,4,4>::template extent<0> * Subgrid<4,4,4>::template extent<1> * Subgrid<4,4,4>::template extent<2>);
 
   density_next(e_idx, i, j, k) = density_prev(e_idx, i, j, k) - delta_t/volume*fluxes(e_idx, i, j, k);
@@ -291,12 +273,6 @@ int main(int argc, char* argv[]) {
     dim3 dimGrid(mesh_manager.get_num_local_elements());
     dim3 dimBlock(4, 4, 4);
 
-    // init_variable<double><<<dimGrid, dimBlock>>>(mesh_manager.get_own_variable(next, Rho));
-    // T8GPU_CUDA_CHECK_LAST_ERROR();
-    // cudaDeviceSynchronize();
-
-    // mesh_manager.save_variable_to_vtk(next, Rho, "density_before");
-
     thrust::host_vector<float_type> refinement_criteria(mesh_manager.get_num_local_elements(), 1.0);
     mesh_manager.adapt(refinement_criteria, next);
     mesh_manager.compute_connectivity_information();
@@ -310,8 +286,6 @@ int main(int argc, char* argv[]) {
     init_variable<double><<<dimGrid, dimBlock>>>(mesh_manager.get_own_variable(next, Rho));
     T8GPU_CUDA_CHECK_LAST_ERROR();
     cudaDeviceSynchronize();
-
-    // mesh_manager.save_variable_to_vtk(next, Rho, "density_after");
 
     for(int it=0; it<25; it++) {
       mesh_manager.save_variable_to_vtk(next, Rho, "density" + std::to_string(it));
@@ -331,19 +305,6 @@ int main(int argc, char* argv[]) {
       cudaDeviceSynchronize();
       MPI_Barrier(comm);
 
-      std::vector<float_type> vec(mesh_manager.get_num_local_elements()*Subgrid<4,4,4>::size);
-      float_type const* ptr = static_cast<float_type*>(mesh_manager.get_own_variable(Fluxes, Rho));
-      T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(vec.data(), ptr, sizeof(float_type)*vec.size(), cudaMemcpyDeviceToHost));
-
-      float_type integral = 0.0;
-      for (size_t i=0; i<mesh_manager.get_num_local_elements()*Subgrid<4,4,4>::size; i++) {
-	integral += vec[i];
-      }
-
-      double global_integral;
-      MPI_Allreduce(&integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, comm);
-      std::cout << "integral:" << global_integral << std::endl;
-
       euler_update_density<double><<<dimGrid, dimBlock>>>(mesh_manager.get_own_variable(next, Rho),
 							  mesh_manager.get_own_variable(prev, Rho),
 							  mesh_manager.get_own_variable(Fluxes, Rho),
@@ -351,26 +312,6 @@ int main(int argc, char* argv[]) {
 							  delta_t);
       T8GPU_CUDA_CHECK_LAST_ERROR();
       cudaDeviceSynchronize();
-
-      // std::vector<float_type> density(mesh_manager.get_num_local_elements()*Subgrid<4,4,4>::size);
-      // std::vector<float_type> volume(mesh_manager.get_num_local_elements());
-
-      // float_type const* density_ptr = static_cast<float_type*>(mesh_manager.get_own_variable(prev, Rho));
-      // T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(density.data(), density_ptr, sizeof(float_type)*density.size(), cudaMemcpyDeviceToHost));
-
-      // float_type const* volume_ptr = static_cast<float_type*>(mesh_manager.get_own_volume());
-      // T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(volume.data(), volume_ptr, sizeof(float_type)*volume.size(), cudaMemcpyDeviceToHost));
-
-      // double integral = 0.0;
-      // for (size_t i=0; i<mesh_manager.get_num_local_elements()*Subgrid<4,4,4>::size; i++) {
-      // 	integral += volume[i / 64]*density[i];
-      // }
-
-      // double global_integral;
-      // MPI_Allreduce(&integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, comm);
-
-      // std::cout << "integral:" << global_integral << std::endl;
-
 
       std::swap(prev, next);
     }
