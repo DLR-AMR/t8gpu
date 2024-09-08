@@ -37,10 +37,10 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
 void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
   std::swap(prev, next);
 
-  dim3 dimGrid = {m_mesh_manager.get_num_local_elements()};
+  dim3 dimGrid = {static_cast<unsigned int>(m_mesh_manager.get_num_local_elements())};
   dim3 dimBlock = {4, 4, 4};
 
-  dim3 dimGridFace(m_mesh_manager.get_num_local_faces());
+  dim3 dimGridFace(static_cast<unsigned int>(m_mesh_manager.get_num_local_faces()));
   dim3 dimBlockFace(4, 4);
 
   compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variable(prev, Rho),

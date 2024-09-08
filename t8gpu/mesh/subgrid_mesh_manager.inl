@@ -199,7 +199,7 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callba
   //   }
   // }
   // if (lelement_id == 0 || lelement_id == 3 || lelement_id == 5 || lelement_id == 6) {
-  t8_locidx_t offset = t8_forest_get_first_local_element_id(forest_from);
+  t8_locidx_t offset = static_cast<t8_locidx_t>(t8_forest_get_first_local_element_id(forest_from));
   std::cout << "offset:" << offset << std::endl;
   t8_locidx_t gelement_id = offset + lelement_id;
 
