@@ -15,7 +15,7 @@ A C++ finite volume header-only library using t8code targeting GPUs.
 
 - The CMake build system generator (version 3.16 or higher).
 - T8code installed using the CMake build system.
-- A recent Nvidia CUDA SDK.
+- A recent Nvidia CUDA SDK supporting c++17.
 
 ### Configure t8gpu
 

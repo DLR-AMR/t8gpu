@@ -428,9 +428,12 @@ namespace t8gpu {
     thrust::host_vector<t8_locidx_t>   m_indices;
     thrust::device_vector<t8_locidx_t> m_device_indices;
 
+  public: // for debugging purposes. Remove this ASAP.
+    thrust::device_vector<t8_locidx_t> m_device_face_level_difference; /** inner faces neighbor elements */
+    thrust::device_vector<t8_locidx_t> m_device_face_neighbor_offset;  /** face anchor position in neighboring elements */
+  private: // for debugging purposes. Remove this ASAP.
+
     thrust::device_vector<t8_locidx_t> m_device_face_neighbors; /** inner faces neighbor elements */
-    thrust::device_vector<t8_locidx_t> m_device_face_anchors;   /** face anchor position in neighboring elements */
-    thrust::device_vector<t8_locidx_t> m_device_face_strides;   /** stride for neighboring elements to iterate over subfaces */
     thrust::device_vector<float_type>  m_device_face_normals;   /** inner and boundary faces normals */
     thrust::device_vector<float_type>  m_device_face_area;      /** inner and boundary faces area */
 
