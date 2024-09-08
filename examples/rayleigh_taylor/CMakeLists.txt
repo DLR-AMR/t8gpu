@@ -1,9 +1,9 @@
 add_executable(rayleigh_taylor
-  # kernels.cu
-  # kernels.h
+  kernels.cu
+  kernels.h
   main.cu
-  # solver.cu
-  # solver.h
+  solver.cu
+  solver.h
   )
 
 set_target_properties(rayleigh_taylor PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

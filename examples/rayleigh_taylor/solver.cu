@@ -70,29 +70,27 @@ void SubgridCompressibleEulerSolver::save_conserved_variables_to_vtk(std::string
 SubgridCompressibleEulerSolver::~SubgridCompressibleEulerSolver() {}
 
 SubgridCompressibleEulerSolver::float_type SubgridCompressibleEulerSolver::compute_integral() const {
-  // int                             num_local_elements = m_mesh_manager.get_num_local_elements();
-  // float_type                      local_integral     = 0.0;
-  // float_type const*               mem{m_mesh_manager.get_own_variable(next, Rho)};
-  // thrust::host_vector<float_type> variable(num_local_elements);
-  // T8GPU_CUDA_CHECK_ERROR(
-  // 			 cudaMemcpy(variable.data(), mem, sizeof(float_type) * num_local_elements, cudaMemcpyDeviceToHost));
-  // thrust::host_vector<float_type> volume(num_local_elements);
-  // T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(
-  // 				    volume.data(), m_mesh_manager.get_own_volume(), sizeof(float_type) * num_local_elements, cudaMemcpyDeviceToHost));
+  int                             num_local_elements = m_mesh_manager.get_num_local_elements();
+  float_type                      local_integral     = 0.0;
+  float_type const*               mem{m_mesh_manager.get_own_variable(next, Rho)};
+  thrust::host_vector<float_type> variable(num_local_elements*subgrid_type::size);
+  T8GPU_CUDA_CHECK_ERROR(
+			 cudaMemcpy(variable.data(), mem, sizeof(float_type) * num_local_elements * subgrid_type::size, cudaMemcpyDeviceToHost));
 
-  // for (t8_locidx_t i = 0; i < num_local_elements; i++) {
-  //   local_integral += volume[i] * variable[i];
-  // }
-  // float_type global_integral{};
-  // if constexpr (std::is_same<float_type, double>::value) {
-  //   MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, m_comm);
-  // } else {
-  //   MPI_Allreduce(&local_integral, &global_integral, 1, MPI_FLOAT, MPI_SUM, m_comm);
-  // }
-  // return global_integral;
-  std::cout << "This has not been implemented yet" << std::endl;
-  exit(EXIT_FAILURE);
-  return 0;
+  thrust::host_vector<float_type> volume(num_local_elements);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(
+				    volume.data(), m_mesh_manager.get_own_volume(), sizeof(float_type) * num_local_elements, cudaMemcpyDeviceToHost));
+
+  for (t8_locidx_t i = 0; i < num_local_elements*subgrid_type::size; i++) {
+    local_integral += volume[i / subgrid_type::size] * variable[i];
+  }
+  float_type global_integral{};
+  if constexpr (std::is_same<float_type, double>::value) {
+    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_DOUBLE, MPI_SUM, m_comm);
+  } else {
+    MPI_Allreduce(&local_integral, &global_integral, 1, MPI_FLOAT, MPI_SUM, m_comm);
+  }
+  return global_integral;
 }
 
 SubgridCompressibleEulerSolver::float_type SubgridCompressibleEulerSolver::compute_timestep() const {

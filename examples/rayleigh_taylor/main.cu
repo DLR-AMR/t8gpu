@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
   // We create a dummy frame so that destructors of solver class are
   // called before MPI finalize.
   {
-    using float_type = double;
+    using float_type = typename SubgridCompressibleEulerSolver::float_type;
 
     float_type delta_t = 0.125 / 2.0;
 
