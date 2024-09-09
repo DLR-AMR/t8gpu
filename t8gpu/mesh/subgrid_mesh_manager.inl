@@ -247,8 +247,8 @@ __global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, Su
     while (e_idx - refinement_index >= 0 && adapt_data[e_idx - refinement_index] == adapt_data[e_idx])
       refinement_index++;
 
-    int I = ((refinement_index-1) & 0b1);
-    int J = ((refinement_index-1) & 0b10) >> 1;
+    int I = ((refinement_index-1) & 0b1)   >> 0;
+    int J = ((refinement_index-1) & 0b10)  >> 1;
     int K = ((refinement_index-1) & 0b100) >> 2;
 
     for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
@@ -260,9 +260,9 @@ __global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, Su
     }
 
   } else if ((adapt_data[e_idx + 1] - adapt_data[e_idx]) > 1) { // coarsening
-    int I = (i & 0b10) >> 1;
-    int J = (i & 0b10) >> 1;
-    int K = (i & 0b10) >> 1;
+    int I = i/2;
+    int J = j/2;
+    int K = k/2;
 
     int z_index = I | (J << 1) | (K << 2);
 
