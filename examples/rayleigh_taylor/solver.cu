@@ -5,6 +5,34 @@
 
 using namespace t8gpu;
 
+__global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subgrid<4,4,4>> variables,
+				     SubgridCompressibleEulerSolver::float_type const* centers,
+				     t8_locidx_t const* levels) {
+  using float_type = SubgridCompressibleEulerSolver::float_type;
+
+  int const e_idx = blockIdx.x;
+
+  int const i = threadIdx.x;
+  int const j = threadIdx.y;
+  int const k = threadIdx.z;
+
+  auto density = variables.get(Rho);
+
+  t8_locidx_t level = levels[e_idx];
+
+  float_type center[3] = {
+    centers[3*e_idx]   - 0.5*pow(0.5, level) + 0.125*pow(0.5, level) + i*0.25*pow(0.5, level),
+    centers[3*e_idx+1] - 0.5*pow(0.5, level) + 0.125*pow(0.5, level) + j*0.25*pow(0.5, level),
+    centers[3*e_idx+2] - 0.5*pow(0.5, level) + 0.125*pow(0.5, level) + k*0.25*pow(0.5, level)
+  };
+
+  float_type x = center[0];
+  float_type y = center[1];
+  float_type z = center[2];
+
+  density(e_idx, i, j, k) = (x-0.5)*(x-0.5) + (y-0.5)*(y-0.5) + (z-0.5)*(z-0.5) - 0.25*0.25;
+}
+
 SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      comm,
 							       t8_scheme_cxx_t* scheme,
 							       t8_cmesh_t       cmesh,
@@ -14,24 +42,43 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
     m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() +
 				 m_mesh_manager.get_num_local_boundary_faces()) {
 
-  m_mesh_manager.initialize_variables([](MemoryAccessorOwn<VariableList>& accessor,
-                                         t8_forest_t                      forest,
-                                         t8_locidx_t                      tree_idx,
-                                         t8_element_t const*              element,
-                                         t8_locidx_t                      e_idx) {
-    using float_type = float_type;
 
-    auto rho = accessor.get(Rho);
+  t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
 
-    double center[3];
-    t8_forest_element_centroid(forest, tree_idx, element, center);
+  thrust::host_vector<float_type> centers(m_mesh_manager.get_num_local_elements()*3);
+  thrust::host_vector<t8_locidx_t> levels(m_mesh_manager.get_num_local_elements());
 
-    float_type x = static_cast<float_type>(center[0]);
-    float_type y = static_cast<float_type>(center[1]);
-    float_type z = static_cast<float_type>(center[2]);
+  t8_locidx_t element_idx = 0;
+  for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
+    t8_eclass_t tree_class {t8_forest_get_tree_class(forest, tree_idx)};
+    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(forest, tree_class)};
 
-    rho[e_idx] = static_cast<float_type>((x-0.5)*(x-0.5) + (y-0.5)*(y-0.5) + (z-0.5)*(z-0.5) - 0.25*0.25);
-  });
+    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(forest, tree_idx)};
+    for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
+      const t8_element_t* element {t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx)};
+
+      double center[3];
+      t8_forest_element_centroid(forest, tree_idx, element, center);
+      centers[3*element_idx] = center[0];
+      centers[3*element_idx+1] = center[1];
+      centers[3*element_idx+2] = center[2];
+
+      levels[element_idx] = eclass_scheme->t8_element_level(element);
+
+      element_idx++;
+    }
+  }
+
+  thrust::device_vector<float_type> device_centers = centers;
+  thrust::device_vector<t8_locidx_t> device_levels = levels;
+
+  dim3 dimGrid = {static_cast<unsigned int>(m_mesh_manager.get_num_local_elements())};
+  dim3 dimBlock = {4, 4, 4};
+  initialize_variables<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(next),
+					      thrust::raw_pointer_cast(device_centers.data()),
+					      thrust::raw_pointer_cast(device_levels.data()));
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
 }
 
 void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
