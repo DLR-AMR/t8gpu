@@ -103,8 +103,8 @@ __global__ void copy_variables_coarse_mesh_to_fine(typename t8gpu::variable_trai
 
   for (size_t k=0; k<VariableType::nb_variables; k++) {
     for (size_t p=0; p<SubgridType::template extent<0>; p++) {
-      for (size_t q=0; q<SubgridType::template extent<0>; q++) {
-	for (size_t r=0; r<SubgridType::template extent<0>; r++) {
+      for (size_t q=0; q<SubgridType::template extent<1>; q++) {
+	for (size_t r=0; r<SubgridType::template extent<2>; r++) {
 	  fine_variables.get(k)(i, p, q, r) = coarse_variables[k][i];
 	}
       }
@@ -160,6 +160,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::initialize_
   copy_variables_coarse_mesh_to_fine<VariableType, SubgridType><<<num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_all_coarse_variables.data()),
 												   this->get_own_variables(static_cast<StepType>(0)),
 												   m_num_local_elements);
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
@@ -171,43 +173,35 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callba
 											     int const           is_family,
 											     int const           num_elements,
 											     t8_element_t*       elements[]) {
-  // t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData* forest_user_data =
-  //     static_cast<t8gpu::MeshManager<VariableType, StepType, SubgridType>::UserData*>(t8_forest_get_user_data(forest_from));
-  // assert(forest_user_data != nullptr);
+  t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData* forest_user_data =
+      static_cast<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData*>(t8_forest_get_user_data(forest_from));
+  assert(forest_user_data != nullptr);
 
-  // t8_locidx_t element_level{ts->t8_element_level(elements[0])};
+  t8_locidx_t element_level{ts->t8_element_level(elements[0])};
 
-  // t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
+  t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
 
-  // float_type b = static_cast<float_type>(10.0);
+  float_type b = static_cast<float_type>(10.0);
 
-  // if (element_level < max_level) {
-  //   float_type criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
+  if (element_level < max_level) {
+    float_type criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
 
-  //   if (criteria > b) {
-  //     return 1;
-  //   }
-  // }
-  // if (element_level > min_level && is_family) {
-  //   float_type criteria = 0.0;
-  //   for (size_t i = 0; i < 4; i++) {
-  //     criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / float_type{4.0};
-  //   }
-
-  //   if (criteria < b) {
-  //     return -1;
-  //   }
-  // }
-  // if (lelement_id == 0 || lelement_id == 3 || lelement_id == 5 || lelement_id == 6) {
-  t8_locidx_t offset = static_cast<t8_locidx_t>(t8_forest_get_first_local_element_id(forest_from));
-  std::cout << "offset:" << offset << std::endl;
-  t8_locidx_t gelement_id = offset + lelement_id;
-
-  if (gelement_id == 1 || gelement_id == 2 || gelement_id == 4 || gelement_id == 7) {
-    return 1;
-  } else {
-    return 0;
+    if (criteria > b) {
+      return 1;
+    }
   }
+  if (element_level > min_level && is_family) {
+    float_type criteria = 0.0;
+    for (size_t i = 0; i < 4; i++) {
+      criteria += (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id + i] / float_type{4.0};
+    }
+
+    if (criteria < b) {
+      return -1;
+    }
+  }
+
+  return 0;
 }
 
 template<typename VariableType>

@@ -23,12 +23,12 @@ int main(int argc, char* argv[]) {
   {
     using float_type = typename SubgridCompressibleEulerSolver::float_type;
 
-    float_type delta_t = 0.125 / 2.0;
+    float_type delta_t = pow(0.5, 4+2);
 
     sc_MPI_Comm comm = MPI_COMM_WORLD;
     t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();
     t8_cmesh_t cmesh = t8_cmesh_new_periodic(comm, 3);
-    t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 1, true, comm);
+    t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 3, true, comm);
 
     SubgridCompressibleEulerSolver solver {comm, scheme, cmesh, forest};
 

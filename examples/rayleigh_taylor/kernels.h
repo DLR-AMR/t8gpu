@@ -26,6 +26,11 @@ namespace t8gpu {
 				       t8gpu::SubgridCompressibleEulerSolver::float_type const* volumes,
 				       t8gpu::SubgridCompressibleEulerSolver::float_type delta_t);
 
+  __global__ void compute_refinement_criteria(typename t8gpu::SubgridCompressibleEulerSolver::subgrid_type::Accessor<t8gpu::SubgridCompressibleEulerSolver::float_type> density,
+					      t8gpu::SubgridCompressibleEulerSolver::float_type* refinement_criteria,
+					      t8gpu::SubgridCompressibleEulerSolver::float_type const* volumes,
+					      t8_locidx_t num_local_elements);
+
 }  // namespace t8gpu
 
 #endif  // EXAMPLES_RAYLEIGH_TAYLOR_KERNELS_H

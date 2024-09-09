@@ -30,7 +30,7 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
     float_type y = static_cast<float_type>(center[1]);
     float_type z = static_cast<float_type>(center[2]);
 
-    rho[e_idx] = static_cast<float_type>((x < 0.5) ? 0.0 : 1.0);
+    rho[e_idx] = static_cast<float_type>((x-0.5)*(x-0.5) + (y-0.5)*(y-0.5) + (z-0.5)*(z-0.5) - 0.25*0.25);
   });
 }
 
@@ -124,7 +124,18 @@ SubgridCompressibleEulerSolver::float_type SubgridCompressibleEulerSolver::compu
 }
 
 void SubgridCompressibleEulerSolver::adapt() {
-  thrust::host_vector<float_type> refinement_criteria(m_mesh_manager.get_num_local_elements(), 1.0);
+  thrust::device_vector<float_type> device_refinement_criteria(m_mesh_manager.get_num_local_elements());
+
+  constexpr int thread_block_size = 256;
+  int const num_blocks = (m_mesh_manager.get_num_local_elements() + (thread_block_size - 1)) / thread_block_size;
+  compute_refinement_criteria<<<num_blocks, thread_block_size>>>(m_mesh_manager.get_own_variable(next, Rho),
+								 thrust::raw_pointer_cast(device_refinement_criteria.data()),
+								 m_mesh_manager.get_own_volume(),
+								 m_mesh_manager.get_num_local_elements());
+  T8GPU_CUDA_CHECK_LAST_ERROR();
+
+  thrust::host_vector<float_type> refinement_criteria = device_refinement_criteria;
+
   m_mesh_manager.adapt(refinement_criteria, next);
   m_mesh_manager.compute_connectivity_information();
 }

@@ -206,7 +206,7 @@ __global__ void t8gpu::euler_update_density(SubgridCompressibleEulerSolver::subg
 					    SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> fluxes,
 					    SubgridCompressibleEulerSolver::float_type const* volumes,
 				       SubgridCompressibleEulerSolver::float_type delta_t) {
-  using SubgridType = typename SubgridCompressibleEulerSolver::subgrid_type;
+  using subgrid_type = typename SubgridCompressibleEulerSolver::subgrid_type;
   using float_type = typename SubgridCompressibleEulerSolver::float_type;
 
   int const e_idx = blockIdx.x;
@@ -215,8 +215,33 @@ __global__ void t8gpu::euler_update_density(SubgridCompressibleEulerSolver::subg
   int const j = threadIdx.y;
   int const k = threadIdx.z;
 
-  float_type volume = volumes[e_idx] / static_cast<float_type>(SubgridType::template extent<0> * SubgridType::template extent<1> * SubgridType::template extent<2>);
+  float_type volume = volumes[e_idx] / static_cast<float_type>(subgrid_type::template extent<0> * subgrid_type::template extent<1> * subgrid_type::template extent<2>);
 
   density_next(e_idx, i, j, k) = density_prev(e_idx, i, j, k) - delta_t/volume*fluxes(e_idx, i, j, k);
   fluxes(e_idx, i, j, k) = 0.0;
+}
+
+__global__ void t8gpu::compute_refinement_criteria(typename SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density,
+						   SubgridCompressibleEulerSolver::float_type* refinement_criteria,
+						   SubgridCompressibleEulerSolver::float_type const* volumes,
+						   t8_locidx_t num_local_elements) {
+  using subgrid_type = typename SubgridCompressibleEulerSolver::subgrid_type;
+  using float_type = typename SubgridCompressibleEulerSolver::float_type;
+
+  int const i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= num_local_elements)
+    return;
+
+  float_type average_density = static_cast<float_type>(0.0);
+
+  for (size_t p=0; p<subgrid_type::template extent<0>; p++) {
+    for (size_t q=0; q<subgrid_type::template extent<1>; q++) {
+      for (size_t r=0; r<subgrid_type::template extent<2>; r++) {
+	average_density += density(i, p, q, r);
+      }
+    }
+  }
+  average_density /= static_cast<float_type>(subgrid_type::size);
+
+  refinement_criteria[i] = 10.1 - abs(average_density);
 }

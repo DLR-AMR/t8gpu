@@ -242,7 +242,7 @@ namespace t8gpu {
     static constexpr size_t nb_steps = step_traits<StepType>::nb_steps;
 
     static constexpr t8_locidx_t min_level = 1;
-    static constexpr t8_locidx_t max_level = 4;
+    static constexpr t8_locidx_t max_level = 5;
 
     /// @brief Constructor of the MeshManager class.
     ///
