@@ -50,10 +50,10 @@ __global__ void t8gpu::compute_inner_fluxes(typename SubgridCompressibleEulerSol
   __syncthreads();
 
   if (i < 3)
-  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k)];
+  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
 
   if (i > 0)
-  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i-1,j,k)];
+  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k)];
 
   if (j < 3) {
     float_type n[3] = {0.0, 1.0, 0.0};
@@ -67,10 +67,10 @@ __global__ void t8gpu::compute_inner_fluxes(typename SubgridCompressibleEulerSol
   __syncthreads();
 
   if (j < 3)
-  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k)];
+  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
 
   if (j > 0)
-  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j-1,k)];
+  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k)];
 
   if (k < 3) {
     float_type n[3] = {0.0, 0.0, 1.0};
@@ -84,10 +84,10 @@ __global__ void t8gpu::compute_inner_fluxes(typename SubgridCompressibleEulerSol
   __syncthreads();
 
   if (k < 3)
-  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k)];
+  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
 
   if (k > 0)
-  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k-1)];
+  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1)];
 
 }
 
@@ -197,8 +197,8 @@ __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<Subg
 
   float_type flux = scalar_product*surface*(scalar_product > 0 ? rho_left : rho_right);
 
-  atomicAdd(&flux_l(l_index, l_i, l_j, l_k),  flux);
-  atomicAdd(&flux_r(r_index, r_i, r_j, r_k), -flux);
+  atomicAdd(&flux_l(l_index, l_i, l_j, l_k), -flux);
+  atomicAdd(&flux_r(r_index, r_i, r_j, r_k),  flux);
 }
 
 __global__ void t8gpu::euler_update_density(SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density_prev,

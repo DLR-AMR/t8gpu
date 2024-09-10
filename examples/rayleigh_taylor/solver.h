@@ -12,14 +12,16 @@
 namespace t8gpu {
 
   enum VariableList {
-    Rho,     // density
+    Rho,         // density
     nb_variables
   };
 
   // defines the number of duplicates per variables that we need
   enum StepList {
-    Step0,   // used for explicit Euler
-    Step3,   // used for explicit Euler
+    Step0,   // used for RK3 timestepping
+    Step1,   // used for RK3 timestepping
+    Step2,   // used for RK3 timestepping
+    Step3,   // used for RK3 timestepping
     Fluxes,  // used to store fluxes
     nb_steps
   };
