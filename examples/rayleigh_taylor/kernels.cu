@@ -16,8 +16,8 @@ __global__ void t8gpu::init_variable(typename SubgridCompressibleEulerSolver::su
   variables(e_idx, i, j, k) = (e_idx == 1 && i ==0 && j==0 && k==0) ? 1.0 : 0.0;
 }
 
-__global__ void t8gpu::compute_inner_fluxes(typename SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density,
-					    typename SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> fluxes,
+__global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
+					    SubgridMemoryAccessorOwn<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes,
 					    SubgridCompressibleEulerSolver::float_type const* volumes) {
   using SubgridType = typename SubgridCompressibleEulerSolver::subgrid_type;
   using float_type = typename SubgridCompressibleEulerSolver::float_type;
@@ -29,6 +29,9 @@ __global__ void t8gpu::compute_inner_fluxes(typename SubgridCompressibleEulerSol
   int const k = threadIdx.z;
 
   float_type v[3] = {NX, NY, NZ};
+
+  auto rho = variables.get(Rho);
+  auto fluxes_rho = fluxes.get(Rho);
 
   float_type volume = volumes[e_idx];
   float_type edge_length = cbrt(volume) / static_cast<float_type>(SubgridType::extent<0>);
@@ -43,58 +46,58 @@ __global__ void t8gpu::compute_inner_fluxes(typename SubgridCompressibleEulerSol
 
     float_type scalar_product = v[0]*n[0] + v[1]*n[1] + v[2]*n[2];
 
-    float_type flux = surface*scalar_product*(scalar_product > 0 ? density(e_idx, i, j, k) : density(e_idx, i+1, j, k));
+    float_type flux = surface*scalar_product*(scalar_product > 0 ? rho(e_idx, i, j, k) : rho(e_idx, i+1, j, k));
 
     shared_fluxes[SubgridType::flat_index(i,j,k)] = flux;
   }
   __syncthreads();
 
   if (i < 3)
-  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
+  fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
 
   if (i > 0)
-  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k)];
+  fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k)];
 
   if (j < 3) {
     float_type n[3] = {0.0, 1.0, 0.0};
 
     float_type scalar_product = v[0]*n[0] + v[1]*n[1] + v[2]*n[2];
 
-    float_type flux = surface*scalar_product*(scalar_product > 0 ? density(e_idx, i, j, k) : density(e_idx, i, j+1, k));
+    float_type flux = surface*scalar_product*(scalar_product > 0 ? rho(e_idx, i, j, k) : rho(e_idx, i, j+1, k));
 
     shared_fluxes[SubgridType::flat_index(i,j,k)] = flux;
   }
   __syncthreads();
 
   if (j < 3)
-  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
+  fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
 
   if (j > 0)
-  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k)];
+  fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k)];
 
   if (k < 3) {
     float_type n[3] = {0.0, 0.0, 1.0};
 
     float_type scalar_product = v[0]*n[0] + v[1]*n[1] + v[2]*n[2];
 
-    float_type flux = surface*scalar_product*(scalar_product > 0 ? density(e_idx, i, j, k) : density(e_idx, i, j, k+1));
+    float_type flux = surface*scalar_product*(scalar_product > 0 ? rho(e_idx, i, j, k) : rho(e_idx, i, j, k+1));
 
     shared_fluxes[SubgridType::flat_index(i,j,k)] = flux;
   }
   __syncthreads();
 
   if (k < 3)
-  fluxes(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
+  fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
 
   if (k > 0)
-  fluxes(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1)];
+  fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1)];
 
 }
 
 __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<SubgridCompressibleEulerSolver::float_type, SubgridCompressibleEulerSolver::subgrid_type> connectivity,
 					    t8_locidx_t const* face_level_difference,
 					    t8_locidx_t const* face_neighbor_offset,
-					    SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> density,
+					    SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
 					    SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes) {
   using float_type = typename SubgridCompressibleEulerSolver::float_type;
 
@@ -125,8 +128,8 @@ __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<Subg
 
   auto [nx, ny, nz] = connectivity.get_face_normal(f_idx);
 
-  auto rho_l = density.get(l_rank, Rho);
-  auto rho_r = density.get(r_rank, Rho);
+  auto rho_l = variables.get(l_rank, Rho);
+  auto rho_r = variables.get(r_rank, Rho);
 
   auto flux_l = fluxes.get(l_rank, Rho);
   auto flux_r = fluxes.get(r_rank, Rho);

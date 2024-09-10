@@ -92,8 +92,8 @@ void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
   dim3 dimBlockFace(4, 4);
 
   // compute fluxes.
-  compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variable(prev, Rho),
-					      m_mesh_manager.get_own_variable(Fluxes, Rho),
+  compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(prev),
+					      m_mesh_manager.get_own_variables(Fluxes),
 					      m_mesh_manager.get_own_volume());
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
@@ -116,8 +116,8 @@ void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
 
 
   // compute fluxes.
-  compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variable(Step1, Rho),
-					      m_mesh_manager.get_own_variable(Fluxes, Rho),
+  compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(Step1),
+					      m_mesh_manager.get_own_variables(Fluxes),
 					      m_mesh_manager.get_own_volume());
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
@@ -142,8 +142,8 @@ void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
   // compute fluxes.
-  compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variable(Step2, Rho),
-					      m_mesh_manager.get_own_variable(Fluxes, Rho),
+  compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(Step2),
+					      m_mesh_manager.get_own_variables(Fluxes),
 					      m_mesh_manager.get_own_volume());
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();

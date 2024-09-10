@@ -10,14 +10,14 @@ namespace t8gpu {
 
   __global__ void init_variable(typename t8gpu::SubgridCompressibleEulerSolver::subgrid_type::Accessor<t8gpu::SubgridCompressibleEulerSolver::float_type> variables);
 
-  __global__ void compute_inner_fluxes(typename t8gpu::SubgridCompressibleEulerSolver::subgrid_type::Accessor<t8gpu::SubgridCompressibleEulerSolver::float_type> density,
-				       typename t8gpu::SubgridCompressibleEulerSolver::subgrid_type::Accessor<t8gpu::SubgridCompressibleEulerSolver::float_type> fluxes,
+  __global__ void compute_inner_fluxes(t8gpu::SubgridMemoryAccessorOwn<t8gpu::VariableList, t8gpu::SubgridCompressibleEulerSolver::subgrid_type> variables,
+				       t8gpu::SubgridMemoryAccessorOwn<t8gpu::VariableList, t8gpu::SubgridCompressibleEulerSolver::subgrid_type> fluxes,
 				       t8gpu::SubgridCompressibleEulerSolver::float_type const* volumes);
 
   __global__ void compute_outer_fluxes(t8gpu::SubgridMeshConnectivityAccessor<t8gpu::SubgridCompressibleEulerSolver::float_type, t8gpu::SubgridCompressibleEulerSolver::subgrid_type> connectivity,
 				       t8_locidx_t const* face_level_difference,
 				       t8_locidx_t const* face_neighbor_offset,
-				       t8gpu::SubgridMemoryAccessorAll<t8gpu::VariableList, t8gpu::SubgridCompressibleEulerSolver::subgrid_type> density,
+				       t8gpu::SubgridMemoryAccessorAll<t8gpu::VariableList, t8gpu::SubgridCompressibleEulerSolver::subgrid_type> variables,
 				       t8gpu::SubgridMemoryAccessorAll<t8gpu::VariableList, t8gpu::SubgridCompressibleEulerSolver::subgrid_type> fluxes);
 
   __global__ void euler_update_density(t8gpu::SubgridCompressibleEulerSolver::subgrid_type::Accessor<t8gpu::SubgridCompressibleEulerSolver::float_type> density_prev,
