@@ -12,7 +12,11 @@
 namespace t8gpu {
 
   enum VariableList {
-    Rho,         // density
+    Rho,     // density
+    Rho_v1,  // x-component of momentum
+    Rho_v2,  // y-component of momentum
+    Rho_v3,  // z-component of momentum
+    Rho_e,   // energy
     nb_variables
   };
 
@@ -28,10 +32,10 @@ namespace t8gpu {
 
   class SubgridCompressibleEulerSolver {
    public:
-    using subgrid_type                    = t8gpu::Subgrid<4,4,4>;
-    using float_type                      = variable_traits<VariableList>::float_type;
-    static constexpr size_t     dim       = 3;
-    static constexpr float_type cfl       = static_cast<float_type>(0.7);
+    using subgrid_type              = t8gpu::Subgrid<4,4,4>;
+    using float_type                = variable_traits<VariableList>::float_type;
+    static constexpr size_t     dim = 3;
+    static constexpr float_type cfl = static_cast<float_type>(0.7);
 
     /// @brief Constructor for the SubgridCompressibleEulerSolver class.
     ///

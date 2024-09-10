@@ -8,12 +8,6 @@
 
 namespace t8gpu {
 
-  /// @brief This kernel initialize every conserved variables in the
-  ///        subgrid.
-  ///
-  /// @param [out] variables       variables to be set.
-  __global__ void init_variable(typename t8gpu::SubgridCompressibleEulerSolver::subgrid_type::Accessor<t8gpu::SubgridCompressibleEulerSolver::float_type> variables);
-
   /// @brief This kernel computes the kepes flux at every inner faces
   ///        within subgrid elements and adds every contribution to
   ///        the fluxes variables. The flux variable must be

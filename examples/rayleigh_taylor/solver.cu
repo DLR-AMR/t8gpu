@@ -17,7 +17,7 @@ __global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subg
   int const j = threadIdx.y;
   int const k = threadIdx.z;
 
-  auto density = variables.get(Rho);
+  auto [rho, rho_v1, rho_v2, rho_v3, rho_e] = variables.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
   t8_locidx_t level = levels[e_idx];
 
@@ -31,7 +31,16 @@ __global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subg
   float_type y = center[1];
   float_type z = center[2];
 
-  density(e_idx, i, j, k) = (x-0.5)*(x-0.5) + (y-0.5)*(y-0.5) + (z-0.5)*(z-0.5) - 0.25*0.25;
+  float_type gamma = float_type{1.4};
+  float_type sigma = 0.05f/sqrt(2.0f);
+
+  rho(e_idx, i, j, k) = static_cast<float_type>(abs(z-0.5) < 0.25 ? 2.0 : 1.0);
+
+  rho_v1(e_idx, i, j, k) = static_cast<float_type>(abs(z-0.5) < 0.25 ? -0.5 : 0.5);
+  rho_v2(e_idx, i, j, k) = 0.0;
+  rho_v3(e_idx, i, j, k) = static_cast<float_type>(rho(e_idx, i, j, k)*(0.1*sin(4.0f*M_PI*(x-0.5))*(exp(-((z-0.75f)/(2*sigma))*((z-0.75f)/(2*sigma)))+exp(-((z-0.25f)/(2*sigma))*((z-0.25f)/(2*sigma))))));
+
+  rho_e(e_idx, i, j, k) = float_type{2.5} / (gamma - float_type{1.0}) + float_type{0.5} * (rho_v1(e_idx, i, j, k) * rho_v1(e_idx, i, j, k) + rho_v2(e_idx, i, j, k) * rho_v2(e_idx, i, j, k) + rho_v3(e_idx, i, j, k) * rho_v3(e_idx, i, j, k)) / rho(e_idx, i, j, k);
 }
 
 SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      comm,
@@ -197,7 +206,7 @@ SubgridCompressibleEulerSolver::float_type SubgridCompressibleEulerSolver::compu
 				    volume.data(), m_mesh_manager.get_own_volume(), sizeof(float_type) * num_local_elements, cudaMemcpyDeviceToHost));
 
   for (t8_locidx_t i = 0; i < num_local_elements*subgrid_type::size; i++) {
-    local_integral += volume[i / subgrid_type::size] * variable[i];
+    local_integral += volume[i / subgrid_type::size]/static_cast<float_type>(subgrid_type::size) * variable[i];
   }
   float_type global_integral{};
   if constexpr (std::is_same<float_type, double>::value) {

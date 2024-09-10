@@ -367,7 +367,7 @@ namespace t8gpu {
             t8gpu::meta::all_same_v<Ts...>,
         std::array<typename SubgridType::accessor_type<float_type>, sizeof...(Ts)>>
     get(int rank, Ts... is) {
-      return {get(static_cast<variable_index_type>(rank, is))...};
+      return {get(rank, static_cast<variable_index_type>(is))...};
     }
 
     /// @brief getter function to access multiple variables at the
@@ -387,7 +387,7 @@ namespace t8gpu {
             t8gpu::meta::all_same_v<Ts...>,
         std::array<typename SubgridType::accessor_type<float_type> const, sizeof...(Ts)>>
     get(int rank, Ts... is) const {
-      return {get(static_cast<variable_index_type>(rank, is))...};
+      return {get(rank, static_cast<variable_index_type>(is))...};
     }
 
    private:
