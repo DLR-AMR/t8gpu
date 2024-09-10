@@ -204,26 +204,6 @@ __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<Subg
   atomicAdd(&flux_r(r_index, r_i, r_j, r_k),  flux);
 }
 
-__global__ void t8gpu::euler_update_density(SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density_prev,
-					    SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density_next,
-					    SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> fluxes,
-					    SubgridCompressibleEulerSolver::float_type const* volumes,
-				       SubgridCompressibleEulerSolver::float_type delta_t) {
-  using subgrid_type = typename SubgridCompressibleEulerSolver::subgrid_type;
-  using float_type = typename SubgridCompressibleEulerSolver::float_type;
-
-  int const e_idx = blockIdx.x;
-
-  int const i = threadIdx.x;
-  int const j = threadIdx.y;
-  int const k = threadIdx.z;
-
-  float_type volume = volumes[e_idx] / static_cast<float_type>(subgrid_type::template extent<0> * subgrid_type::template extent<1> * subgrid_type::template extent<2>);
-
-  density_next(e_idx, i, j, k) = density_prev(e_idx, i, j, k) - delta_t/volume*fluxes(e_idx, i, j, k);
-  fluxes(e_idx, i, j, k) = 0.0;
-}
-
 __global__ void t8gpu::compute_refinement_criteria(typename SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density,
 						   SubgridCompressibleEulerSolver::float_type* refinement_criteria,
 						   SubgridCompressibleEulerSolver::float_type const* volumes,
