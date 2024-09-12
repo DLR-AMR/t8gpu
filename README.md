@@ -24,6 +24,7 @@ cmake -S . -B build/ -DCMAKE_BUILD_TYPE=Debug/RelWithDebInfo \
                      -DCMAKE_INSTALL_PREFIX=path/to/install  \
                      -DCMAKE_CXX_FLAGS="your flags here"     \
                      -DT8CODE_ROOT=path/to/t8code/install    \
+                     -DT8GPU_BUILD_EXAMPLES=ON/OFF           \
                      -DT8GPU_BUILD_DOCUMENTATION=ON/OFF
 ```
 
@@ -38,7 +39,7 @@ The most common build options are described here:
 
 ### Build examples and install t8gpu
 
-```
+```bash
 cmake --build build/ --parallel
 cmake --build build/ --target install
 ```
@@ -48,7 +49,7 @@ cmake --build build/ --target install
 > [!NOTE]
 > For better performance using multiple MPI ranks, it is heavily recommended to use the [MPS server](https://docs.nvidia.com/deploy/mps/). To launch the MPS server, simply run:
 >
-> ```
+> ```bash
 > export CUDA_VISIBLE_DEVICES=0        # select GPU device
 > nvidia-smi -i 0 -c EXCLUSIVE_PROCESS # set exclusive mode if possible
 > nvidia-cuda-mps-control -d           # start the MPS daemon
@@ -64,7 +65,7 @@ mpirun -n 8 ./build/examples/compressible_euler/kelvin_helmholtz
 
 As t8gpu is a header-only library, linking against it requires only adding the installed include directory to the compiler include directories. However, for CMake based projects, we recommend doing the following to get all the necessary compiler flags, simply add to your ``CMakeLists.txt``:
 
-```
+```CMake
 find_package(t8gpu REQUIRED)
 target_link_libraries(your_target PRIVATE t8gpu)
 ```
