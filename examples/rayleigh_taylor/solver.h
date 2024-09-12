@@ -32,7 +32,7 @@ namespace t8gpu {
 
   class SubgridCompressibleEulerSolver {
    public:
-    using subgrid_type              = t8gpu::Subgrid<4,4,4>;
+    using subgrid_type              = t8gpu::Subgrid<4, 4, 4>;
     using float_type                = variable_traits<VariableList>::float_type;
     static constexpr size_t     dim = 3;
     static constexpr float_type cfl = static_cast<float_type>(0.7);
@@ -66,7 +66,7 @@ namespace t8gpu {
     ///
     /// This member function saves the current simulation step in the
     /// vtk file format.
-    void save_conserved_variables_to_vtk(std::string prefix) const;
+    void save_density_to_vtk(std::string prefix) const;
 
     /// @brief Computes the integral of the quantity of interest.
     ///

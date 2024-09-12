@@ -63,7 +63,6 @@ namespace t8gpu {
       return flat_index_impl<Ts...>(is..., std::make_integer_sequence<int, sizeof...(is)>{});
     }
 
-
     /// @brief Simple wrapper class around a array to access subgrid data.
     template<typename float_type>
     class Accessor {
@@ -123,10 +122,10 @@ namespace t8gpu {
     template<typename float_type>
     using accessor_type = Accessor<float_type>;
 
-  private:
+   private:
     template<typename... Ts, int... I>
     static constexpr inline int flat_index_impl(Ts... is, std::integer_sequence<int, I...>) {
-      return ((stride<I>*is) + ...);
+      return ((stride<I> * is) + ...);
     }
   };
 

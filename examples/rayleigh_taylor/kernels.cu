@@ -133,9 +133,7 @@ __device__ static void kepes_compute_diffusion_matrix(float_type  u_L[5],
 }
 
 template<typename float_type>
-__device__ void complete_orthonormal_basis(float_type n[3],
-					   float_type t1[3],
-					   float_type t2[3]) {
+__device__ void complete_orthonormal_basis(float_type n[3], float_type t1[3], float_type t2[3]) {
   // We set the first tangential to be a vector different than the normal.
   t1[0] = n[1];
   t1[1] = n[2];
@@ -161,11 +159,8 @@ __device__ void complete_orthonormal_basis(float_type n[3],
 }
 
 template<typename float_type>
-__device__ void rotate_state(float_type n[3],
-			     float_type t1[3],
-			     float_type t2[3],
-			     float_type state[5],
-		  float_type state_rotated[5]) {
+__device__ void rotate_state(
+    float_type n[3], float_type t1[3], float_type t2[3], float_type state[5], float_type state_rotated[5]) {
   state_rotated[0] = state[0];
   state_rotated[1] = state[1] * n[0] + state[2] * n[1] + state[3] * n[2];
   state_rotated[2] = state[1] * t1[0] + state[2] * t1[1] + state[3] * t1[2];
@@ -174,23 +169,17 @@ __device__ void rotate_state(float_type n[3],
 }
 
 template<typename float_type>
-__device__ void inverse_rotate_state(float_type n[3],
-				     float_type t1[3],
-				     float_type t2[3],
-				     float_type state_rotated[5],
-				     float_type state[5]) {
+__device__ void inverse_rotate_state(
+    float_type n[3], float_type t1[3], float_type t2[3], float_type state_rotated[5], float_type state[5]) {
   state[0] = state_rotated[0];
   state[1] = state_rotated[1] * n[0] + state_rotated[2] * t1[0] + state_rotated[3] * t2[0];
   state[2] = state_rotated[1] * n[1] + state_rotated[2] * t1[1] + state_rotated[3] * t2[1];
   state[3] = state_rotated[1] * n[2] + state_rotated[2] * t1[2] + state_rotated[3] * t2[2];
   state[4] = state_rotated[4];
-
 }
 
 template<typename float_type>
-__device__ void compute_total_kepes_flux(float_type u_L[5],
-					 float_type u_R[5],
-					 float_type flux[5]) {
+__device__ void compute_total_kepes_flux(float_type u_L[5], float_type u_R[5], float_type flux[5]) {
   float_type F_star[5];
 
   float_type RHat[5][5];
@@ -264,11 +253,12 @@ __device__ void compute_total_kepes_flux(float_type u_L[5],
   for (size_t k = 0; k < 5; k++) flux[k] = F_star[k] - nc::half * diss_[k];
 }
 
-__global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
-					    SubgridMemoryAccessorOwn<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes,
-					    SubgridCompressibleEulerSolver::float_type const* volumes) {
+__global__ void t8gpu::compute_inner_fluxes(
+    SubgridMemoryAccessorOwn<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
+    SubgridMemoryAccessorOwn<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes,
+    SubgridCompressibleEulerSolver::float_type const*                                    volumes) {
   using SubgridType = typename SubgridCompressibleEulerSolver::subgrid_type;
-  using float_type = typename SubgridCompressibleEulerSolver::float_type;
+  using float_type  = typename SubgridCompressibleEulerSolver::float_type;
 
   int const e_idx = blockIdx.x;
 
@@ -277,19 +267,20 @@ __global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableLis
   int const k = threadIdx.z;
 
   auto [rho, rho_v1, rho_v2, rho_v3, rho_e] = variables.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
-  auto [fluxes_rho, fluxes_rho_v1, fluxes_rho_v2, fluxes_rho_v3, fluxes_rho_e] = fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+  auto [fluxes_rho, fluxes_rho_v1, fluxes_rho_v2, fluxes_rho_v3, fluxes_rho_e] =
+      fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
-  float_type volume = volumes[e_idx];
+  float_type volume      = volumes[e_idx];
   float_type edge_length = cbrt(volume) / static_cast<float_type>(SubgridType::extent<0>);
-  float_type surface = edge_length*edge_length; // TODO
+  float_type surface     = edge_length * edge_length;  // TODO
 
-  __shared__ float_type shared_fluxes[VariableList::nb_variables*SubgridType::template size];
+  __shared__ float_type shared_fluxes[VariableList::nb_variables * SubgridType::template size];
 
-  shared_fluxes[SubgridType::flat_index(i,j,k)] = 0.0;
-  shared_fluxes[SubgridType::flat_index(i,j,k) +  SubgridType::template size] = 0.0;
-  shared_fluxes[SubgridType::flat_index(i,j,k) + 2*SubgridType::template size] = 0.0;
-  shared_fluxes[SubgridType::flat_index(i,j,k) + 3*SubgridType::template size] = 0.0;
-  shared_fluxes[SubgridType::flat_index(i,j,k) + 4*SubgridType::template size] = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = 0.0;
 
   if (i < 3) {
     float_type n[3] = {1.0, 0.0, 0.0};
@@ -298,21 +289,17 @@ __global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableLis
 
     complete_orthonormal_basis(n, t1, t2);
 
-    float_type variables_left[5] = {
-      rho   (e_idx, i, j, k),
-      rho_v1(e_idx, i, j, k),
-      rho_v2(e_idx, i, j, k),
-      rho_v3(e_idx, i, j, k),
-      rho_e (e_idx, i, j, k)
-    };
+    float_type variables_left[5] = {rho(e_idx, i, j, k),
+                                    rho_v1(e_idx, i, j, k),
+                                    rho_v2(e_idx, i, j, k),
+                                    rho_v3(e_idx, i, j, k),
+                                    rho_e(e_idx, i, j, k)};
 
-    float_type variables_right[5] = {
-      rho   (e_idx, i+1, j, k),
-      rho_v1(e_idx, i+1, j, k),
-      rho_v2(e_idx, i+1, j, k),
-      rho_v3(e_idx, i+1, j, k),
-      rho_e (e_idx, i+1, j, k)
-    };
+    float_type variables_right[5] = {rho(e_idx, i + 1, j, k),
+                                     rho_v1(e_idx, i + 1, j, k),
+                                     rho_v2(e_idx, i + 1, j, k),
+                                     rho_v3(e_idx, i + 1, j, k),
+                                     rho_e(e_idx, i + 1, j, k)};
 
     float_type variables_left_rotated[5];
     float_type variables_right_rotated[5];
@@ -322,36 +309,37 @@ __global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableLis
 
     float_type flux_rotated[5];
 
-    compute_total_kepes_flux(variables_left_rotated,
-			     variables_right_rotated,
-			     flux_rotated);
+    compute_total_kepes_flux(variables_left_rotated, variables_right_rotated, flux_rotated);
 
     float_type flux[5];
 
     inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
-    shared_fluxes[SubgridType::flat_index(i,j,k)] = flux[0]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) +   SubgridType::template size] = flux[1]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 2*SubgridType::template size] = flux[2]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 3*SubgridType::template size] = flux[3]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 4*SubgridType::template size] = flux[4]*surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = flux[0] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = flux[1] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = flux[2] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = flux[3] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = flux[4] * surface;
   }
   __syncthreads();
 
   if (i < 3) {
-    fluxes_rho   (e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
-    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) +   SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 2*SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 3*SubgridType::template size];
-    fluxes_rho_e (e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 4*SubgridType::template size];
+    fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
+    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size];
+    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size];
+    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size];
+    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size];
   }
 
   if (i > 0) {
-    fluxes_rho   (e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k)];
-    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k) +   SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k) + 2*SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k) + 3*SubgridType::template size];
-    fluxes_rho_e (e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i-1,j,k) + 4*SubgridType::template size];
+    fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i - 1, j, k)];
+    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i - 1, j, k) + SubgridType::template size];
+    fluxes_rho_v2(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 2 * SubgridType::template size];
+    fluxes_rho_v3(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 3 * SubgridType::template size];
+    fluxes_rho_e(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 4 * SubgridType::template size];
   }
 
   if (j < 3) {
@@ -361,21 +349,17 @@ __global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableLis
 
     complete_orthonormal_basis(n, t1, t2);
 
-    float_type variables_left[5] = {
-      rho   (e_idx, i, j, k),
-      rho_v1(e_idx, i, j, k),
-      rho_v2(e_idx, i, j, k),
-      rho_v3(e_idx, i, j, k),
-      rho_e (e_idx, i, j, k)
-    };
+    float_type variables_left[5] = {rho(e_idx, i, j, k),
+                                    rho_v1(e_idx, i, j, k),
+                                    rho_v2(e_idx, i, j, k),
+                                    rho_v3(e_idx, i, j, k),
+                                    rho_e(e_idx, i, j, k)};
 
-    float_type variables_right[5] = {
-      rho   (e_idx, i, j+1, k),
-      rho_v1(e_idx, i, j+1, k),
-      rho_v2(e_idx, i, j+1, k),
-      rho_v3(e_idx, i, j+1, k),
-      rho_e (e_idx, i, j+1, k)
-    };
+    float_type variables_right[5] = {rho(e_idx, i, j + 1, k),
+                                     rho_v1(e_idx, i, j + 1, k),
+                                     rho_v2(e_idx, i, j + 1, k),
+                                     rho_v3(e_idx, i, j + 1, k),
+                                     rho_e(e_idx, i, j + 1, k)};
 
     float_type variables_left_rotated[5];
     float_type variables_right_rotated[5];
@@ -385,37 +369,37 @@ __global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableLis
 
     float_type flux_rotated[5];
 
-    compute_total_kepes_flux(variables_left_rotated,
-			     variables_right_rotated,
-			     flux_rotated);
+    compute_total_kepes_flux(variables_left_rotated, variables_right_rotated, flux_rotated);
 
     float_type flux[5];
 
     inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
-    shared_fluxes[SubgridType::flat_index(i,j,k)] = flux[0]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) +   SubgridType::template size] = flux[1]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 2*SubgridType::template size] = flux[2]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 3*SubgridType::template size] = flux[3]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 4*SubgridType::template size] = flux[4]*surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = flux[0] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = flux[1] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = flux[2] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = flux[3] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = flux[4] * surface;
   }
   __syncthreads();
 
   if (j < 3) {
-    fluxes_rho   (e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
-    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) +   SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 2*SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 3*SubgridType::template size];
-    fluxes_rho_e (e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 4*SubgridType::template size];
+    fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
+    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size];
+    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size];
+    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size];
+    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size];
   }
 
   if (j > 0) {
-    fluxes_rho   (e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k)];
-    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k) +   SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k) + 2*SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k) + 3*SubgridType::template size];
-    fluxes_rho_e (e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j-1,k) + 4*SubgridType::template size];
-
+    fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j - 1, k)];
+    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j - 1, k) + SubgridType::template size];
+    fluxes_rho_v2(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 2 * SubgridType::template size];
+    fluxes_rho_v3(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 3 * SubgridType::template size];
+    fluxes_rho_e(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 4 * SubgridType::template size];
   }
 
   if (k < 3) {
@@ -425,21 +409,17 @@ __global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableLis
 
     complete_orthonormal_basis(n, t1, t2);
 
-    float_type variables_left[5] = {
-      rho   (e_idx, i, j, k),
-      rho_v1(e_idx, i, j, k),
-      rho_v2(e_idx, i, j, k),
-      rho_v3(e_idx, i, j, k),
-      rho_e (e_idx, i, j, k)
-    };
+    float_type variables_left[5] = {rho(e_idx, i, j, k),
+                                    rho_v1(e_idx, i, j, k),
+                                    rho_v2(e_idx, i, j, k),
+                                    rho_v3(e_idx, i, j, k),
+                                    rho_e(e_idx, i, j, k)};
 
-    float_type variables_right[5] = {
-      rho   (e_idx, i, j, k+1),
-      rho_v1(e_idx, i, j, k+1),
-      rho_v2(e_idx, i, j, k+1),
-      rho_v3(e_idx, i, j, k+1),
-      rho_e (e_idx, i, j, k+1)
-    };
+    float_type variables_right[5] = {rho(e_idx, i, j, k + 1),
+                                     rho_v1(e_idx, i, j, k + 1),
+                                     rho_v2(e_idx, i, j, k + 1),
+                                     rho_v3(e_idx, i, j, k + 1),
+                                     rho_e(e_idx, i, j, k + 1)};
 
     float_type variables_left_rotated[5];
     float_type variables_right_rotated[5];
@@ -449,44 +429,47 @@ __global__ void t8gpu::compute_inner_fluxes(SubgridMemoryAccessorOwn<VariableLis
 
     float_type flux_rotated[5];
 
-    compute_total_kepes_flux(variables_left_rotated,
-			     variables_right_rotated,
-			     flux_rotated);
+    compute_total_kepes_flux(variables_left_rotated, variables_right_rotated, flux_rotated);
 
     float_type flux[5];
 
     inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
-    shared_fluxes[SubgridType::flat_index(i,j,k)] = flux[0]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) +   SubgridType::template size] = flux[1]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 2*SubgridType::template size] = flux[2]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 3*SubgridType::template size] = flux[3]*surface;
-    shared_fluxes[SubgridType::flat_index(i,j,k) + 4*SubgridType::template size] = flux[4]*surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = flux[0] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = flux[1] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = flux[2] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = flux[3] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = flux[4] * surface;
   }
   __syncthreads();
 
   if (k < 3) {
-    fluxes_rho   (e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k)];
-    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) +   SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 2*SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 3*SubgridType::template size];
-    fluxes_rho_e (e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i,j,k) + 4*SubgridType::template size];
+    fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
+    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size];
+    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size];
+    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size];
+    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size];
   }
 
   if (k > 0) {
-    fluxes_rho   (e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1)];
-    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1) +   SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1) + 2*SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1) + 3*SubgridType::template size];
-    fluxes_rho_e (e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i,j,k-1) + 4*SubgridType::template size];
+    fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j, k - 1)];
+    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j, k - 1) + SubgridType::template size];
+    fluxes_rho_v2(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 2 * SubgridType::template size];
+    fluxes_rho_v3(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 3 * SubgridType::template size];
+    fluxes_rho_e(e_idx, i, j, k) +=
+        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 4 * SubgridType::template size];
   }
 }
 
-__global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<SubgridCompressibleEulerSolver::float_type, SubgridCompressibleEulerSolver::subgrid_type> connectivity,
-					    t8_locidx_t const* face_level_difference,
-					    t8_locidx_t const* face_neighbor_offset,
-					    SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
-					    SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes) {
+__global__ void t8gpu::compute_outer_fluxes(
+    SubgridMeshConnectivityAccessor<SubgridCompressibleEulerSolver::float_type,
+                                    SubgridCompressibleEulerSolver::subgrid_type>        connectivity,
+    t8_locidx_t const*                                                                   face_level_difference,
+    t8_locidx_t const*                                                                   face_neighbor_offset,
+    SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
+    SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes) {
   using float_type = typename SubgridCompressibleEulerSolver::float_type;
 
   int const f_idx = blockIdx.x;
@@ -499,10 +482,7 @@ __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<Subg
   int double_stride = (level_difference == 0) ? 2 : 1;
 
   int offset[3] = {
-    face_neighbor_offset[3*f_idx],
-    face_neighbor_offset[3*f_idx+1],
-    face_neighbor_offset[3*f_idx+2]
-  };
+      face_neighbor_offset[3 * f_idx], face_neighbor_offset[3 * f_idx + 1], face_neighbor_offset[3 * f_idx + 2]};
 
   float_type face_surface = connectivity.get_face_surface(f_idx);
 
@@ -524,16 +504,14 @@ __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<Subg
   auto [rho_l, rho_v1_l, rho_v2_l, rho_v3_l, rho_e_l] = variables.get(l_rank, Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
   auto [rho_r, rho_v1_r, rho_v2_r, rho_v3_r, rho_e_r] = variables.get(r_rank, Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
-  auto [flux_rho_l, flux_rho_v1_l, flux_rho_v2_l, flux_rho_v3_l, flux_rho_e_l] = fluxes.get(l_rank, Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
-  auto [flux_rho_r, flux_rho_v1_r, flux_rho_v2_r, flux_rho_v3_r, flux_rho_e_r] = fluxes.get(r_rank, Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+  auto [flux_rho_l, flux_rho_v1_l, flux_rho_v2_l, flux_rho_v3_l, flux_rho_e_l] =
+      fluxes.get(l_rank, Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+  auto [flux_rho_r, flux_rho_v1_r, flux_rho_v2_r, flux_rho_v3_r, flux_rho_e_r] =
+      fluxes.get(r_rank, Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
 
   int anchor_l[3] = {0, 0, 0};
 
-  int anchor_r[3] = {
-    offset[0],
-    offset[1],
-    offset[2]
-  };
+  int anchor_r[3] = {offset[0], offset[1], offset[2]};
 
   int stride_i[3] = {0, 0, 0};
   int stride_j[3] = {0, 0, 0};
@@ -573,29 +551,25 @@ __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<Subg
     stride_j[1] = 1;
   }
 
-  int l_i = anchor_l[0] + i*stride_i[0] + j*stride_j[0];
-  int l_j = anchor_l[1] + i*stride_i[1] + j*stride_j[1];
-  int l_k = anchor_l[2] + i*stride_i[2] + j*stride_j[2];
+  int l_i = anchor_l[0] + i * stride_i[0] + j * stride_j[0];
+  int l_j = anchor_l[1] + i * stride_i[1] + j * stride_j[1];
+  int l_k = anchor_l[2] + i * stride_i[2] + j * stride_j[2];
 
-  int r_i = anchor_r[0] + double_stride*(i*stride_i[0] + j*stride_j[0])/2;
-  int r_j = anchor_r[1] + double_stride*(i*stride_i[1] + j*stride_j[1])/2;
-  int r_k = anchor_r[2] + double_stride*(i*stride_i[2] + j*stride_j[2])/2;
+  int r_i = anchor_r[0] + double_stride * (i * stride_i[0] + j * stride_j[0]) / 2;
+  int r_j = anchor_r[1] + double_stride * (i * stride_i[1] + j * stride_j[1]) / 2;
+  int r_k = anchor_r[2] + double_stride * (i * stride_i[2] + j * stride_j[2]) / 2;
 
-  float_type variables_left[5] = {
-    rho_l   (l_index, l_i, l_j, l_k),
-    rho_v1_l(l_index, l_i, l_j, l_k),
-    rho_v2_l(l_index, l_i, l_j, l_k),
-    rho_v3_l(l_index, l_i, l_j, l_k),
-    rho_e_l (l_index, l_i, l_j, l_k)
-  };
+  float_type variables_left[5] = {rho_l(l_index, l_i, l_j, l_k),
+                                  rho_v1_l(l_index, l_i, l_j, l_k),
+                                  rho_v2_l(l_index, l_i, l_j, l_k),
+                                  rho_v3_l(l_index, l_i, l_j, l_k),
+                                  rho_e_l(l_index, l_i, l_j, l_k)};
 
-  float_type variables_right[5] = {
-    rho_r   (r_index, r_i, r_j, r_k),
-    rho_v1_r(r_index, r_i, r_j, r_k),
-    rho_v2_r(r_index, r_i, r_j, r_k),
-    rho_v3_r(r_index, r_i, r_j, r_k),
-    rho_e_r (r_index, r_i, r_j, r_k)
-  };
+  float_type variables_right[5] = {rho_r(r_index, r_i, r_j, r_k),
+                                   rho_v1_r(r_index, r_i, r_j, r_k),
+                                   rho_v2_r(r_index, r_i, r_j, r_k),
+                                   rho_v3_r(r_index, r_i, r_j, r_k),
+                                   rho_e_r(r_index, r_i, r_j, r_k)};
 
   float_type variables_left_rotated[5];
   float_type variables_right_rotated[5];
@@ -605,53 +579,82 @@ __global__ void t8gpu::compute_outer_fluxes(SubgridMeshConnectivityAccessor<Subg
 
   float_type flux_rotated[5];
 
-  compute_total_kepes_flux(variables_left_rotated,
-			   variables_right_rotated,
-			   flux_rotated);
+  compute_total_kepes_flux(variables_left_rotated, variables_right_rotated, flux_rotated);
 
   float_type flux[5];
 
   inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
-  float_type surface = face_surface / 16.0; // TODO: make this independant of subgrid size.
+  float_type surface = face_surface / 16.0;  // TODO: make this independant of subgrid size.
 
-  atomicAdd(&flux_rho_l(l_index, l_i, l_j, l_k), -flux[0]*surface);
-  atomicAdd(&flux_rho_r(r_index, r_i, r_j, r_k),  flux[0]*surface);
+  atomicAdd(&flux_rho_l(l_index, l_i, l_j, l_k), -flux[0] * surface);
+  atomicAdd(&flux_rho_r(r_index, r_i, r_j, r_k), flux[0] * surface);
 
-  atomicAdd(&flux_rho_v1_l(l_index, l_i, l_j, l_k), -flux[1]*surface);
-  atomicAdd(&flux_rho_v1_r(r_index, r_i, r_j, r_k),  flux[1]*surface);
+  atomicAdd(&flux_rho_v1_l(l_index, l_i, l_j, l_k), -flux[1] * surface);
+  atomicAdd(&flux_rho_v1_r(r_index, r_i, r_j, r_k), flux[1] * surface);
 
-  atomicAdd(&flux_rho_v2_l(l_index, l_i, l_j, l_k), -flux[2]*surface);
-  atomicAdd(&flux_rho_v2_r(r_index, r_i, r_j, r_k),  flux[2]*surface);
+  atomicAdd(&flux_rho_v2_l(l_index, l_i, l_j, l_k), -flux[2] * surface);
+  atomicAdd(&flux_rho_v2_r(r_index, r_i, r_j, r_k), flux[2] * surface);
 
-  atomicAdd(&flux_rho_v3_l(l_index, l_i, l_j, l_k), -flux[3]*surface);
-  atomicAdd(&flux_rho_v3_r(r_index, r_i, r_j, r_k),  flux[3]*surface);
+  atomicAdd(&flux_rho_v3_l(l_index, l_i, l_j, l_k), -flux[3] * surface);
+  atomicAdd(&flux_rho_v3_r(r_index, r_i, r_j, r_k), flux[3] * surface);
 
-  atomicAdd(&flux_rho_e_l(l_index, l_i, l_j, l_k), -flux[4]*surface);
-  atomicAdd(&flux_rho_e_r(r_index, r_i, r_j, r_k),  flux[4]*surface);
+  atomicAdd(&flux_rho_e_l(l_index, l_i, l_j, l_k), -flux[4] * surface);
+  atomicAdd(&flux_rho_e_r(r_index, r_i, r_j, r_k), flux[4] * surface);
 }
 
-__global__ void t8gpu::compute_refinement_criteria(typename SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density,
-						   SubgridCompressibleEulerSolver::float_type* refinement_criteria,
-						   SubgridCompressibleEulerSolver::float_type const* volumes,
-						   t8_locidx_t num_local_elements) {
+__global__ void t8gpu::compute_refinement_criteria(
+    typename SubgridCompressibleEulerSolver::subgrid_type::Accessor<SubgridCompressibleEulerSolver::float_type> density,
+    SubgridCompressibleEulerSolver::float_type*       refinement_criteria,
+    SubgridCompressibleEulerSolver::float_type const* volumes,
+    t8_locidx_t                                       num_local_elements) {
   using subgrid_type = typename SubgridCompressibleEulerSolver::subgrid_type;
-  using float_type = typename SubgridCompressibleEulerSolver::float_type;
+  using float_type   = typename SubgridCompressibleEulerSolver::float_type;
 
   int const i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= num_local_elements)
-    return;
+  if (i >= num_local_elements) return;
 
-  float_type average_density = static_cast<float_type>(0.0);
+  // float_type average_density = static_cast<float_type>(0.0);
 
-  for (size_t p=0; p<subgrid_type::template extent<0>; p++) {
-    for (size_t q=0; q<subgrid_type::template extent<1>; q++) {
-      for (size_t r=0; r<subgrid_type::template extent<2>; r++) {
-	average_density += density(i, p, q, r);
+  // for (size_t p=0; p<subgrid_type::template extent<0>; p++) {
+  //   for (size_t q=0; q<subgrid_type::template extent<1>; q++) {
+  //     for (size_t r=0; r<subgrid_type::template extent<2>; r++) {
+  // 	average_density += density(i, p, q, r);
+  //     }
+  //   }
+  // }
+  // average_density /= static_cast<float_type>(subgrid_type::size);
+
+  float_type h1_seminorm = float_type{0.0};
+
+  float_type h = cbrt(volumes[i]) / static_cast<float_type>(subgrid_type::template extent<0>);
+
+  for (size_t p = 0; p < subgrid_type::template extent<0> - 1; p++) {
+    for (size_t q = 0; q < subgrid_type::template extent<1>; q++) {
+      for (size_t r = 0; r < subgrid_type::template extent<2>; r++) {
+        h1_seminorm +=
+            (density(i, p + 1, q, r) - density(i, p, q, r)) * (density(i, p + 1, q, r) - density(i, p, q, r)) * h;
       }
     }
   }
-  average_density /= static_cast<float_type>(subgrid_type::size);
 
-  refinement_criteria[i] = 10.1 - abs(average_density);
+  for (size_t p = 0; p < subgrid_type::template extent<0>; p++) {
+    for (size_t q = 0; q < subgrid_type::template extent<1> - 1; q++) {
+      for (size_t r = 0; r < subgrid_type::template extent<2>; r++) {
+        h1_seminorm +=
+            (density(i, p, q + 1, r) - density(i, p, q, r)) * (density(i, p, q + 1, r) - density(i, p, q, r)) * h;
+      }
+    }
+  }
+
+  for (size_t p = 0; p < subgrid_type::template extent<0>; p++) {
+    for (size_t q = 0; q < subgrid_type::template extent<1>; q++) {
+      for (size_t r = 0; r < subgrid_type::template extent<2> - 1; r++) {
+        h1_seminorm +=
+            (density(i, p, q, r + 1) - density(i, p, q, r)) * (density(i, p, q, r + 1) - density(i, p, q, r)) * h;
+      }
+    }
+  }
+
+  refinement_criteria[i] = h1_seminorm / volumes[i];
 }

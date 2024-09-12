@@ -168,12 +168,12 @@ namespace t8gpu {
     t8_locidx_t const  m_num_local_boundary_faces;
 
     SubgridMeshConnectivityAccessor(int const*         ranks,
-				    t8_locidx_t const* indices,
-				    t8_locidx_t const* face_neighbors,
-				    float_type const*  face_normals,
-				    float_type const*  face_surfaces,
-				    t8_locidx_t const  num_local_faces,
-				    t8_locidx_t const  num_local_boundary_faces)
+                                    t8_locidx_t const* indices,
+                                    t8_locidx_t const* face_neighbors,
+                                    float_type const*  face_normals,
+                                    float_type const*  face_surfaces,
+                                    t8_locidx_t const  num_local_faces,
+                                    t8_locidx_t const  num_local_boundary_faces)
         : m_ranks{ranks},
           m_indices{indices},
           m_face_neighbors{face_neighbors},
@@ -445,11 +445,11 @@ namespace t8gpu {
     thrust::host_vector<t8_locidx_t>   m_indices;
     thrust::device_vector<t8_locidx_t> m_device_indices;
 
-  public: // for debugging purposes. Remove this ASAP.
+   public:                                                             // for debugging purposes. Remove this ASAP.
     thrust::device_vector<t8_locidx_t> m_device_face_level_difference; /** inner faces neighbor elements */
-    thrust::device_vector<t8_locidx_t> m_device_face_neighbor_offset;  /** face anchor position in neighboring elements */
-  private: // for debugging purposes. Remove this ASAP.
-
+    thrust::device_vector<t8_locidx_t>
+        m_device_face_neighbor_offset;                          /** face anchor position in neighboring elements */
+   private:                                                     // for debugging purposes. Remove this ASAP.
     thrust::device_vector<t8_locidx_t> m_device_face_neighbors; /** inner faces neighbor elements */
     thrust::device_vector<float_type>  m_device_face_normals;   /** inner and boundary faces normals */
     thrust::device_vector<float_type>  m_device_face_area;      /** inner and boundary faces area */

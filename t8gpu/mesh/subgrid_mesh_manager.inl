@@ -1,8 +1,8 @@
 #include "subgrid_mesh_manager.h"
 
+#include <thrust/host_vector.h>
 #include <array>
 #include <cstdlib>
-#include <thrust/host_vector.h>
 #include <type_traits>
 
 #include <t8gpu/utils/cuda.h>
@@ -20,15 +20,15 @@
 
 template<typename VariableType, typename StepType, typename SubgridType>
 t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::SubgridMeshManager(sc_MPI_Comm      comm,
-										   t8_scheme_cxx_t* scheme,
-										   t8_cmesh_t       cmesh,
-										   t8_forest_t      forest)
+                                                                                   t8_scheme_cxx_t* scheme,
+                                                                                   t8_cmesh_t       cmesh,
+                                                                                   t8_forest_t      forest)
     : m_comm{comm},
       m_scheme{scheme},
       m_cmesh{cmesh},
       m_forest{forest},
-      t8gpu::SubgridMemoryManager<VariableType, StepType, SubgridType>{static_cast<size_t>(t8_forest_get_local_num_elements(forest)),
-    comm} {
+      t8gpu::SubgridMemoryManager<VariableType, StepType, SubgridType>{
+          static_cast<size_t>(t8_forest_get_local_num_elements(forest)), comm} {
   MPI_Comm_size(m_comm, &m_nb_ranks);
   MPI_Comm_rank(m_comm, &m_rank);
 
@@ -68,14 +68,14 @@ t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::SubgridMeshManag
   thrust::host_vector<float_type> element_volume(m_num_local_elements);
 
   t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(m_forest);
-  t8_locidx_t element_idx = 0;
+  t8_locidx_t element_idx     = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t tree_class {t8_forest_get_tree_class(m_forest, tree_idx)};
-    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(m_forest, tree_class)};
+    t8_eclass_t         tree_class{t8_forest_get_tree_class(m_forest, tree_idx)};
+    t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(m_forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(m_forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(m_forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      const t8_element_t* element {t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
+      t8_element_t const* element{t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
 
       element_volume[element_idx] = static_cast<float_type>(t8_forest_element_volume(m_forest, tree_idx, element));
       element_idx++;
@@ -94,19 +94,19 @@ t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::~SubgridMeshMana
 }
 
 template<typename VariableType, typename SubgridType>
-__global__ void copy_variables_coarse_mesh_to_fine(typename t8gpu::variable_traits<VariableType>::float_type const** coarse_variables,
-			       t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType> fine_variables,
-			       t8_locidx_t num_local_elements) {
+__global__ void copy_variables_coarse_mesh_to_fine(
+    typename t8gpu::variable_traits<VariableType>::float_type const** coarse_variables,
+    t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>        fine_variables,
+    t8_locidx_t                                                       num_local_elements) {
   int const i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= num_local_elements)
-    return;
+  if (i >= num_local_elements) return;
 
-  for (size_t k=0; k<VariableType::nb_variables; k++) {
-    for (size_t p=0; p<SubgridType::template extent<0>; p++) {
-      for (size_t q=0; q<SubgridType::template extent<1>; q++) {
-	for (size_t r=0; r<SubgridType::template extent<2>; r++) {
-	  fine_variables.get(k)(i, p, q, r) = coarse_variables[k][i];
-	}
+  for (size_t k = 0; k < VariableType::nb_variables; k++) {
+    for (size_t p = 0; p < SubgridType::template extent<0>; p++) {
+      for (size_t q = 0; q < SubgridType::template extent<1>; q++) {
+        for (size_t r = 0; r < SubgridType::template extent<2>; r++) {
+          fine_variables.get(k)(i, p, q, r) = coarse_variables[k][i];
+        }
       }
     }
   }
@@ -115,27 +115,26 @@ __global__ void copy_variables_coarse_mesh_to_fine(typename t8gpu::variable_trai
 template<typename VariableType, typename StepType, typename SubgridType>
 template<typename Func>
 void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::initialize_variables(Func func) {
-
-  std::array<thrust::host_vector<float_type>, nb_variables> host_variables {};
-  for (size_t k=0; k<nb_variables; k++) {
+  std::array<thrust::host_vector<float_type>, nb_variables> host_variables{};
+  for (size_t k = 0; k < nb_variables; k++) {
     host_variables[k].resize(m_num_local_elements);
   }
 
-  std::array<float_type*, nb_variables> array {};
-  for (size_t k=0; k<nb_variables; k++) {
+  std::array<float_type*, nb_variables> array{};
+  for (size_t k = 0; k < nb_variables; k++) {
     array[k] = thrust::raw_pointer_cast(host_variables[k].data());
   }
-  MemoryAccessorOwn<VariableType> host_variable_memory {array};
+  MemoryAccessorOwn<VariableType> host_variable_memory{array};
 
   t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(m_forest);
-  t8_locidx_t element_idx = 0;
+  t8_locidx_t element_idx     = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t tree_class {t8_forest_get_tree_class(m_forest, tree_idx)};
-    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(m_forest, tree_class)};
+    t8_eclass_t         tree_class{t8_forest_get_tree_class(m_forest, tree_idx)};
+    t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(m_forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(m_forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(m_forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      const t8_element_t* element {t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
+      t8_element_t const* element{t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
 
       func(host_variable_memory, m_forest, tree_idx, element, element_idx);
 
@@ -143,45 +142,47 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::initialize_
     }
   }
 
-  thrust::device_vector<float_type> coarse_variables(m_num_local_elements*VariableType::nb_variables);
+  thrust::device_vector<float_type> coarse_variables(m_num_local_elements * VariableType::nb_variables);
 
   thrust::host_vector<float_type*> all_coarse_variables(VariableType::nb_variables);
-  for (size_t k=0; k<VariableType::nb_variables; k++) {
-    all_coarse_variables[k] = thrust::raw_pointer_cast(coarse_variables.data()) + k*m_num_local_elements;
+  for (size_t k = 0; k < VariableType::nb_variables; k++) {
+    all_coarse_variables[k] = thrust::raw_pointer_cast(coarse_variables.data()) + k * m_num_local_elements;
 
-    cudaMemcpy(all_coarse_variables[k], array[k], sizeof(float_type)*m_num_local_elements, cudaMemcpyHostToDevice);
+    cudaMemcpy(all_coarse_variables[k], array[k], sizeof(float_type) * m_num_local_elements, cudaMemcpyHostToDevice);
   }
 
   thrust::device_vector<float_type const*> device_all_coarse_variables = all_coarse_variables;
 
   // copy new shared element variables
   constexpr int thread_block_size = 256;
-  int const num_blocks = (m_num_local_elements + (thread_block_size - 1)) / thread_block_size;
-  copy_variables_coarse_mesh_to_fine<VariableType, SubgridType><<<num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_all_coarse_variables.data()),
-												   this->get_own_variables(static_cast<StepType>(0)),
-												   m_num_local_elements);
+  int const     num_blocks        = (m_num_local_elements + (thread_block_size - 1)) / thread_block_size;
+  copy_variables_coarse_mesh_to_fine<VariableType, SubgridType>
+      <<<num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(device_all_coarse_variables.data()),
+                                          this->get_own_variables(static_cast<StepType>(0)),
+                                          m_num_local_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
-int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callback_iteration(t8_forest_t         forest,
-											     t8_forest_t         forest_from,
-											     t8_locidx_t         which_tree,
-											     t8_locidx_t         lelement_id,
-											     t8_eclass_scheme_c* ts,
-											     int const           is_family,
-											     int const           num_elements,
-											     t8_element_t*       elements[]) {
+int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callback_iteration(t8_forest_t forest,
+                                                                                             t8_forest_t forest_from,
+                                                                                             t8_locidx_t which_tree,
+                                                                                             t8_locidx_t lelement_id,
+                                                                                             t8_eclass_scheme_c* ts,
+                                                                                             int const     is_family,
+                                                                                             int const     num_elements,
+                                                                                             t8_element_t* elements[]) {
   t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData* forest_user_data =
-      static_cast<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData*>(t8_forest_get_user_data(forest_from));
+      static_cast<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData*>(
+          t8_forest_get_user_data(forest_from));
   assert(forest_user_data != nullptr);
 
   t8_locidx_t element_level{ts->t8_element_level(elements[0])};
 
   t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
 
-  float_type b = static_cast<float_type>(10.0);
+  float_type b = static_cast<float_type>(0.02);
 
   if (element_level < max_level) {
     float_type criteria = (*forest_user_data->element_refinement_criteria)[tree_offset + lelement_id];
@@ -205,11 +206,10 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callba
 }
 
 template<typename VariableType>
-__global__ void adapt_volume(
-    typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
-    typename t8gpu::variable_traits<VariableType>::float_type* __restrict__ volume_new,
-    t8_locidx_t* adapt_data,
-    int          nb_new_elements) {
+__global__ void adapt_volume(typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
+                             typename t8gpu::variable_traits<VariableType>::float_type* __restrict__ volume_new,
+                             t8_locidx_t* adapt_data,
+                             int          nb_new_elements) {
   int const i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_new_elements) return;
@@ -224,10 +224,10 @@ __global__ void adapt_volume(
 }
 
 template<typename VariableType, typename SubgridType>
-__global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType> variables_old,
-				std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
-				t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
-				t8_locidx_t* adapt_data) {
+__global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>     variables_old,
+                                std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
+                                           t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
+                                t8_locidx_t*                                                   adapt_data) {
   int const e_idx = blockIdx.x;
 
   int const i = threadIdx.x;
@@ -235,47 +235,49 @@ __global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, Su
   int const k = threadIdx.z;
 
   // We can afford an if statement here as every thread in a thread block takes the same path.
-  if ((adapt_data[e_idx + 1] == adapt_data[e_idx]) || (e_idx > 0 && (adapt_data[e_idx] == adapt_data[e_idx - 1]))) { // refinement
+  if ((adapt_data[e_idx + 1] == adapt_data[e_idx]) ||
+      (e_idx > 0 && (adapt_data[e_idx] == adapt_data[e_idx - 1]))) {  // refinement
 
-    int refinement_index = 0; // the index of the refined element in {0, ..., 7} in z-order.
+    int refinement_index = 0;  // the index of the refined element in {0, ..., 7} in z-order.
     while (e_idx - refinement_index >= 0 && adapt_data[e_idx - refinement_index] == adapt_data[e_idx])
       refinement_index++;
 
-    int I = ((refinement_index-1) & 0b1)   >> 0;
-    int J = ((refinement_index-1) & 0b10)  >> 1;
-    int K = ((refinement_index-1) & 0b100) >> 2;
+    int I = ((refinement_index - 1) & 0b1) >> 0;
+    int J = ((refinement_index - 1) & 0b10) >> 1;
+    int K = ((refinement_index - 1) & 0b100) >> 2;
 
-    for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+    for (int l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
       variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] =
-	variables_old.get(l)(adapt_data[e_idx],
-			     I*SubgridType::template extent<0>/2 + i/2,
-			     J*SubgridType::template extent<1>/2 + j/2,
-			     K*SubgridType::template extent<2>/2 + k/2);
+          variables_old.get(l)(adapt_data[e_idx],
+                               I * SubgridType::template extent<0> / 2 + i / 2,
+                               J * SubgridType::template extent<1> / 2 + j / 2,
+                               K * SubgridType::template extent<2> / 2 + k / 2);
     }
 
-  } else if ((adapt_data[e_idx + 1] - adapt_data[e_idx]) > 1) { // coarsening
-    int I = i/2;
-    int J = j/2;
-    int K = k/2;
+  } else if ((adapt_data[e_idx + 1] - adapt_data[e_idx]) > 1) {  // coarsening
+    int I = i / 2;
+    int J = j / 2;
+    int K = k / 2;
 
     int z_index = I | (J << 1) | (K << 2);
 
-    for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+    for (int l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
       variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] = 0.0;
 
-      for (int ii = 0; ii<2; ii++) {
-	for (int jj = 0; jj<2; jj++) {
-	  for (int kk = 0; kk<2; kk++) {
-	    variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] +=
-	      variables_old.get(l)(adapt_data[e_idx] + z_index, 2*(i & 0b1) + ii, 2*(j & 0b1) + jj, 2*(k & 0b1) + kk);
-	  }
-	}
+      for (int ii = 0; ii < 2; ii++) {
+        for (int jj = 0; jj < 2; jj++) {
+          for (int kk = 0; kk < 2; kk++) {
+            variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] += variables_old.get(l)(
+                adapt_data[e_idx] + z_index, 2 * (i & 0b1) + ii, 2 * (j & 0b1) + jj, 2 * (k & 0b1) + kk);
+          }
+        }
       }
       variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] /= 8.0;
     }
-  } else { // no refinement, no coarsening
-    for (int l=0; l<t8gpu::variable_traits<VariableType>::nb_variables; l++) {
-      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] = variables_old.get(l)(adapt_data[e_idx], i, j, k);
+  } else {  // no refinement, no coarsening
+    for (int l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] =
+          variables_old.get(l)(adapt_data[e_idx], i, j, k);
     }
   }
 }
@@ -283,7 +285,7 @@ __global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, Su
 template<typename VariableType, typename StepType, typename SubgridType>
 void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
     thrust::host_vector<typename t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::float_type> const&
-                                                                              refinement_criteria,
+                                                                                             refinement_criteria,
     typename t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::step_index_type step) {
   t8_forest_ref(m_forest);
   assert(t8_forest_is_committed(m_forest));
@@ -369,7 +371,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   element_adapt_data[new_idx] = old_idx;
 
   t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData* forest_user_data{
-      static_cast<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData*>(t8_forest_get_user_data(m_forest))};
+      static_cast<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::UserData*>(
+          t8_forest_get_user_data(m_forest))};
   assert(forest_user_data != nullptr);
 
   t8_forest_set_user_data(adapted_forest, forest_user_data);
@@ -379,7 +382,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
 
   std::array<float_type* __restrict__, nb_variables> new_variables{};
   for (size_t k = 0; k < nb_variables; k++) {
-    new_variables[k] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + k * num_new_elements * SubgridType::size;
+    new_variables[k] =
+        thrust::raw_pointer_cast(device_new_conserved_variables.data()) + k * num_new_elements * SubgridType::size;
   }
 
   thrust::device_vector<float_type> device_element_volume_adapted(num_new_elements);
@@ -404,9 +408,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   dim3 dimGrid(num_new_elements);
   dim3 dimBlock(4, 4, 4);
   adapt_variables<VariableType>
-    <<<dimGrid, dimBlock>>>(this->get_own_variables(step),
-			    new_variables,
-			    device_element_adapt_data);
+      <<<dimGrid, dimBlock>>>(this->get_own_variables(step), new_variables, device_element_adapt_data);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   ///////
 
@@ -427,23 +429,22 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
 }
 
 template<typename float_type, typename SubgridType>
-void add_face(t8_locidx_t face_idx,
-	      int num_neighbors,
-	      t8_forest_t forest,
-	      t8_locidx_t tree_idx,
-	      t8_locidx_t element_idx,
-	      t8_element_t const* element,
-	      t8_element_t const* neighbor_element,
-	      t8_locidx_t neighbor_idx,
-	      t8_eclass_scheme_c* scheme_element,
-	      t8_eclass_scheme_c* scheme_neighbor,
-	      thrust::host_vector<t8_locidx_t>& face_level_difference,
-	      thrust::host_vector<t8_locidx_t>& face_neighbor_offset,
-	      thrust::host_vector<t8_locidx_t>& face_neighbors,
-	      thrust::host_vector<float_type>& face_normals,
-	      thrust::host_vector<float_type>& face_area) {
-
-  int level = scheme_element->t8_element_level(element);
+void add_face(t8_locidx_t                       face_idx,
+              int                               num_neighbors,
+              t8_forest_t                       forest,
+              t8_locidx_t                       tree_idx,
+              t8_locidx_t                       element_idx,
+              t8_element_t const*               element,
+              t8_element_t const*               neighbor_element,
+              t8_locidx_t                       neighbor_idx,
+              t8_eclass_scheme_c*               scheme_element,
+              t8_eclass_scheme_c*               scheme_neighbor,
+              thrust::host_vector<t8_locidx_t>& face_level_difference,
+              thrust::host_vector<t8_locidx_t>& face_neighbor_offset,
+              thrust::host_vector<t8_locidx_t>& face_neighbors,
+              thrust::host_vector<float_type>&  face_normals,
+              thrust::host_vector<float_type>&  face_area) {
+  int level          = scheme_element->t8_element_level(element);
   int neighbor_level = scheme_neighbor->t8_element_level(neighbor_element);
 
   double face_normal[3];
@@ -452,30 +453,22 @@ void add_face(t8_locidx_t face_idx,
   int level_difference = neighbor_level - level;
 
   if (level == neighbor_level) {
-    std::array<int, 3> neighbor_offset {};
+    std::array<int, 3> neighbor_offset{};
 
-    if (face_normal[0] != 0.0) { // normal is along x axis.
+    if (face_normal[0] != 0.0) {  // normal is along x axis.
+      neighbor_offset = {(face_normal[0] > 0) ? 0 : (SubgridType::template extent<0> - 1), 0, 0};
+    } else if (face_normal[1] != 0.0) {  // normal is along y axis.
+      neighbor_offset = {0, (face_normal[1] > 0) ? 0 : (SubgridType::template extent<1> - 1), 0};
+    } else {  // normal is along z axis.
       neighbor_offset = {
-	(face_normal[0] > 0) ? 0 : (SubgridType::template extent<0> - 1),
-	0,
-	0
-      };
-    } else if (face_normal[1] != 0.0) { // normal is along y axis.
-      neighbor_offset = {
-	0,
-	(face_normal[1] > 0) ? 0 : (SubgridType::template extent<1> - 1),
-	0
-      };
-    } else { // normal is along z axis.
-      neighbor_offset = {
-	0,
-	0,
-	(face_normal[2] > 0) ? 0 : (SubgridType::template extent<2> - 1),
+          0,
+          0,
+          (face_normal[2] > 0) ? 0 : (SubgridType::template extent<2> - 1),
       };
     }
 
     face_level_difference.push_back(level_difference);
-    for (size_t k=0; k<3; k++) {
+    for (size_t k = 0; k < 3; k++) {
       face_neighbor_offset.push_back(neighbor_offset[k]);
     }
 
@@ -485,36 +478,29 @@ void add_face(t8_locidx_t face_idx,
     for (size_t k = 0; k < 3; k++) {
       face_normals.push_back(static_cast<float_type>(face_normal[k]));
     }
-    face_area.push_back(
-			static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
-			static_cast<float_type>(num_neighbors));
+    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
+                        static_cast<float_type>(num_neighbors));
   } else if (neighbor_level < level) {
     int child_id = scheme_element->t8_element_child_id(element);
 
-    std::array<int, 3> neighbor_offset {};
+    std::array<int, 3> neighbor_offset{};
 
-    if (face_normal[0] != 0.0) { // normal is along x axis.
-      neighbor_offset = {
-	(face_normal[0] > 0) ? 0 : (SubgridType::template extent<0> - 1),
-	SubgridType::template extent<1>/2*((child_id & 0b10) >> 1),
-	SubgridType::template extent<2>/2*((child_id & 0b100) >> 2)
-      };
-    } else if (face_normal[1] != 0.0) { // normal is along y axis.
-      neighbor_offset = {
-	SubgridType::template extent<0>/2*((child_id & 0b1) >> 0),
-	(face_normal[1] > 0) ? 0 : (SubgridType::template extent<1> - 1),
-	SubgridType::template extent<2>/2*((child_id & 0b100) >> 2)
-      };
-    } else { // normal is along z axis.
-      neighbor_offset = {
-	SubgridType::template extent<0>/2*((child_id & 0b1) >> 0),
-	SubgridType::template extent<1>/2*((child_id & 0b10) >> 1),
-	(face_normal[2] > 0) ? 0 : (SubgridType::template extent<2> - 1)
-      };
+    if (face_normal[0] != 0.0) {  // normal is along x axis.
+      neighbor_offset = {(face_normal[0] > 0) ? 0 : (SubgridType::template extent<0> - 1),
+                         SubgridType::template extent<1> / 2 * ((child_id & 0b10) >> 1),
+                         SubgridType::template extent<2> / 2 * ((child_id & 0b100) >> 2)};
+    } else if (face_normal[1] != 0.0) {  // normal is along y axis.
+      neighbor_offset = {SubgridType::template extent<0> / 2 * ((child_id & 0b1) >> 0),
+                         (face_normal[1] > 0) ? 0 : (SubgridType::template extent<1> - 1),
+                         SubgridType::template extent<2> / 2 * ((child_id & 0b100) >> 2)};
+    } else {  // normal is along z axis.
+      neighbor_offset = {SubgridType::template extent<0> / 2 * ((child_id & 0b1) >> 0),
+                         SubgridType::template extent<1> / 2 * ((child_id & 0b10) >> 1),
+                         (face_normal[2] > 0) ? 0 : (SubgridType::template extent<2> - 1)};
     }
 
     face_level_difference.push_back(level_difference);
-    for (size_t k=0; k<3; k++) {
+    for (size_t k = 0; k < 3; k++) {
       face_neighbor_offset.push_back(neighbor_offset[k]);
     }
 
@@ -524,37 +510,30 @@ void add_face(t8_locidx_t face_idx,
     for (size_t k = 0; k < 3; k++) {
       face_normals.push_back(static_cast<float_type>(face_normal[k]));
     }
-    face_area.push_back(
-			static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
-			static_cast<float_type>(num_neighbors));
+    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
+                        static_cast<float_type>(num_neighbors));
 
   } else {
     int neighbor_child_id = scheme_neighbor->t8_element_child_id(neighbor_element);
 
-    std::array<int, 3> neighbor_offset {};
+    std::array<int, 3> neighbor_offset{};
 
-    if (face_normal[0] != 0.0) { // normal is along x axis.
-      neighbor_offset = {
-	(face_normal[0] < 0) ? 0 : (SubgridType::template extent<0> - 1),
-	SubgridType::template extent<1>/2*((neighbor_child_id & 0b10) >> 1),
-	SubgridType::template extent<2>/2*((neighbor_child_id & 0b100) >> 2)
-      };
-    } else if (face_normal[1] != 0.0) { // normal is along y axis.
-      neighbor_offset = {
-	SubgridType::template extent<0>/2*((neighbor_child_id & 0b1) >> 0),
-	(face_normal[1] < 0) ? 0 : (SubgridType::template extent<1> - 1),
-	SubgridType::template extent<2>/2*((neighbor_child_id & 0b100) >> 2)
-      };
-    } else { // normal is along z axis.
-      neighbor_offset = {
-	SubgridType::template extent<0>/2*((neighbor_child_id & 0b1) >> 0),
-	SubgridType::template extent<1>/2*((neighbor_child_id & 0b10) >> 1),
-	(face_normal[2] < 0) ? 0 : (SubgridType::template extent<2> - 1)
-      };
+    if (face_normal[0] != 0.0) {  // normal is along x axis.
+      neighbor_offset = {(face_normal[0] < 0) ? 0 : (SubgridType::template extent<0> - 1),
+                         SubgridType::template extent<1> / 2 * ((neighbor_child_id & 0b10) >> 1),
+                         SubgridType::template extent<2> / 2 * ((neighbor_child_id & 0b100) >> 2)};
+    } else if (face_normal[1] != 0.0) {  // normal is along y axis.
+      neighbor_offset = {SubgridType::template extent<0> / 2 * ((neighbor_child_id & 0b1) >> 0),
+                         (face_normal[1] < 0) ? 0 : (SubgridType::template extent<1> - 1),
+                         SubgridType::template extent<2> / 2 * ((neighbor_child_id & 0b100) >> 2)};
+    } else {  // normal is along z axis.
+      neighbor_offset = {SubgridType::template extent<0> / 2 * ((neighbor_child_id & 0b1) >> 0),
+                         SubgridType::template extent<1> / 2 * ((neighbor_child_id & 0b10) >> 1),
+                         (face_normal[2] < 0) ? 0 : (SubgridType::template extent<2> - 1)};
     }
 
     face_level_difference.push_back(-level_difference);
-    for (size_t k=0; k<3; k++) {
+    for (size_t k = 0; k < 3; k++) {
       face_neighbor_offset.push_back(neighbor_offset[k]);
     }
 
@@ -564,11 +543,9 @@ void add_face(t8_locidx_t face_idx,
     for (size_t k = 0; k < 3; k++) {
       face_normals.push_back(static_cast<float_type>(-face_normal[k]));
     }
-    face_area.push_back(
-			static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
-			static_cast<float_type>(num_neighbors));
+    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
+                        static_cast<float_type>(num_neighbors));
   }
-
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
@@ -642,46 +619,46 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
                                       &neigh_scheme,
                                       true);
 
-        for (int i = 0; i < num_neighbors; i++) { // we treat the case when the neighboring element is a ghost element.
+        for (int i = 0; i < num_neighbors; i++) {  // we treat the case when the neighboring element is a ghost element.
           if (neighbor_ids[i] >= m_num_local_elements && m_rank < m_ranks[neighbor_ids[i]]) {
-	    add_face<float_type, SubgridType>(face_idx,
-					      num_neighbors,
-					      m_forest,
-					      tree_idx,
-					      element_idx,
-					      element,
-					      neighbors[i],
-					      neighbor_ids[i],
-					      eclass_scheme,
-					      neigh_scheme,
-					      face_level_difference,
-					      face_neighbor_offset,
-					      face_neighbors,
-					      face_normals,
-					      face_area);
+            add_face<float_type, SubgridType>(face_idx,
+                                              num_neighbors,
+                                              m_forest,
+                                              tree_idx,
+                                              element_idx,
+                                              element,
+                                              neighbors[i],
+                                              neighbor_ids[i],
+                                              eclass_scheme,
+                                              neigh_scheme,
+                                              face_level_difference,
+                                              face_neighbor_offset,
+                                              face_neighbors,
+                                              face_normals,
+                                              face_area);
           }
         }
 
-	// we treat the case when the neighboring element is owned by the same rank.
+        // we treat the case when the neighboring element is owned by the same rank.
         if ((num_neighbors == 1) && (neighbor_ids[0] < m_num_local_elements) &&
             ((neighbor_ids[0] > element_idx) ||
              (neighbor_ids[0] < element_idx &&
               neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
-	  add_face<float_type, SubgridType>(face_idx,
-					    num_neighbors,
-					    m_forest,
-					    tree_idx,
-					    element_idx,
-					    element,
-					    neighbors[0],
-					    neighbor_ids[0],
-					    eclass_scheme,
-					    neigh_scheme,
-					    face_level_difference,
-					    face_neighbor_offset,
-					    face_neighbors,
-					    face_normals,
-					    face_area);
+          add_face<float_type, SubgridType>(face_idx,
+                                            num_neighbors,
+                                            m_forest,
+                                            tree_idx,
+                                            element_idx,
+                                            element,
+                                            neighbors[0],
+                                            neighbor_ids[0],
+                                            eclass_scheme,
+                                            neigh_scheme,
+                                            face_level_difference,
+                                            face_neighbor_offset,
+                                            face_neighbors,
+                                            face_normals,
+                                            face_area);
         }
         neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
         T8_FREE(neighbors);
@@ -710,7 +687,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
   m_num_local_boundary_faces = static_cast<t8_locidx_t>(boundary_face_area.size());
 
   m_device_face_level_difference = face_level_difference;
-  m_device_face_neighbor_offset = face_neighbor_offset;
+  m_device_face_neighbor_offset  = face_neighbor_offset;
 
   // we concatenate the inner and boundary face normals.
   m_device_face_neighbors.resize(face_neighbors.size() + boundary_face_neighbors.size());
@@ -747,7 +724,9 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
-t8gpu::SubgridMeshConnectivityAccessor<typename t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::float_type, SubgridType>
+t8gpu::SubgridMeshConnectivityAccessor<
+    typename t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::float_type,
+    SubgridType>
 t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::get_connectivity_information() const {
   return {thrust::raw_pointer_cast(m_device_ranks.data()),
           thrust::raw_pointer_cast(m_device_indices.data()),
@@ -779,59 +758,58 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::get_num_loca
 }
 
 template<typename float_type>
-__global__ void column_major_to_z_order(float_type const* from,
-					float_type* to) {
+__global__ void column_major_to_z_order(float_type const* from, float_type* to) {
   int const e_idx = blockIdx.x;
 
   int const i = threadIdx.x;
   int const j = threadIdx.y;
   int const k = threadIdx.z;
 
-  int morton_index = (i & 0b1) | ((j & 0b1) << 1) | ((k & 0b1) << 2)
-                   | ((i & 0b10) << 2) | ((j & 0b10) << 3) | ((k & 0b10) << 4);
+  int morton_index =
+      (i & 0b1) | ((j & 0b1) << 1) | ((k & 0b1) << 2) | ((i & 0b10) << 2) | ((j & 0b10) << 3) | ((k & 0b10) << 4);
 
-  to[e_idx*64 + morton_index] = from[e_idx*64 + i + 4*j + 16*k];
+  to[e_idx * 64 + morton_index] = from[e_idx * 64 + i + 4 * j + 16 * k];
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
 void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variable_to_vtk(
     t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::step_index_type     step,
     t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::variable_index_type variable,
-    std::string const&                                                   prefix) const {
-  static_assert(std::is_same_v<SubgridType, Subgrid<4,4,4>>);
+    std::string const&                                                                  prefix) const {
+  static_assert(std::is_same_v<SubgridType, Subgrid<4, 4, 4>>);
 
   thrust::device_vector<float_type> device_element_variable(m_num_local_elements * SubgridType::size);
 
-  thrust::host_vector<float_type> element_variable {};
+  thrust::host_vector<float_type> element_variable{};
 
   dim3 dimGrid(m_num_local_elements);
   dim3 dimBlock(4, 4, 4);
-  column_major_to_z_order<float_type><<<dimGrid, dimBlock>>>(static_cast<float_type const*>(this->get_own_variable(step, variable)),
-							     thrust::raw_pointer_cast(device_element_variable.data()));
+  column_major_to_z_order<float_type>
+      <<<dimGrid, dimBlock>>>(static_cast<float_type const*>(this->get_own_variable(step, variable)),
+                              thrust::raw_pointer_cast(device_element_variable.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
   element_variable = device_element_variable;
 
-  auto uniform_adaptation = [](t8_forest_t forest,
-			       t8_forest_t forest_from,
-			       t8_locidx_t which_tree,
-			       t8_locidx_t lelement_id,
-			       t8_eclass_scheme_c* ts,
-			       const int is_family,
-			       const int num_elements,
-			       t8_element_t* elements[]) -> int { return 1; };
+  auto uniform_adaptation = [](t8_forest_t         forest,
+                               t8_forest_t         forest_from,
+                               t8_locidx_t         which_tree,
+                               t8_locidx_t         lelement_id,
+                               t8_eclass_scheme_c* ts,
+                               int const           is_family,
+                               int const           num_elements,
+                               t8_element_t*       elements[]) -> int { return 1; };
 
-  t8_forest_t subgrid_forest1 {};
+  t8_forest_t subgrid_forest1{};
   t8_forest_init(&subgrid_forest1);
   t8_forest_ref(m_forest);
   t8_forest_set_adapt(subgrid_forest1, m_forest, uniform_adaptation, false);
   t8_forest_commit(subgrid_forest1);
 
-  t8_forest_t subgrid_forest2 {};
+  t8_forest_t subgrid_forest2{};
   t8_forest_init(&subgrid_forest2);
   t8_forest_set_adapt(subgrid_forest2, subgrid_forest1, uniform_adaptation, false);
   t8_forest_commit(subgrid_forest2);
-
 
   t8_vtk_data_field_t vtk_data_field{};
   vtk_data_field.type = T8_VTK_SCALAR;
@@ -875,7 +853,7 @@ template<typename VariableType, typename StepType, typename SubgridType>
 t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::get_host_scalar_variable(
     t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::step_index_type     step,
     t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::variable_index_type variable,
-    std::string const&                                                   name) const {
+    std::string const&                                                                  name) const {
   std::unique_ptr<float_type[]> data = std::make_unique<float_type[]>(m_num_local_elements);
   T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(data.get(),
                                     this->get_own_variable(step, variable),
@@ -895,7 +873,7 @@ template<typename VariableType, typename StepType, typename SubgridType>
 t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::get_host_vector_variable(
     t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::step_index_type                    step,
     std::array<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::variable_index_type, 3> variables,
-    std::string const&                                                                  name) const {
+    std::string const&                                                                                 name) const {
   std::unique_ptr<float_type[]> data = std::make_unique<float_type[]>(3 * m_num_local_elements);
   for (size_t i = 0; i < 3; i++)
     T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(data.get() + i * m_num_local_elements,
@@ -915,7 +893,7 @@ t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::get_host_vector_
 template<typename VariableType, typename StepType, typename SubgridType>
 void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variables_to_vtk(
     std::vector<t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::HostVariableInfo> host_variables,
-    std::string const&                                                             prefix) const {
+    std::string const&                                                                            prefix) const {
   // std::vector<t8_vtk_data_field_t> vtk_data_fields(host_variables.size());
   // for (size_t i = 0; i < host_variables.size(); i++)
   //   vtk_data_fields[i] = host_variables[i].m_vtk_data_field_info_struct;
@@ -978,10 +956,12 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::partition(s
   // thrust::host_vector<t8_locidx_t> new_indices(num_new_elements);
 
   // sc_array* sc_array_old_ranks_wrapper{sc_array_new_data(old_ranks.data(), sizeof(int), num_old_elements)};
-  // sc_array* sc_array_old_indices_wrapper{sc_array_new_data(old_indices.data(), sizeof(t8_locidx_t), num_old_elements)};
+  // sc_array* sc_array_old_indices_wrapper{sc_array_new_data(old_indices.data(), sizeof(t8_locidx_t),
+  // num_old_elements)};
 
   // sc_array* sc_array_new_ranks_wrapper{sc_array_new_data(new_ranks.data(), sizeof(int), num_new_elements)};
-  // sc_array* sc_array_new_indices_wrapper{sc_array_new_data(new_indices.data(), sizeof(t8_locidx_t), num_new_elements)};
+  // sc_array* sc_array_new_indices_wrapper{sc_array_new_data(new_indices.data(), sizeof(t8_locidx_t),
+  // num_new_elements)};
 
   // t8_forest_partition_data(m_forest, partitioned_forest, sc_array_old_ranks_wrapper, sc_array_new_ranks_wrapper);
 

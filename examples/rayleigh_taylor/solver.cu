@@ -1,14 +1,14 @@
-#include <t8gpu/utils/cuda.h>
 #include <t8gpu/timestepping/ssp_runge_kutta.h>
+#include <t8gpu/utils/cuda.h>
 
 #include "kernels.h"
 #include "solver.h"
 
 using namespace t8gpu;
 
-__global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subgrid<4,4,4>> variables,
-				     SubgridCompressibleEulerSolver::float_type const* centers,
-				     t8_locidx_t const* levels) {
+__global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subgrid<4, 4, 4>> variables,
+                                     SubgridCompressibleEulerSolver::float_type const*        centers,
+                                     t8_locidx_t const*                                       levels) {
   using float_type = SubgridCompressibleEulerSolver::float_type;
 
   int const e_idx = blockIdx.x;
@@ -22,56 +22,61 @@ __global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subg
   t8_locidx_t level = levels[e_idx];
 
   float_type center[3] = {
-    centers[3*e_idx]   - 0.5*pow(0.5, level) + 0.125*pow(0.5, level) + i*0.25*pow(0.5, level),
-    centers[3*e_idx+1] - 0.5*pow(0.5, level) + 0.125*pow(0.5, level) + j*0.25*pow(0.5, level),
-    centers[3*e_idx+2] - 0.5*pow(0.5, level) + 0.125*pow(0.5, level) + k*0.25*pow(0.5, level)
-  };
+      centers[3 * e_idx] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + i * 0.25 * pow(0.5, level),
+      centers[3 * e_idx + 1] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + j * 0.25 * pow(0.5, level),
+      centers[3 * e_idx + 2] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + k * 0.25 * pow(0.5, level)};
 
   float_type x = center[0];
   float_type y = center[1];
   float_type z = center[2];
 
   float_type gamma = float_type{1.4};
-  float_type sigma = 0.05f/sqrt(2.0f);
+  float_type sigma = 0.05f / sqrt(2.0f);
 
-  rho(e_idx, i, j, k) = static_cast<float_type>(abs(z-0.5) < 0.25 ? 2.0 : 1.0);
+  rho(e_idx, i, j, k) = static_cast<float_type>(abs(z - 0.5) < 0.25 ? 2.0 : 1.0);
 
-  rho_v1(e_idx, i, j, k) = static_cast<float_type>(abs(z-0.5) < 0.25 ? -0.5 : 0.5);
+  rho_v1(e_idx, i, j, k) = static_cast<float_type>(abs(z - 0.5) < 0.25 ? -0.5 : 0.5);
   rho_v2(e_idx, i, j, k) = 0.0;
-  rho_v3(e_idx, i, j, k) = static_cast<float_type>(rho(e_idx, i, j, k)*(0.1*sin(4.0f*M_PI*(x-0.5))*(exp(-((z-0.75f)/(2*sigma))*((z-0.75f)/(2*sigma)))+exp(-((z-0.25f)/(2*sigma))*((z-0.25f)/(2*sigma))))));
+  rho_v3(e_idx, i, j, k) = static_cast<float_type>(rho(e_idx, i, j, k) *
+                                                   (0.1 * sin(4.0f * M_PI * (x - 0.5)) *
+                                                    (exp(-((z - 0.75f) / (2 * sigma)) * ((z - 0.75f) / (2 * sigma))) +
+                                                     exp(-((z - 0.25f) / (2 * sigma)) * ((z - 0.25f) / (2 * sigma))))));
 
-  rho_e(e_idx, i, j, k) = float_type{2.5} / (gamma - float_type{1.0}) + float_type{0.5} * (rho_v1(e_idx, i, j, k) * rho_v1(e_idx, i, j, k) + rho_v2(e_idx, i, j, k) * rho_v2(e_idx, i, j, k) + rho_v3(e_idx, i, j, k) * rho_v3(e_idx, i, j, k)) / rho(e_idx, i, j, k);
+  rho_e(e_idx, i, j, k) =
+      float_type{2.5} / (gamma - float_type{1.0}) +
+      float_type{0.5} *
+          (rho_v1(e_idx, i, j, k) * rho_v1(e_idx, i, j, k) + rho_v2(e_idx, i, j, k) * rho_v2(e_idx, i, j, k) +
+           rho_v3(e_idx, i, j, k) * rho_v3(e_idx, i, j, k)) /
+          rho(e_idx, i, j, k);
 }
 
 SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      comm,
-							       t8_scheme_cxx_t* scheme,
-							       t8_cmesh_t       cmesh,
-							       t8_forest_t      forest)
-  : m_comm{comm},
-    m_mesh_manager{comm, scheme, cmesh, forest},
-    m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() +
-				 m_mesh_manager.get_num_local_boundary_faces()) {
-
-
+                                                               t8_scheme_cxx_t* scheme,
+                                                               t8_cmesh_t       cmesh,
+                                                               t8_forest_t      forest)
+    : m_comm{comm},
+      m_mesh_manager{comm, scheme, cmesh, forest},
+      m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() +
+                                   m_mesh_manager.get_num_local_boundary_faces()) {
   t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
 
-  thrust::host_vector<float_type> centers(m_mesh_manager.get_num_local_elements()*3);
+  thrust::host_vector<float_type>  centers(m_mesh_manager.get_num_local_elements() * 3);
   thrust::host_vector<t8_locidx_t> levels(m_mesh_manager.get_num_local_elements());
 
   t8_locidx_t element_idx = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t tree_class {t8_forest_get_tree_class(forest, tree_idx)};
-    t8_eclass_scheme_c* eclass_scheme {t8_forest_get_eclass_scheme(forest, tree_class)};
+    t8_eclass_t         tree_class{t8_forest_get_tree_class(forest, tree_idx)};
+    t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree {t8_forest_get_tree_num_elements(forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      const t8_element_t* element {t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx)};
+      t8_element_t const* element{t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx)};
 
       double center[3];
       t8_forest_element_centroid(forest, tree_idx, element, center);
-      centers[3*element_idx] = center[0];
-      centers[3*element_idx+1] = center[1];
-      centers[3*element_idx+2] = center[2];
+      centers[3 * element_idx]     = center[0];
+      centers[3 * element_idx + 1] = center[1];
+      centers[3 * element_idx + 2] = center[2];
 
       levels[element_idx] = eclass_scheme->t8_element_level(element);
 
@@ -79,14 +84,14 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
     }
   }
 
-  thrust::device_vector<float_type> device_centers = centers;
-  thrust::device_vector<t8_locidx_t> device_levels = levels;
+  thrust::device_vector<float_type>  device_centers = centers;
+  thrust::device_vector<t8_locidx_t> device_levels  = levels;
 
-  dim3 dimGrid = {static_cast<unsigned int>(m_mesh_manager.get_num_local_elements())};
+  dim3 dimGrid  = {static_cast<unsigned int>(m_mesh_manager.get_num_local_elements())};
   dim3 dimBlock = {4, 4, 4};
   initialize_variables<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(next),
-					      thrust::raw_pointer_cast(device_centers.data()),
-					      thrust::raw_pointer_cast(device_levels.data()));
+                                              thrust::raw_pointer_cast(device_centers.data()),
+                                              thrust::raw_pointer_cast(device_levels.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
 }
@@ -94,7 +99,7 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
 void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
   std::swap(prev, next);
 
-  dim3 dimGrid = {static_cast<unsigned int>(m_mesh_manager.get_num_local_elements())};
+  dim3 dimGrid  = {static_cast<unsigned int>(m_mesh_manager.get_num_local_elements())};
   dim3 dimBlock = {4, 4, 4};
 
   dim3 dimGridFace(static_cast<unsigned int>(m_mesh_manager.get_num_local_faces()));
@@ -102,93 +107,87 @@ void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
 
   // compute fluxes.
   compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(prev),
-					      m_mesh_manager.get_own_variables(Fluxes),
-					      m_mesh_manager.get_own_volume());
+                                              m_mesh_manager.get_own_variables(Fluxes),
+                                              m_mesh_manager.get_own_volume());
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
-  compute_outer_fluxes<<<dimGridFace, dimBlockFace>>>(m_mesh_manager.get_connectivity_information(),
-						      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_level_difference.data()),
-						      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_neighbor_offset.data()),
-						      m_mesh_manager.get_all_variables(prev),
-						      m_mesh_manager.get_all_variables(Fluxes));
+  compute_outer_fluxes<<<dimGridFace, dimBlockFace>>>(
+      m_mesh_manager.get_connectivity_information(),
+      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_level_difference.data()),
+      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_neighbor_offset.data()),
+      m_mesh_manager.get_all_variables(prev),
+      m_mesh_manager.get_all_variables(Fluxes));
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
   // step 1.
   timestepping::subgrid::SSP_3RK_step1<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(prev),
-							      m_mesh_manager.get_own_variables(Step1),
-							      m_mesh_manager.get_own_variables(Fluxes),
-							      m_mesh_manager.get_own_volume(),
-							      delta_t);
+                                                              m_mesh_manager.get_own_variables(Step1),
+                                                              m_mesh_manager.get_own_variables(Fluxes),
+                                                              m_mesh_manager.get_own_volume(),
+                                                              delta_t);
   T8GPU_CUDA_CHECK_LAST_ERROR();
-
 
   // compute fluxes.
   compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(Step1),
-					      m_mesh_manager.get_own_variables(Fluxes),
-					      m_mesh_manager.get_own_volume());
+                                              m_mesh_manager.get_own_variables(Fluxes),
+                                              m_mesh_manager.get_own_volume());
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
-  compute_outer_fluxes<<<dimGridFace, dimBlockFace>>>(m_mesh_manager.get_connectivity_information(),
-						      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_level_difference.data()),
-						      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_neighbor_offset.data()),
-						      m_mesh_manager.get_all_variables(Step1),
-						      m_mesh_manager.get_all_variables(Fluxes));
+  compute_outer_fluxes<<<dimGridFace, dimBlockFace>>>(
+      m_mesh_manager.get_connectivity_information(),
+      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_level_difference.data()),
+      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_neighbor_offset.data()),
+      m_mesh_manager.get_all_variables(Step1),
+      m_mesh_manager.get_all_variables(Fluxes));
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
   // step 2.
   timestepping::subgrid::SSP_3RK_step2<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(prev),
-							      m_mesh_manager.get_own_variables(Step1),
-							      m_mesh_manager.get_own_variables(Step2),
-							      m_mesh_manager.get_own_variables(Fluxes),
-							      m_mesh_manager.get_own_volume(),
-							      delta_t);
+                                                              m_mesh_manager.get_own_variables(Step1),
+                                                              m_mesh_manager.get_own_variables(Step2),
+                                                              m_mesh_manager.get_own_variables(Fluxes),
+                                                              m_mesh_manager.get_own_volume(),
+                                                              delta_t);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
   // compute fluxes.
   compute_inner_fluxes<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(Step2),
-					      m_mesh_manager.get_own_variables(Fluxes),
-					      m_mesh_manager.get_own_volume());
+                                              m_mesh_manager.get_own_variables(Fluxes),
+                                              m_mesh_manager.get_own_volume());
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
-  compute_outer_fluxes<<<dimGridFace, dimBlockFace>>>(m_mesh_manager.get_connectivity_information(),
-						      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_level_difference.data()),
-						      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_neighbor_offset.data()),
-						      m_mesh_manager.get_all_variables(Step2),
-						      m_mesh_manager.get_all_variables(Fluxes));
+  compute_outer_fluxes<<<dimGridFace, dimBlockFace>>>(
+      m_mesh_manager.get_connectivity_information(),
+      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_level_difference.data()),
+      thrust::raw_pointer_cast(m_mesh_manager.m_device_face_neighbor_offset.data()),
+      m_mesh_manager.get_all_variables(Step2),
+      m_mesh_manager.get_all_variables(Fluxes));
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 
   // step 3.
   timestepping::subgrid::SSP_3RK_step3<<<dimGrid, dimBlock>>>(m_mesh_manager.get_own_variables(prev),
-							      m_mesh_manager.get_own_variables(Step2),
-							      m_mesh_manager.get_own_variables(next),
-							      m_mesh_manager.get_own_variables(Fluxes),
-							      m_mesh_manager.get_own_volume(),
-							      delta_t);
+                                                              m_mesh_manager.get_own_variables(Step2),
+                                                              m_mesh_manager.get_own_variables(next),
+                                                              m_mesh_manager.get_own_variables(Fluxes),
+                                                              m_mesh_manager.get_own_volume(),
+                                                              delta_t);
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 }
 
-void SubgridCompressibleEulerSolver::save_conserved_variables_to_vtk(std::string prefix) const {
+void SubgridCompressibleEulerSolver::save_density_to_vtk(std::string prefix) const {
   m_mesh_manager.save_variable_to_vtk(next, Rho, prefix);
-  // std::array<VariableList, 3> momentum = {Rho_v1, Rho_v2, Rho_v3};
-
-  // std::vector<MeshManager<VariableList, StepList, 3>::HostVariableInfo> variables;
-  // variables.push_back(m_mesh_manager.get_host_scalar_variable(next, Rho, "density"));
-  // variables.push_back(m_mesh_manager.get_host_scalar_variable(next, Rho_e, "energy"));
-  // variables.push_back(m_mesh_manager.get_host_vector_variable(next, momentum, "momentum"));
-
-  // m_mesh_manager.save_variables_to_vtk(std::move(variables), prefix);
 }
 
 SubgridCompressibleEulerSolver::~SubgridCompressibleEulerSolver() {}
@@ -197,16 +196,16 @@ SubgridCompressibleEulerSolver::float_type SubgridCompressibleEulerSolver::compu
   int                             num_local_elements = m_mesh_manager.get_num_local_elements();
   float_type                      local_integral     = 0.0;
   float_type const*               mem{m_mesh_manager.get_own_variable(next, Rho)};
-  thrust::host_vector<float_type> variable(num_local_elements*subgrid_type::size);
-  T8GPU_CUDA_CHECK_ERROR(
-			 cudaMemcpy(variable.data(), mem, sizeof(float_type) * num_local_elements * subgrid_type::size, cudaMemcpyDeviceToHost));
+  thrust::host_vector<float_type> variable(num_local_elements * subgrid_type::size);
+  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(
+      variable.data(), mem, sizeof(float_type) * num_local_elements * subgrid_type::size, cudaMemcpyDeviceToHost));
 
   thrust::host_vector<float_type> volume(num_local_elements);
   T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(
-				    volume.data(), m_mesh_manager.get_own_volume(), sizeof(float_type) * num_local_elements, cudaMemcpyDeviceToHost));
+      volume.data(), m_mesh_manager.get_own_volume(), sizeof(float_type) * num_local_elements, cudaMemcpyDeviceToHost));
 
-  for (t8_locidx_t i = 0; i < num_local_elements*subgrid_type::size; i++) {
-    local_integral += volume[i / subgrid_type::size]/static_cast<float_type>(subgrid_type::size) * variable[i];
+  for (t8_locidx_t i = 0; i < num_local_elements * subgrid_type::size; i++) {
+    local_integral += volume[i / subgrid_type::size] / static_cast<float_type>(subgrid_type::size) * variable[i];
   }
   float_type global_integral{};
   if constexpr (std::is_same<float_type, double>::value) {
@@ -239,11 +238,12 @@ void SubgridCompressibleEulerSolver::adapt() {
   thrust::device_vector<float_type> device_refinement_criteria(m_mesh_manager.get_num_local_elements());
 
   constexpr int thread_block_size = 256;
-  int const num_blocks = (m_mesh_manager.get_num_local_elements() + (thread_block_size - 1)) / thread_block_size;
-  compute_refinement_criteria<<<num_blocks, thread_block_size>>>(m_mesh_manager.get_own_variable(next, Rho),
-								 thrust::raw_pointer_cast(device_refinement_criteria.data()),
-								 m_mesh_manager.get_own_volume(),
-								 m_mesh_manager.get_num_local_elements());
+  int const     num_blocks = (m_mesh_manager.get_num_local_elements() + (thread_block_size - 1)) / thread_block_size;
+  compute_refinement_criteria<<<num_blocks, thread_block_size>>>(
+      m_mesh_manager.get_own_variable(next, Rho),
+      thrust::raw_pointer_cast(device_refinement_criteria.data()),
+      m_mesh_manager.get_own_volume(),
+      m_mesh_manager.get_num_local_elements());
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
   thrust::host_vector<float_type> refinement_criteria = device_refinement_criteria;
