@@ -614,17 +614,6 @@ __global__ void t8gpu::compute_refinement_criteria(
   int const i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_local_elements) return;
 
-  // float_type average_density = static_cast<float_type>(0.0);
-
-  // for (size_t p=0; p<subgrid_type::template extent<0>; p++) {
-  //   for (size_t q=0; q<subgrid_type::template extent<1>; q++) {
-  //     for (size_t r=0; r<subgrid_type::template extent<2>; r++) {
-  // 	average_density += density(i, p, q, r);
-  //     }
-  //   }
-  // }
-  // average_density /= static_cast<float_type>(subgrid_type::size);
-
   float_type h1_seminorm = float_type{0.0};
 
   float_type h = cbrt(volumes[i]) / static_cast<float_type>(subgrid_type::template extent<0>);

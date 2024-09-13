@@ -828,8 +828,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
                             1,     /* num_data */
                             &vtk_data_field);
   } else {  // we need to convert to double precision
-    thrust::host_vector<double> double_element_variable(m_num_local_elements);
-    for (t8_locidx_t i = 0; i < m_num_local_elements; i++)
+    thrust::host_vector<double> double_element_variable(m_num_local_elements * SubgridType::size);
+    for (t8_locidx_t i = 0; i < m_num_local_elements * SubgridType::size; i++)
       double_element_variable[i] = static_cast<double>(element_variable[i]);
     vtk_data_field.data = double_element_variable.data();
     t8_forest_write_vtk_ext(subgrid_forest2,

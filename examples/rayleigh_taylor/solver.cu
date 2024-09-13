@@ -22,13 +22,13 @@ __global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subg
   t8_locidx_t level = levels[e_idx];
 
   float_type center[3] = {
-      centers[3 * e_idx] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + i * 0.25 * pow(0.5, level),
-      centers[3 * e_idx + 1] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + j * 0.25 * pow(0.5, level),
-      centers[3 * e_idx + 2] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + k * 0.25 * pow(0.5, level)};
+    static_cast<float_type>(centers[3 * e_idx] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + i * 0.25 * pow(0.5, level)),
+    static_cast<float_type>(centers[3 * e_idx + 1] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + j * 0.25 * pow(0.5, level)),
+    static_cast<float_type>(centers[3 * e_idx + 2] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + k * 0.25 * pow(0.5, level))};
 
-  float_type x = center[0];
-  float_type y = center[1];
-  float_type z = center[2];
+  float_type x = float_type{center[0]};
+  float_type y = float_type{center[1]};
+  float_type z = float_type{center[2]};
 
   float_type gamma = float_type{1.4};
   float_type sigma = 0.05f / sqrt(2.0f);
@@ -74,9 +74,9 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
 
       double center[3];
       t8_forest_element_centroid(forest, tree_idx, element, center);
-      centers[3 * element_idx]     = center[0];
-      centers[3 * element_idx + 1] = center[1];
-      centers[3 * element_idx + 2] = center[2];
+      centers[3 * element_idx]     = static_cast<float_type>(center[0]);
+      centers[3 * element_idx + 1] = static_cast<float_type>(center[1]);
+      centers[3 * element_idx + 2] = static_cast<float_type>(center[2]);
 
       levels[element_idx] = eclass_scheme->t8_element_level(element);
 
