@@ -66,7 +66,13 @@ namespace t8gpu {
     ///
     /// This member function saves the current simulation step in the
     /// vtk file format.
-    void save_density_to_vtk(std::string prefix) const;
+    void save_density_to_vtk(std::string const& prefix) const;
+
+    /// @brief Saves the coarse mesh.
+    ///
+    /// @param [in] prefix   specifies the prefix used to saved the vtk
+    ///             file.
+    void save_mesh_to_vtk(std::string const& prefix) const;
 
     /// @brief Computes the integral of the quantity of interest.
     ///

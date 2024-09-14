@@ -332,6 +332,12 @@ namespace t8gpu {
     /// file, use the member function save_variables_to_vtk instead.
     void save_variable_to_vtk(step_index_type step, variable_index_type variable, std::string const& prefix) const;
 
+    /// @brief Save the coarse mesh to VTK.
+    ///
+    /// @param [in] prefix   specifies the prefix used to saved the vtk
+    ///             file.
+    void save_mesh_to_vtk(std::string const& prefix) const;
+
     /// @brief Host copy variable memory owning wrapper around the
     /// type t8_vtk_data_field_t.
     ///

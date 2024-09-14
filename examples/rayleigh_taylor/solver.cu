@@ -186,8 +186,12 @@ void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
   MPI_Barrier(m_comm);
 }
 
-void SubgridCompressibleEulerSolver::save_density_to_vtk(std::string prefix) const {
+void SubgridCompressibleEulerSolver::save_density_to_vtk(std::string const& prefix) const {
   m_mesh_manager.save_variable_to_vtk(next, Rho, prefix);
+}
+
+void SubgridCompressibleEulerSolver::save_mesh_to_vtk(std::string const& prefix) const {
+  m_mesh_manager.save_mesh_to_vtk(prefix);
 }
 
 SubgridCompressibleEulerSolver::~SubgridCompressibleEulerSolver() {}

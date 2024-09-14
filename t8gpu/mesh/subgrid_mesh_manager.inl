@@ -811,7 +811,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
 
   t8_vtk_data_field_t vtk_data_field{};
   vtk_data_field.type = T8_VTK_SCALAR;
-  std::strncpy(vtk_data_field.description, "density", BUFSIZ);
+  std::strncpy(vtk_data_field.description, "variables", BUFSIZ);
   if constexpr (std::is_same_v<float_type, double>) {  // no need for conversion
     vtk_data_field.data = element_variable.data();
     t8_forest_write_vtk_ext(subgrid_forest2,
@@ -845,6 +845,26 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
 
   t8_forest_unref(&subgrid_forest2);
 }
+
+template<typename VariableType, typename StepType, typename SubgridType>
+void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_mesh_to_vtk(std::string const& prefix) const {
+
+  t8_vtk_data_field_t vtk_data_field{};
+  vtk_data_field.type = T8_VTK_SCALAR;
+  std::strncpy(vtk_data_field.description, "mesh", BUFSIZ);
+  t8_forest_write_vtk_ext(m_forest,
+			  prefix.c_str(),
+			  true,  /* write_treeid */
+			  true,  /* write_mpirank */
+			  true,  /* write_level */
+			  true,  /* write_element_id */
+			  false, /* write_ghost */
+			  false, /* write_curved */
+			  false, /* do_not_use_API */
+			  0,     /* num_data */
+			  nullptr);
+}
+
 
 template<typename VariableType, typename StepType, typename SubgridType>
 [[nodiscard]] t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::HostVariableInfo
