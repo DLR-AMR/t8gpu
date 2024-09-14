@@ -404,13 +404,11 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   T8GPU_CUDA_CHECK_LAST_ERROR();
   T8GPU_CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
 
-  /////// ADAPT VARIABLES
   dim3 dimGrid(num_new_elements);
   dim3 dimBlock(4, 4, 4);
   adapt_variables<VariableType>
       <<<dimGrid, dimBlock>>>(this->get_own_variables(step), new_variables, device_element_adapt_data);
   T8GPU_CUDA_CHECK_LAST_ERROR();
-  ///////
 
   // resize shared and owned element variables
   this->resize(num_new_elements);
@@ -912,105 +910,124 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
   //                         vtk_data_fields.data());
 }
 
-template<typename VariableType>
-__global__ void partition_data(
+template<typename VariableType, typename SubgridType>
+__global__ void partition_variable_data(
     int* __restrict__ ranks,
     t8_locidx_t* __restrict__ indices,
     std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
                t8gpu::variable_traits<VariableType>::nb_variables> new_variables,
-    t8gpu::MemoryAccessorAll<VariableType>                         old_variables,
+    t8gpu::SubgridMemoryAccessorAll<VariableType, SubgridType>     old_variables) {
+  int const e_idx = blockIdx.x;
+
+  int const i = threadIdx.x;
+  int const j = threadIdx.y;
+  int const k = threadIdx.z;
+
+  for (size_t l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+    new_variables[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] =
+      old_variables.get(ranks[e_idx], l)(indices[e_idx], i, j, k);
+  }
+}
+
+template<typename VariableType>
+__global__ void partition_volume_data(
+    int* __restrict__ ranks,
+    t8_locidx_t* __restrict__ indices,
     typename t8gpu::variable_traits<VariableType>::float_type*     new_volume,
     typename t8gpu::variable_traits<VariableType>::float_type* const* __restrict__ old_volume,
     int num_new_elements) {
   int const i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_new_elements) return;
 
-  for (size_t k = 0; k < t8gpu::variable_traits<VariableType>::nb_variables; k++) {
-    new_variables[k][i] = old_variables.get(k)[ranks[i]][indices[i]];
-  }
-
   new_volume[i] = old_volume[ranks[i]][indices[i]];
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
 void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::partition(step_index_type step) {
-  // assert(t8_forest_is_committed(m_forest));
-  // t8_forest_ref(m_forest);
-  // t8_forest_t partitioned_forest{};
-  // t8_forest_init(&partitioned_forest);
-  // t8_forest_set_partition(partitioned_forest, m_forest, true);
-  // t8_forest_set_ghost(partitioned_forest, true, T8_GHOST_FACES);
-  // t8_forest_commit(partitioned_forest);
+  assert(t8_forest_is_committed(m_forest));
+  t8_forest_ref(m_forest);
+  t8_forest_t partitioned_forest{};
+  t8_forest_init(&partitioned_forest);
+  t8_forest_set_partition(partitioned_forest, m_forest, true);
+  t8_forest_set_ghost(partitioned_forest, true, T8_GHOST_FACES);
+  t8_forest_commit(partitioned_forest);
 
-  // t8_locidx_t num_old_elements{t8_forest_get_local_num_elements(m_forest)};
-  // t8_locidx_t num_new_elements{t8_forest_get_local_num_elements(partitioned_forest)};
+  t8_locidx_t num_old_elements{t8_forest_get_local_num_elements(m_forest)};
+  t8_locidx_t num_new_elements{t8_forest_get_local_num_elements(partitioned_forest)};
 
-  // thrust::host_vector<t8_locidx_t> old_ranks(num_old_elements);
-  // thrust::host_vector<t8_locidx_t> old_indices(num_old_elements);
-  // for (t8_locidx_t i = 0; i < num_old_elements; i++) {
-  //   old_ranks[i]   = m_rank;
-  //   old_indices[i] = i;
-  // }
+  thrust::host_vector<t8_locidx_t> old_ranks(num_old_elements);
+  thrust::host_vector<t8_locidx_t> old_indices(num_old_elements);
+  for (t8_locidx_t i = 0; i < num_old_elements; i++) {
+    old_ranks[i]   = m_rank;
+    old_indices[i] = i;
+  }
 
-  // thrust::host_vector<t8_locidx_t> new_ranks(num_new_elements);
-  // thrust::host_vector<t8_locidx_t> new_indices(num_new_elements);
+  // TODO: refactor this so that it does not have to be computed twice when adapting, partitioning and computing connectivity information.
+  thrust::host_vector<t8_locidx_t> new_ranks(num_new_elements);
+  thrust::host_vector<t8_locidx_t> new_indices(num_new_elements);
 
-  // sc_array* sc_array_old_ranks_wrapper{sc_array_new_data(old_ranks.data(), sizeof(int), num_old_elements)};
-  // sc_array* sc_array_old_indices_wrapper{sc_array_new_data(old_indices.data(), sizeof(t8_locidx_t),
-  // num_old_elements)};
+  sc_array* sc_array_old_ranks_wrapper{sc_array_new_data(old_ranks.data(), sizeof(int), num_old_elements)};
+  sc_array* sc_array_old_indices_wrapper{sc_array_new_data(old_indices.data(), sizeof(t8_locidx_t),
+  num_old_elements)};
 
-  // sc_array* sc_array_new_ranks_wrapper{sc_array_new_data(new_ranks.data(), sizeof(int), num_new_elements)};
-  // sc_array* sc_array_new_indices_wrapper{sc_array_new_data(new_indices.data(), sizeof(t8_locidx_t),
-  // num_new_elements)};
+  sc_array* sc_array_new_ranks_wrapper{sc_array_new_data(new_ranks.data(), sizeof(int), num_new_elements)};
+  sc_array* sc_array_new_indices_wrapper{sc_array_new_data(new_indices.data(), sizeof(t8_locidx_t),
+  num_new_elements)};
 
-  // t8_forest_partition_data(m_forest, partitioned_forest, sc_array_old_ranks_wrapper, sc_array_new_ranks_wrapper);
+  t8_forest_partition_data(m_forest, partitioned_forest, sc_array_old_ranks_wrapper, sc_array_new_ranks_wrapper);
 
-  // t8_forest_partition_data(m_forest, partitioned_forest, sc_array_old_indices_wrapper, sc_array_new_indices_wrapper);
+  t8_forest_partition_data(m_forest, partitioned_forest, sc_array_old_indices_wrapper, sc_array_new_indices_wrapper);
 
-  // sc_array_destroy(sc_array_old_indices_wrapper);
-  // sc_array_destroy(sc_array_new_indices_wrapper);
-  // sc_array_destroy(sc_array_old_ranks_wrapper);
-  // sc_array_destroy(sc_array_new_ranks_wrapper);
+  sc_array_destroy(sc_array_old_indices_wrapper);
+  sc_array_destroy(sc_array_new_indices_wrapper);
+  sc_array_destroy(sc_array_old_ranks_wrapper);
+  sc_array_destroy(sc_array_new_ranks_wrapper);
 
-  // m_device_ranks   = new_ranks;
-  // m_device_indices = new_indices;
+  m_device_ranks   = new_ranks;
+  m_device_indices = new_indices;
 
-  // thrust::device_vector<float_type> device_new_conserved_variables(num_new_elements *
-  //                                                                  t8gpu::variable_traits<VariableType>::nb_variables);
-  // thrust::device_vector<float_type> device_new_element_volume(num_new_elements);
+  thrust::device_vector<float_type> device_new_conserved_variables(num_new_elements * SubgridType::size *
+                                                                   t8gpu::variable_traits<VariableType>::nb_variables);
+  thrust::device_vector<float_type> device_new_element_volume(num_new_elements);
 
-  // std::array<float_type* __restrict__, t8gpu::variable_traits<VariableType>::nb_variables> new_variables{};
-  // for (size_t k = 0; k < t8gpu::variable_traits<VariableType>::nb_variables; k++) {
-  //   new_variables[k] =
-  //       thrust::raw_pointer_cast(device_new_conserved_variables.data()) + sizeof(float_type) * num_new_elements;
-  // }
+  std::array<float_type* __restrict__, t8gpu::variable_traits<VariableType>::nb_variables> new_variables{};
+  for (size_t l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+    new_variables[l] =
+      thrust::raw_pointer_cast(device_new_conserved_variables.data()) + l * num_new_elements * SubgridType::size;
+  }
 
-  // constexpr int thread_block_size = 256;
-  // int const     fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
-  // partition_data<VariableType>
-  //     <<<fluxes_num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(m_device_ranks.data()),
-  //                                                thrust::raw_pointer_cast(m_device_indices.data()),
-  //                                                new_variables,
-  //                                                this->get_all_variables(step),
-  //                                                thrust::raw_pointer_cast(device_new_element_volume.data()),
-  //                                                this->get_all_volume(),
-  //                                                num_new_elements);
-  // cudaDeviceSynchronize();
-  // MPI_Barrier(m_comm);
+  dim3 dimGrid(num_new_elements);
+  dim3 dimBlock(4, 4, 4);
+  partition_variable_data<VariableType, SubgridType><<<dimGrid, dimBlock>>>(
+									    thrust::raw_pointer_cast(m_device_ranks.data()),
+									    thrust::raw_pointer_cast(m_device_indices.data()),
+									    new_variables,
+									    this->get_all_variables(step));
 
-  // // resize shared and own element variables
-  // this->resize(num_new_elements);
+  constexpr int thread_block_size = 256;
+  int const     fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
+  partition_volume_data<VariableType>
+      <<<fluxes_num_blocks, thread_block_size>>>(thrust::raw_pointer_cast(m_device_ranks.data()),
+                                                 thrust::raw_pointer_cast(m_device_indices.data()),
+                                                 thrust::raw_pointer_cast(device_new_element_volume.data()),
+                                                 this->get_all_volume(),
+                                                 num_new_elements);
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
 
-  // for (int k = 0; k < t8gpu::variable_traits<VariableType>::nb_variables; k++) {
-  //   this->set_variable(step, static_cast<VariableType>(k), new_variables[k]);
-  // }
-  // this->set_volume(std::move(device_new_element_volume));
+  // resize shared and own element variables
+  this->resize(num_new_elements);
 
-  // UserData* forest_user_data = static_cast<UserData*>(t8_forest_get_user_data(m_forest));
-  // t8_forest_set_user_data(partitioned_forest, forest_user_data);
-  // t8_forest_unref(&m_forest);
-  // m_forest = partitioned_forest;
+  for (size_t l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+    this->set_variable(step, static_cast<VariableType>(l), new_variables[l]);
+  }
+  this->set_volume(std::move(device_new_element_volume));
 
-  // m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
-  // m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
+  UserData* forest_user_data = static_cast<UserData*>(t8_forest_get_user_data(m_forest));
+  t8_forest_set_user_data(partitioned_forest, forest_user_data);
+  t8_forest_unref(&m_forest);
+  m_forest = partitioned_forest;
+
+  m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }

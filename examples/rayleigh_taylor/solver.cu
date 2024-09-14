@@ -249,5 +249,6 @@ void SubgridCompressibleEulerSolver::adapt() {
   thrust::host_vector<float_type> refinement_criteria = device_refinement_criteria;
 
   m_mesh_manager.adapt(refinement_criteria, next);
+  m_mesh_manager.partition(next);
   m_mesh_manager.compute_connectivity_information();
 }
