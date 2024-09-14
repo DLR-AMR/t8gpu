@@ -32,11 +32,9 @@ namespace t8gpu {
 
   class CompressibleEulerSolver {
    public:
-    using float_type                      = variable_traits<VariableList>::float_type;
-    static constexpr size_t     dim       = 3;
-    static constexpr size_t     min_level = 5;
-    static constexpr size_t     max_level = 9;
-    static constexpr float_type cfl       = static_cast<float_type>(0.7);
+    using float_type                = variable_traits<VariableList>::float_type;
+    static constexpr size_t     dim = 3;
+    static constexpr float_type cfl = static_cast<float_type>(0.7);
 
     /// @brief Constructor for the CompressibleEulerSolver class.
     ///

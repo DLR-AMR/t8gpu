@@ -21,9 +21,9 @@ int main(int argc, char* argv[]) {
   // We create a dummy frame so that destructors of solver class are
   // called before MPI finalize.
   {
-    using float_type = typename SubgridCompressibleEulerSolver::float_type;
+    using float_type = SubgridCompressibleEulerSolver::float_type;
 
-    float_type delta_t = 0.2*pow(0.5, SubgridMeshManager<VariableList, StepList, Subgrid<4,4,4>>::max_level+2);
+    float_type delta_t = static_cast<float_type>(0.2*pow(0.5, SubgridMeshManager<VariableList, StepList, Subgrid<4,4,4>>::max_level+2));
 
     sc_MPI_Comm comm = MPI_COMM_WORLD;
     t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();

@@ -151,7 +151,7 @@ namespace t8gpu {
   ///
   /// Either select the variables with their names:
   ///
-  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
+  /// __global__ void f(SubgridMemoryAccessorOwn<Variables> m) {
   ///   auto [rho_u, rho_v] = m.get(Rho_u, Rho_v);
   ///
   ///     element index
@@ -282,7 +282,7 @@ namespace t8gpu {
   ///
   /// Either select the variables with their names:
   ///
-  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
+  /// __global__ void f(SubgridMemoryAccessorOwn<Variables> m) {
   ///   auto [rho_u, rho_v] = m.get(rank, Rho_u, Rho_v);
   ///
   ///     element index

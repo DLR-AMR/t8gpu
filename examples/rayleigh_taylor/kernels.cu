@@ -274,13 +274,13 @@ __global__ void t8gpu::compute_inner_fluxes(
   float_type edge_length = cbrt(volume) / static_cast<float_type>(SubgridType::extent<0>);
   float_type surface     = edge_length * edge_length;  // TODO
 
-  __shared__ float_type shared_fluxes[VariableList::nb_variables * SubgridType::template size];
+  __shared__ float_type shared_fluxes[VariableList::nb_variables * SubgridType::size];
 
   shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = 0.0;
-  shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = 0.0;
-  shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = 0.0;
-  shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = 0.0;
-  shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size]     = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size] = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size] = 0.0;
+  shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size] = 0.0;
 
   if (i < 3) {
     float_type n[3] = {1.0, 0.0, 0.0};
@@ -316,30 +316,30 @@ __global__ void t8gpu::compute_inner_fluxes(
     inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
     shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = flux[0] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = flux[1] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = flux[2] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = flux[3] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = flux[4] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size]     = flux[1] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size] = flux[2] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size] = flux[3] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size] = flux[4] * surface;
   }
   __syncthreads();
 
   if (i < 3) {
     fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
-    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size];
-    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size];
+    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size];
+    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size];
+    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size];
+    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size];
   }
 
   if (i > 0) {
     fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i - 1, j, k)];
-    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i - 1, j, k) + SubgridType::template size];
+    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i - 1, j, k) + SubgridType::size];
     fluxes_rho_v2(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 2 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 2 * SubgridType::size];
     fluxes_rho_v3(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 3 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 3 * SubgridType::size];
     fluxes_rho_e(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 4 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 4 * SubgridType::size];
   }
 
   if (j < 3) {
@@ -376,30 +376,30 @@ __global__ void t8gpu::compute_inner_fluxes(
     inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
     shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = flux[0] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = flux[1] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = flux[2] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = flux[3] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = flux[4] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size]     = flux[1] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size] = flux[2] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size] = flux[3] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size] = flux[4] * surface;
   }
   __syncthreads();
 
   if (j < 3) {
     fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
-    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size];
-    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size];
+    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size];
+    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size];
+    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size];
+    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size];
   }
 
   if (j > 0) {
     fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j - 1, k)];
-    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j - 1, k) + SubgridType::template size];
+    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j - 1, k) + SubgridType::size];
     fluxes_rho_v2(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 2 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 2 * SubgridType::size];
     fluxes_rho_v3(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 3 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 3 * SubgridType::size];
     fluxes_rho_e(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 4 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 4 * SubgridType::size];
   }
 
   if (k < 3) {
@@ -436,30 +436,30 @@ __global__ void t8gpu::compute_inner_fluxes(
     inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
     shared_fluxes[SubgridType::flat_index(i, j, k)]                                  = flux[0] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size]     = flux[1] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size] = flux[2] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size] = flux[3] * surface;
-    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size] = flux[4] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size]     = flux[1] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size] = flux[2] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size] = flux[3] * surface;
+    shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size] = flux[4] * surface;
   }
   __syncthreads();
 
   if (k < 3) {
     fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
-    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::template size];
-    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::template size];
-    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::template size];
-    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::template size];
+    fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size];
+    fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size];
+    fluxes_rho_v3(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size];
+    fluxes_rho_e(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size];
   }
 
   if (k > 0) {
     fluxes_rho(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j, k - 1)];
-    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j, k - 1) + SubgridType::template size];
+    fluxes_rho_v1(e_idx, i, j, k) += shared_fluxes[SubgridType::flat_index(i, j, k - 1) + SubgridType::size];
     fluxes_rho_v2(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 2 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 2 * SubgridType::size];
     fluxes_rho_v3(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 3 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 3 * SubgridType::size];
     fluxes_rho_e(e_idx, i, j, k) +=
-        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 4 * SubgridType::template size];
+        shared_fluxes[SubgridType::flat_index(i, j, k - 1) + 4 * SubgridType::size];
   }
 }
 
