@@ -563,15 +563,15 @@ void add_face(t8_locidx_t                       face_idx,
   if (level == neighbor_level) {
     std::array<int, 3> neighbor_offset{};
 
-    if (face_normal[0] != 0.0) {  // normal is along x axis.
-      neighbor_offset = {(face_normal[0] > 0) ? 0 : (SubgridType::template extent<0> - 1), 0, 0};
-    } else if (face_normal[1] != 0.0) {  // normal is along y axis.
-      neighbor_offset = {0, (face_normal[1] > 0) ? 0 : (SubgridType::template extent<1> - 1), 0};
+    if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
+      neighbor_offset = {(face_idx == 1) ? 0 : (SubgridType::template extent<0> - 1), 0, 0};
+    } else if (face_idx == 2 || face_idx == 3) {  // normal is along y axis.
+      neighbor_offset = {0, (face_idx == 3) ? 0 : (SubgridType::template extent<1> - 1), 0};
     } else {  // normal is along z axis.
       neighbor_offset = {
           0,
           0,
-          (face_normal[2] > 0) ? 0 : (SubgridType::template extent<2> - 1),
+          (face_idx == 5) ? 0 : (SubgridType::template extent<2> - 1),
       };
     }
 
@@ -593,18 +593,18 @@ void add_face(t8_locidx_t                       face_idx,
 
     std::array<int, 3> neighbor_offset{};
 
-    if (face_normal[0] != 0.0) {  // normal is along x axis.
-      neighbor_offset = {(face_normal[0] > 0) ? 0 : (SubgridType::template extent<0> - 1),
+    if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
+      neighbor_offset = {(face_idx == 1) ? 0 : (SubgridType::template extent<0> - 1),
                          SubgridType::template extent<1> / 2 * ((child_id & 0b10) >> 1),
                          SubgridType::template extent<2> / 2 * ((child_id & 0b100) >> 2)};
-    } else if (face_normal[1] != 0.0) {  // normal is along y axis.
+    } else if (face_idx == 2 || face_idx == 3) {  // normal is along y axis.
       neighbor_offset = {SubgridType::template extent<0> / 2 * ((child_id & 0b1) >> 0),
-                         (face_normal[1] > 0) ? 0 : (SubgridType::template extent<1> - 1),
+                         (face_idx == 3) ? 0 : (SubgridType::template extent<1> - 1),
                          SubgridType::template extent<2> / 2 * ((child_id & 0b100) >> 2)};
     } else {  // normal is along z axis.
       neighbor_offset = {SubgridType::template extent<0> / 2 * ((child_id & 0b1) >> 0),
                          SubgridType::template extent<1> / 2 * ((child_id & 0b10) >> 1),
-                         (face_normal[2] > 0) ? 0 : (SubgridType::template extent<2> - 1)};
+                         (face_idx == 5) ? 0 : (SubgridType::template extent<2> - 1)};
     }
 
     face_level_difference.push_back(level_difference);
@@ -626,18 +626,18 @@ void add_face(t8_locidx_t                       face_idx,
 
     std::array<int, 3> neighbor_offset{};
 
-    if (face_normal[0] != 0.0) {  // normal is along x axis.
-      neighbor_offset = {(face_normal[0] < 0) ? 0 : (SubgridType::template extent<0> - 1),
+    if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
+      neighbor_offset = {(face_idx == 0) ? 0 : (SubgridType::template extent<0> - 1),
                          SubgridType::template extent<1> / 2 * ((neighbor_child_id & 0b10) >> 1),
                          SubgridType::template extent<2> / 2 * ((neighbor_child_id & 0b100) >> 2)};
-    } else if (face_normal[1] != 0.0) {  // normal is along y axis.
+    } else if (face_idx == 2 || face_idx == 3) {  // normal is along y axis.
       neighbor_offset = {SubgridType::template extent<0> / 2 * ((neighbor_child_id & 0b1) >> 0),
-                         (face_normal[1] < 0) ? 0 : (SubgridType::template extent<1> - 1),
+                         (face_idx == 2) ? 0 : (SubgridType::template extent<1> - 1),
                          SubgridType::template extent<2> / 2 * ((neighbor_child_id & 0b100) >> 2)};
     } else {  // normal is along z axis.
       neighbor_offset = {SubgridType::template extent<0> / 2 * ((neighbor_child_id & 0b1) >> 0),
                          SubgridType::template extent<1> / 2 * ((neighbor_child_id & 0b10) >> 1),
-                         (face_normal[2] < 0) ? 0 : (SubgridType::template extent<2> - 1)};
+                         (face_idx == 4) ? 0 : (SubgridType::template extent<2> - 1)};
     }
 
     face_level_difference.push_back(-level_difference);
