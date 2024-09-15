@@ -946,23 +946,23 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
                                int const           num_elements,
                                t8_element_t*       elements[]) -> int { return 1; };
 
-  t8_forest_t subgrid_forest1{};
-  t8_forest_init(&subgrid_forest1);
-  t8_forest_ref(m_forest);
-  t8_forest_set_adapt(subgrid_forest1, m_forest, uniform_adaptation, false);
-  t8_forest_commit(subgrid_forest1);
+  constexpr int number_adaptation = t8gpu::meta::log2_v<SubgridType::template extent<0>>;
+  std::array<t8_forest_t, t8gpu::meta::log2_v<SubgridType::template extent<0>>+1>  subgrid_forests;
+  subgrid_forests[0] = m_forest;
 
-  t8_forest_t subgrid_forest2{};
-  t8_forest_init(&subgrid_forest2);
-  t8_forest_set_adapt(subgrid_forest2, subgrid_forest1, uniform_adaptation, false);
-  t8_forest_commit(subgrid_forest2);
+  for (size_t l=0; l<number_adaptation; l++) {
+    t8_forest_init(&subgrid_forests[l+1]);
+    t8_forest_ref(subgrid_forests[l]);
+    t8_forest_set_adapt(subgrid_forests[l+1], subgrid_forests[l], uniform_adaptation, false);
+    t8_forest_commit(subgrid_forests[l+1]);
+  }
 
   t8_vtk_data_field_t vtk_data_field{};
   vtk_data_field.type = T8_VTK_SCALAR;
   std::strncpy(vtk_data_field.description, "variables", BUFSIZ);
   if constexpr (std::is_same_v<float_type, double>) {  // no need for conversion
     vtk_data_field.data = element_variable.data();
-    t8_forest_write_vtk_ext(subgrid_forest2,
+    t8_forest_write_vtk_ext(subgrid_forests[number_adaptation],
                             prefix.c_str(),
                             true,  /* write_treeid */
                             true,  /* write_mpirank */
@@ -978,7 +978,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
     for (t8_locidx_t i = 0; i < m_num_local_elements * SubgridType::size; i++)
       double_element_variable[i] = static_cast<double>(element_variable[i]);
     vtk_data_field.data = double_element_variable.data();
-    t8_forest_write_vtk_ext(subgrid_forest2,
+    t8_forest_write_vtk_ext(subgrid_forests[number_adaptation],
                             prefix.c_str(),
                             true,  /* write_treeid */
                             true,  /* write_mpirank */
@@ -991,7 +991,9 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
                             &vtk_data_field);
   }
 
-  t8_forest_unref(&subgrid_forest2);
+  for (size_t l=0; l<number_adaptation; l++) {
+    t8_forest_unref(&subgrid_forests[l+1]);
+  }
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
