@@ -466,8 +466,6 @@ __global__ void t8gpu::compute_inner_fluxes(
 __global__ void t8gpu::compute_outer_fluxes(
     SubgridMeshConnectivityAccessor<SubgridCompressibleEulerSolver::float_type,
                                     SubgridCompressibleEulerSolver::subgrid_type>        connectivity,
-    t8_locidx_t const*                                                                   face_level_difference,
-    t8_locidx_t const*                                                                   face_neighbor_offset,
     SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
     SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes) {
   using float_type = typename SubgridCompressibleEulerSolver::float_type;
@@ -477,12 +475,11 @@ __global__ void t8gpu::compute_outer_fluxes(
   int const i = threadIdx.x;
   int const j = threadIdx.y;
 
-  t8_locidx_t level_difference = face_level_difference[f_idx];
+  t8_locidx_t level_difference = connectivity.get_face_level_difference(f_idx);
 
   int double_stride = (level_difference == 0) ? 2 : 1;
 
-  int offset[3] = {
-      face_neighbor_offset[3 * f_idx], face_neighbor_offset[3 * f_idx + 1], face_neighbor_offset[3 * f_idx + 2]};
+  std::array<int, 3> offset = connectivity.get_face_neighbor_offset(f_idx);
 
   float_type face_surface = connectivity.get_face_surface(f_idx);
 

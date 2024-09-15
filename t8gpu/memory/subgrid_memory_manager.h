@@ -63,6 +63,10 @@ namespace t8gpu {
       return flat_index_impl<Ts...>(is..., std::make_integer_sequence<int, sizeof...(is)>{});
     }
 
+    /// @brief A static block size use for invoking kernel where the
+    ///        block size must be identical to the subgrid size.
+    static constexpr dim3 block_size = { extents... };
+
     /// @brief Simple wrapper class around a array to access subgrid data.
     template<typename float_type>
     class Accessor {

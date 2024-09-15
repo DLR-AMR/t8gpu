@@ -516,10 +516,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   T8GPU_CUDA_CHECK_LAST_ERROR();
   T8GPU_CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
 
-  dim3 dimGrid(num_new_elements);
-  dim3 dimBlock(4, 4, 4);
   adapt_variables<VariableType, SubgridType>
-      <<<dimGrid, dimBlock>>>(this->get_own_variables(step), new_variables, device_element_adapt_data);
+    <<<num_new_elements, SubgridType::block_size>>>(this->get_own_variables(step), new_variables, device_element_adapt_data);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
   // resize shared and owned element variables
@@ -841,6 +839,8 @@ t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::get_connectivity
   return {thrust::raw_pointer_cast(m_device_ranks.data()),
           thrust::raw_pointer_cast(m_device_indices.data()),
           thrust::raw_pointer_cast(m_device_face_neighbors.data()),
+          thrust::raw_pointer_cast(m_device_face_level_difference.data()),
+          thrust::raw_pointer_cast(m_device_face_neighbor_offset.data()),
           thrust::raw_pointer_cast(m_device_face_normals.data()),
           thrust::raw_pointer_cast(m_device_face_area.data()),
           m_num_local_faces,
@@ -930,10 +930,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
 
   thrust::host_vector<float_type> element_variable{};
 
-  dim3 dimGrid(m_num_local_elements);
-  dim3 dimBlock(4, 4, 4);
   column_major_to_z_order<float_type, SubgridType>
-      <<<dimGrid, dimBlock>>>(static_cast<float_type const*>(this->get_own_variable(step, variable)),
+      <<<m_num_local_elements, SubgridType::block_size>>>(static_cast<float_type const*>(this->get_own_variable(step, variable)),
                               thrust::raw_pointer_cast(device_element_variable.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
@@ -1208,9 +1206,8 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::partition(s
       thrust::raw_pointer_cast(device_new_conserved_variables.data()) + l * num_new_elements * SubgridType::size;
   }
 
-  dim3 dimGrid(num_new_elements);
-  dim3 dimBlock(4, 4, 4);
-  partition_variable_data<VariableType, SubgridType><<<dimGrid, dimBlock>>>(
+  partition_variable_data<VariableType, SubgridType>
+    <<<num_new_elements, SubgridType::block_size>>>(
 									    thrust::raw_pointer_cast(m_device_ranks.data()),
 									    thrust::raw_pointer_cast(m_device_indices.data()),
 									    new_variables,

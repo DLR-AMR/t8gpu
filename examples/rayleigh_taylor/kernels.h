@@ -28,25 +28,11 @@ namespace t8gpu {
   ///        must be set beforehand to zeros.
   ///
   /// @param [in]  connectivity    face connectivity information.
-  /// @param [in] level_difference level difference between
-  ///                              neighboring element of a face. The
-  ///                              mesh must be balanced so the level
-  ///                              difference cannot exceed 1 in
-  ///                              absolute value. Moreover, the
-  ///                              assumption is made that the level
-  ///                              of the left neighbor is greater or
-  ///                              equal to the level of the right
-  ///                              neighbor of a face.
-  /// @param [in] neighbor_offset  the offset of the subelement in the
-  ///                              right neighbor element of the face
-  ///                              that matches with the left face.
   /// @param [in]  variables variables used to compute the fluxes.
   /// @param [out] fluxes    per subgrid element fluxes variables.
   __global__ void compute_outer_fluxes(
       t8gpu::SubgridMeshConnectivityAccessor<t8gpu::SubgridCompressibleEulerSolver::float_type,
                                              t8gpu::SubgridCompressibleEulerSolver::subgrid_type> connectivity,
-      t8_locidx_t const*                                                                          level_difference,
-      t8_locidx_t const*                                                                          neighbor_offset,
       t8gpu::SubgridMemoryAccessorAll<t8gpu::VariableList, t8gpu::SubgridCompressibleEulerSolver::subgrid_type>
           variables,
       t8gpu::SubgridMemoryAccessorAll<t8gpu::VariableList, t8gpu::SubgridCompressibleEulerSolver::subgrid_type> fluxes);

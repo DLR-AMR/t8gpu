@@ -99,6 +99,34 @@ namespace t8gpu {
       return normal;
     }
 
+    /// @brief get the level difference between two adjacent element
+    ///        of a face.
+    ///
+    /// @param face_idx [in] The face index from which we want to
+    ///                      retrieve the level difference between its
+    ///                      neighboring elements.
+    [[nodiscard]] __device__ inline t8_locidx_t get_face_level_difference(int face_idx) {
+      return m_face_level_difference[face_idx];
+    }
+
+    /// @brief get the face offset of the left face into the right face.
+    ///
+    /// @param face_idx [in] The face index.
+    [[nodiscard]] __device__ inline std::array<t8_locidx_t, SubgridType::rank> get_face_neighbor_offset(int f_idx) {
+      if constexpr (SubgridType::rank == 3) {
+	return {
+	  m_face_neighbor_offset[3 * f_idx],
+	  m_face_neighbor_offset[3 * f_idx + 1],
+	  m_face_neighbor_offset[3 * f_idx + 2]
+	};
+      } else {
+	return {
+	  m_face_neighbor_offset[2 * f_idx],
+	  m_face_neighbor_offset[2 * f_idx + 1],
+	};
+      }
+    }
+
     /// @brief get index of face neighbor elements.
     ///
     /// @param face_idx the face index.
@@ -162,6 +190,8 @@ namespace t8gpu {
     int const*         m_ranks;
     t8_locidx_t const* m_indices;
     t8_locidx_t const* m_face_neighbors;
+    t8_locidx_t const* m_face_level_difference;
+    t8_locidx_t const* m_face_neighbor_offset;
     float_type const*  m_face_normals;
     float_type const*  m_face_surfaces;
     t8_locidx_t const  m_num_local_faces;
@@ -170,6 +200,8 @@ namespace t8gpu {
     SubgridMeshConnectivityAccessor(int const*         ranks,
                                     t8_locidx_t const* indices,
                                     t8_locidx_t const* face_neighbors,
+				    t8_locidx_t const* face_level_difference,
+				    t8_locidx_t const* face_neighbor_offset,
                                     float_type const*  face_normals,
                                     float_type const*  face_surfaces,
                                     t8_locidx_t const  num_local_faces,
@@ -177,6 +209,8 @@ namespace t8gpu {
         : m_ranks{ranks},
           m_indices{indices},
           m_face_neighbors{face_neighbors},
+          m_face_level_difference{face_level_difference},
+          m_face_neighbor_offset{face_neighbor_offset},
           m_face_normals{face_normals},
           m_face_surfaces{face_surfaces},
           m_num_local_faces{num_local_faces},
@@ -451,11 +485,8 @@ namespace t8gpu {
     thrust::host_vector<t8_locidx_t>   m_indices;
     thrust::device_vector<t8_locidx_t> m_device_indices;
 
-   public:                                                             // for debugging purposes. Remove this ASAP.
     thrust::device_vector<t8_locidx_t> m_device_face_level_difference; /** inner faces neighbor elements */
-    thrust::device_vector<t8_locidx_t>
-        m_device_face_neighbor_offset;                          /** face anchor position in neighboring elements */
-   private:                                                     // for debugging purposes. Remove this ASAP.
+    thrust::device_vector<t8_locidx_t> m_device_face_neighbor_offset;  /** face anchor position in neighboring elements */
     thrust::device_vector<t8_locidx_t> m_device_face_neighbors; /** inner faces neighbor elements */
     thrust::device_vector<float_type>  m_device_face_normals;   /** inner and boundary faces normals */
     thrust::device_vector<float_type>  m_device_face_area;      /** inner and boundary faces area */
