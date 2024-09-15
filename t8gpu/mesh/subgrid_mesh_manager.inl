@@ -93,11 +93,17 @@ t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::~SubgridMeshMana
   t8_cmesh_destroy(&m_cmesh);
 }
 
+/// @brief This kernel copies variable data for each element to each
+///       subgrid elements. This overload kernel deals with 3D meshes.
+///
+/// @param coarse_variables   [in]  Coarse variable data per element.
+/// @param fine_variables     [out] Variable data to be set per subgrid element.
+/// @param num_local_elements [in] Number of local elements.
 template<typename VariableType, typename SubgridType>
-__global__ void copy_variables_coarse_mesh_to_fine(
-    typename t8gpu::variable_traits<VariableType>::float_type const** coarse_variables,
-    t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>        fine_variables,
-    t8_locidx_t                                                       num_local_elements) {
+__global__ std::enable_if_t<SubgridType::rank == 3, void> copy_variables_coarse_mesh_to_fine(
+											     typename t8gpu::variable_traits<VariableType>::float_type const** coarse_variables,
+											     t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>        fine_variables,
+											     t8_locidx_t                                                       num_local_elements) {
   int const i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_local_elements) return;
 
@@ -107,6 +113,29 @@ __global__ void copy_variables_coarse_mesh_to_fine(
         for (size_t r = 0; r < SubgridType::template extent<2>; r++) {
           fine_variables.get(k)(i, p, q, r) = coarse_variables[k][i];
         }
+      }
+    }
+  }
+}
+
+/// @brief This kernel copies variable data for each element to each
+///       subgrid elements. This overload kernel deals with 2D meshes.
+///
+/// @param coarse_variables   [in]  Coarse variable data per element.
+/// @param fine_variables     [out] Variable data to be set per subgrid element.
+/// @param num_local_elements [in] Number of local elements.
+template<typename VariableType, typename SubgridType>
+__global__ std::enable_if_t<SubgridType::rank == 2, void> copy_variables_coarse_mesh_to_fine(
+											     typename t8gpu::variable_traits<VariableType>::float_type const** coarse_variables,
+											     t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>        fine_variables,
+											     t8_locidx_t                                                       num_local_elements) {
+  int const i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= num_local_elements) return;
+
+  for (size_t k = 0; k < VariableType::nb_variables; k++) {
+    for (size_t p = 0; p < SubgridType::template extent<0>; p++) {
+      for (size_t q = 0; q < SubgridType::template extent<1>; q++) {
+	fine_variables.get(k)(i, p, q) = coarse_variables[k][i];
       }
     }
   }
@@ -432,7 +461,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
     int old_level = old_levels[old_idx];
     int new_level = new_levels[new_idx];
 
-    constexpr int nb_subelements = (dim == 2) ? 4 : 8;
+    constexpr int nb_subelements = (SubgridType::rank == 2) ? 4 : 8;
     if (old_level < new_level) {  // refined
       for (size_t i = 0; i < nb_subelements; i++) {
         element_adapt_data[new_idx + i] = old_idx;
@@ -1051,8 +1080,16 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
   //                         vtk_data_fields.data());
 }
 
+/// @brief This kernel partition variable data among mpi ranks. This
+///        overload kernel deals with 3D meshes. The block size must
+///        match the subgrid size.
+///
+/// @param ranks         [in]  rank to send the previous element variable data.
+/// @param indices       [in]  index to send the previous element variable data.
+/// @param new_variables [out] New variables to set.
+/// @param old_variables [in]  Previous variables to copy.
 template<typename VariableType, typename SubgridType>
-__global__ void partition_variable_data(
+__global__ std::enable_if_t<SubgridType::rank == 3, void> partition_variable_data(
     int* __restrict__ ranks,
     t8_locidx_t* __restrict__ indices,
     std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
@@ -1070,6 +1107,40 @@ __global__ void partition_variable_data(
   }
 }
 
+/// @brief This kernel partition variable data among mpi ranks. This
+///        overload kernel deals with 2D meshes. The block size must
+///        match the subgrid size.
+///
+/// @param ranks         [in]  rank to send the previous element variable data.
+/// @param indices       [in]  index to send the previous element variable data.
+/// @param new_variables [out] New variables to set.
+/// @param old_variables [in]  Previous variables to copy.
+template<typename VariableType, typename SubgridType>
+__global__ std::enable_if_t<SubgridType::rank == 2, void> partition_variable_data(
+    int* __restrict__ ranks,
+    t8_locidx_t* __restrict__ indices,
+    std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
+               t8gpu::variable_traits<VariableType>::nb_variables> new_variables,
+    t8gpu::SubgridMemoryAccessorAll<VariableType, SubgridType>     old_variables) {
+  int const e_idx = blockIdx.x;
+
+  int const i = threadIdx.x;
+  int const j = threadIdx.y;
+
+  for (size_t l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+    new_variables[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j)] =
+      old_variables.get(ranks[e_idx], l)(indices[e_idx], i, j);
+  }
+}
+
+/// @brief This kernel partition volume data among mpi ranks The block
+///        size must match be 1D and contains as many threads as there
+///        are new local elements.
+///
+/// @param ranks      [in]  rank to send the previous element variable data.
+/// @param indices    [in]  index to send the previous element variable data.
+/// @param new_volume [out] New volume to set.
+/// @param old_volume [in]  Previous volume to copy.
 template<typename VariableType>
 __global__ void partition_volume_data(
     int* __restrict__ ranks,
