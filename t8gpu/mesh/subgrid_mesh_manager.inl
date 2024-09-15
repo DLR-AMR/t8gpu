@@ -205,11 +205,20 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callba
   return 0;
 }
 
-template<typename VariableType>
+/// @brief This kernel adapts volume data. The block size can be
+///        independant of the subgrid size. The launching grid must be
+///        1D and have at least num_new_elements threads.
+///
+/// @param volume_old [in]  Volume data for previous tree.
+/// @param volume_new [out] Volume data for next tree to be set.
+/// @param adapt_data    [in]  Index map from next tree to previous tree.
+template<typename VariableType, typename SubgridType>
 __global__ void adapt_volume(typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
                              typename t8gpu::variable_traits<VariableType>::float_type* __restrict__ volume_new,
                              t8_locidx_t* adapt_data,
                              int          nb_new_elements) {
+  using float_type = typename t8gpu::variable_traits<VariableType>::float_type;
+
   int const i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i >= nb_new_elements) return;
@@ -217,17 +226,24 @@ __global__ void adapt_volume(typename t8gpu::variable_traits<VariableType>::floa
   int diff            = adapt_data[i + 1] - adapt_data[i];
   int nb_elements_sum = max(1, diff);
 
-  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.125 : (diff == 1 ? 1.0 : 8.0)));
+  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? (1.0 / static_cast<float_type>(1 << SubgridType::rank)) : (diff == 1 ? 1.0 : (static_cast<float_type>(1 << SubgridType::rank)))));
   if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
-    volume_new[i] = volume_old[adapt_data[i]] * 0.125;
+    volume_new[i] = volume_old[adapt_data[i]] * (1.0 / static_cast<float_type>(1 << SubgridType::rank));
   }
 }
 
+/// @brief This kernel adapts variable data. This overload deals with
+///        3D meshes. The block size must equate the subgrid size.
+///
+/// @param variables_old [in]  Variable data for previous tree.
+/// @param variables_new [out] Variable data for next tree to be set.
+/// @param adapt_data    [in]  Index map from next tree to previous tree.
 template<typename VariableType, typename SubgridType>
-__global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>     variables_old,
-                                std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
-                                           t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
-                                t8_locidx_t*                                                   adapt_data) {
+__global__ std::enable_if_t<SubgridType::rank == 3, void> adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>     variables_old,
+									std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
+									t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
+									t8_locidx_t*                                                   adapt_data) {
+  using float_type = typename t8gpu::variable_traits<VariableType>::float_type;
   int const e_idx = blockIdx.x;
 
   int const i = threadIdx.x;
@@ -255,9 +271,9 @@ __global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, Su
     }
 
   } else if ((adapt_data[e_idx + 1] - adapt_data[e_idx]) > 1) {  // coarsening
-    int I = i / 2;
-    int J = j / 2;
-    int K = k / 2;
+    int I = i >> (t8gpu::meta::log2_v<SubgridType::template extent<0>> - 1);
+    int J = j >> (t8gpu::meta::log2_v<SubgridType::template extent<0>> - 1);
+    int K = k >> (t8gpu::meta::log2_v<SubgridType::template extent<0>> - 1);
 
     int z_index = I | (J << 1) | (K << 2);
 
@@ -267,17 +283,84 @@ __global__ void adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, Su
       for (int ii = 0; ii < 2; ii++) {
         for (int jj = 0; jj < 2; jj++) {
           for (int kk = 0; kk < 2; kk++) {
-            variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] += variables_old.get(l)(
-                adapt_data[e_idx] + z_index, 2 * (i & 0b1) + ii, 2 * (j & 0b1) + jj, 2 * (k & 0b1) + kk);
+	    constexpr int mask = (1 << (t8gpu::meta::log2_v<SubgridType::template extent<0>> - 1)) - 1;
+           variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] += variables_old.get(l)(
+                adapt_data[e_idx] + z_index,
+		2 * (i & mask) + ii,
+		2 * (j & mask) + jj,
+		2 * (k & mask) + kk);
           }
         }
       }
-      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] /= 8.0;
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] /= static_cast<float_type>(1 << SubgridType::rank);
     }
   } else {  // no refinement, no coarsening
     for (int l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
       variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)] =
           variables_old.get(l)(adapt_data[e_idx], i, j, k);
+    }
+  }
+}
+
+/// @brief This kernel adapts variable data. This overload deals with
+///        2D meshes. The block size must equate the subgrid size.
+///
+/// @param variables_old [in]  Variable data for previous tree.
+/// @param variables_new [out] Variable data for next tree to be set.
+/// @param adapt_data    [in]  Index map from next tree to previous tree.
+template<typename VariableType, typename SubgridType>
+__global__ std::enable_if_t<SubgridType::rank == 2, void> adapt_variables(t8gpu::SubgridMemoryAccessorOwn<VariableType, SubgridType>     variables_old,
+									std::array<typename t8gpu::variable_traits<VariableType>::float_type* __restrict__,
+									t8gpu::variable_traits<VariableType>::nb_variables> variables_new,
+									t8_locidx_t*                                                   adapt_data) {
+  using float_type = typename t8gpu::variable_traits<VariableType>::float_type;
+  int const e_idx = blockIdx.x;
+
+  int const i = threadIdx.x;
+  int const j = threadIdx.y;
+
+  // We can afford an if statement here as every thread in a thread block takes the same path.
+  if ((adapt_data[e_idx + 1] == adapt_data[e_idx]) ||
+      (e_idx > 0 && (adapt_data[e_idx] == adapt_data[e_idx - 1]))) {  // refinement
+
+    int refinement_index = 0;  // the index of the refined element in {0, ..., 3} in z-order.
+    while (e_idx - refinement_index >= 0 && adapt_data[e_idx - refinement_index] == adapt_data[e_idx])
+      refinement_index++;
+
+    int I = ((refinement_index - 1) & 0b1) >> 0;
+    int J = ((refinement_index - 1) & 0b10) >> 1;
+
+    for (int l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j)] =
+          variables_old.get(l)(adapt_data[e_idx],
+                               I * SubgridType::template extent<0> / 2 + i / 2,
+                               J * SubgridType::template extent<1> / 2 + j / 2);
+    }
+
+  } else if ((adapt_data[e_idx + 1] - adapt_data[e_idx]) > 1) {  // coarsening
+    int I = i >> (t8gpu::meta::log2_v<SubgridType::template extent<0>> - 1);
+    int J = j >> (t8gpu::meta::log2_v<SubgridType::template extent<0>> - 1);
+
+    int z_index = I | (J << 1);
+
+    for (int l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j)] = 0.0;
+
+      for (int ii = 0; ii < 2; ii++) {
+        for (int jj = 0; jj < 2; jj++) {
+	  constexpr int mask = (1 << (t8gpu::meta::log2_v<SubgridType::template extent<0>> - 1)) - 1;
+	  variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j)] += variables_old.get(l)(
+														 adapt_data[e_idx] + z_index,
+														 2 * (i & mask) + ii,
+														 2 * (j & mask) + jj);
+        }
+      }
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j)] /= static_cast<float_type>(1 << SubgridType::rank);
+    }
+  } else {  // no refinement, no coarsening
+    for (int l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
+      variables_new[l][e_idx * SubgridType::size + SubgridType::flat_index(i, j)] =
+          variables_old.get(l)(adapt_data[e_idx], i, j);
     }
   }
 }
@@ -396,7 +479,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
 
   int const thread_block_size = 256;
   int const adapt_num_blocks  = (num_new_elements + thread_block_size - 1) / thread_block_size;
-  adapt_volume<VariableType>
+  adapt_volume<VariableType, SubgridType>
       <<<adapt_num_blocks, thread_block_size>>>(this->get_own_volume(),
                                                 thrust::raw_pointer_cast(device_element_volume_adapted.data()),
                                                 device_element_adapt_data,
@@ -406,7 +489,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
 
   dim3 dimGrid(num_new_elements);
   dim3 dimBlock(4, 4, 4);
-  adapt_variables<VariableType>
+  adapt_variables<VariableType, SubgridType>
       <<<dimGrid, dimBlock>>>(this->get_own_variables(step), new_variables, device_element_adapt_data);
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
