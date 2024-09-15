@@ -755,18 +755,56 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::get_num_loca
   return m_num_local_boundary_faces;
 }
 
-template<typename float_type>
-__global__ void column_major_to_z_order(float_type const* from, float_type* to) {
+/// @brief This function transforms subgrid element variable data from
+///        column major to z-order in order to be visualized. This
+///        overload kernel is for 3D grids. The block size need to be
+///        of the same size as the subgrid size.
+///
+/// @param from[in]   Data layed-out in column major mode for each
+///                       subgrid element per element.
+/// @param to  [out] Where to save the variable data to z-order.
+template<typename float_type, typename SubgridType>
+__global__ std::enable_if_t<SubgridType::rank == 3, void> column_major_to_z_order(float_type const* from, float_type* to) {
   int const e_idx = blockIdx.x;
 
   int const i = threadIdx.x;
   int const j = threadIdx.y;
   int const k = threadIdx.z;
 
-  int morton_index =
-      (i & 0b1) | ((j & 0b1) << 1) | ((k & 0b1) << 2) | ((i & 0b10) << 2) | ((j & 0b10) << 3) | ((k & 0b10) << 4);
+  int morton_index = 0;
+  for (int l=0; l<t8gpu::meta::log2_v<SubgridType::template extent<0>>; l++) {
+    morton_index |=
+        (((i & (0b1 << l)) >> l) << (SubgridType::rank*l))
+      | (((j & (0b1 << l)) >> l) << (SubgridType::rank*l)+1)
+      | (((k & (0b1 << l)) >> l) << (SubgridType::rank*l)+2);
+  }
 
-  to[e_idx * 64 + morton_index] = from[e_idx * 64 + i + 4 * j + 16 * k];
+  to[e_idx * SubgridType::size + morton_index] = from[e_idx * SubgridType::size + SubgridType::flat_index(i, j, k)];
+}
+
+/// @brief This function transforms subgrid element variable data from
+///        column major to z-order in order to be visualized. This
+///        overload kernel is for 2D grids. The block size need to be
+///        of the same size as the subgrid size.
+///
+/// @param from[in]   Data layed-out in column major mode for each
+///                       subgrid element per element.
+/// @param to  [out] Where to save the variable data to z-order.
+template<typename float_type, typename SubgridType>
+__global__ std::enable_if_t<SubgridType::rank == 2, void> column_major_to_z_order(float_type const* from, float_type* to) {
+  int const e_idx = blockIdx.x;
+
+  int const i = threadIdx.x;
+  int const j = threadIdx.y;
+
+  int morton_index = 0;
+  for (int l=0; l<t8gpu::meta::log2_v<SubgridType::template extent<0>>; l++) {
+    morton_index |=
+        (((i & (0b1 << l)) >> l) << (SubgridType::rank*l))
+      | (((j & (0b1 << l)) >> l) << (SubgridType::rank*l)+1);
+  }
+
+  to[e_idx * SubgridType::size + morton_index] = from[e_idx * SubgridType::size + SubgridType::flat_index(i, j)];
 }
 
 template<typename VariableType, typename StepType, typename SubgridType>
@@ -782,7 +820,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
 
   dim3 dimGrid(m_num_local_elements);
   dim3 dimBlock(4, 4, 4);
-  column_major_to_z_order<float_type>
+  column_major_to_z_order<float_type, SubgridType>
       <<<dimGrid, dimBlock>>>(static_cast<float_type const*>(this->get_own_variable(step, variable)),
                               thrust::raw_pointer_cast(device_element_variable.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();

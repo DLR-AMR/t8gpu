@@ -109,6 +109,16 @@ namespace t8gpu::meta {
   template<int index, int arg1, int... args>
   inline constexpr int argpack_mul_to_v = argpack_mul_to<index, arg1, args...>::value;
 
+  /// @brief computes the log in base 2 of an integer.
+  template<size_t x>
+  struct log2 : std::integral_constant<size_t, 1+log2<x/2>::value> {};
+
+  template<>
+  struct log2<1> : std::integral_constant<size_t, 0> {};
+
+  template<size_t x>
+  inline constexpr size_t log2_v = log2<x>::value;
+
 }  // namespace t8gpu::meta
 
 #endif  // UTILS_META_H
