@@ -236,13 +236,14 @@ int t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt_callba
 
 /// @brief This kernel adapts volume data. The block size can be
 ///        independant of the subgrid size. The launching grid must be
-///        1D and have at least num_new_elements threads.
+///        1D and have at least num_new_elements threads. This is an
+///        overload for 3D meshes.
 ///
 /// @param volume_old [in]  Volume data for previous tree.
 /// @param volume_new [out] Volume data for next tree to be set.
 /// @param adapt_data    [in]  Index map from next tree to previous tree.
 template<typename VariableType, typename SubgridType>
-__global__ void adapt_volume(typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
+__global__ std::enable_if_t<SubgridType::rank == 3, void> adapt_volume(typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
                              typename t8gpu::variable_traits<VariableType>::float_type* __restrict__ volume_new,
                              t8_locidx_t* adapt_data,
                              int          nb_new_elements) {
@@ -255,9 +256,37 @@ __global__ void adapt_volume(typename t8gpu::variable_traits<VariableType>::floa
   int diff            = adapt_data[i + 1] - adapt_data[i];
   int nb_elements_sum = max(1, diff);
 
-  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? (1.0 / static_cast<float_type>(1 << SubgridType::rank)) : (diff == 1 ? 1.0 : (static_cast<float_type>(1 << SubgridType::rank)))));
+  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.125 : (diff == 1 ? 1.0 : 8.0)));
   if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
-    volume_new[i] = volume_old[adapt_data[i]] * (1.0 / static_cast<float_type>(1 << SubgridType::rank));
+    volume_new[i] = volume_old[adapt_data[i]] * 0.125;
+  }
+}
+
+/// @brief This kernel adapts volume data. The block size can be
+///        independant of the subgrid size. The launching grid must be
+///        1D and have at least num_new_elements threads. This is an
+///        overload for 2D meshes.
+///
+/// @param volume_old [in]  Volume data for previous tree.
+/// @param volume_new [out] Volume data for next tree to be set.
+/// @param adapt_data    [in]  Index map from next tree to previous tree.
+template<typename VariableType, typename SubgridType>
+__global__ std::enable_if_t<SubgridType::rank == 2, void> adapt_volume(typename t8gpu::variable_traits<VariableType>::float_type const* __restrict__ volume_old,
+                             typename t8gpu::variable_traits<VariableType>::float_type* __restrict__ volume_new,
+                             t8_locidx_t* adapt_data,
+                             int          nb_new_elements) {
+  using float_type = typename t8gpu::variable_traits<VariableType>::float_type;
+
+  int const i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i >= nb_new_elements) return;
+
+  int diff            = adapt_data[i + 1] - adapt_data[i];
+  int nb_elements_sum = max(1, diff);
+
+  volume_new[i] = volume_old[adapt_data[i]] * ((diff == 0 ? 0.25 : (diff == 1 ? 1.0 : 4.0)));
+  if (i > 0 && adapt_data[i - 1] == adapt_data[i]) {
+    volume_new[i] = volume_old[adapt_data[i]] * 0.25;
   }
 }
 
@@ -536,22 +565,24 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
 }
 
-template<typename float_type, typename SubgridType>
-void add_face(t8_locidx_t                       face_idx,
-              int                               num_neighbors,
-              t8_forest_t                       forest,
-              t8_locidx_t                       tree_idx,
-              t8_locidx_t                       element_idx,
-              t8_element_t const*               element,
-              t8_element_t const*               neighbor_element,
-              t8_locidx_t                       neighbor_idx,
-              t8_eclass_scheme_c*               scheme_element,
-              t8_eclass_scheme_c*               scheme_neighbor,
-              thrust::host_vector<t8_locidx_t>& face_level_difference,
-              thrust::host_vector<t8_locidx_t>& face_neighbor_offset,
-              thrust::host_vector<t8_locidx_t>& face_neighbors,
-              thrust::host_vector<float_type>&  face_normals,
-              thrust::host_vector<float_type>&  face_area) {
+template<typename VariableType, typename SubgridType>
+std::enable_if_t<SubgridType::rank == 3, void> add_face(t8_locidx_t                       face_idx,
+							int                               num_neighbors,
+							t8_forest_t                       forest,
+							t8_locidx_t                       tree_idx,
+							t8_locidx_t                       element_idx,
+							t8_element_t const*               element,
+							t8_element_t const*               neighbor_element,
+							t8_locidx_t                       neighbor_idx,
+							t8_eclass_scheme_c*               scheme_element,
+							t8_eclass_scheme_c*               scheme_neighbor,
+							thrust::host_vector<t8_locidx_t>& face_level_difference,
+							thrust::host_vector<t8_locidx_t>& face_neighbor_offset,
+							thrust::host_vector<t8_locidx_t>& face_neighbors,
+							thrust::host_vector<typename t8gpu::variable_traits<VariableType>::float_type>&  face_normals,
+              thrust::host_vector<typename t8gpu::variable_traits<VariableType>::float_type>&  face_area) {
+  using float_type = typename t8gpu::variable_traits<VariableType>::float_type;
+
   int level          = scheme_element->t8_element_level(element);
   int neighbor_level = scheme_neighbor->t8_element_level(neighbor_element);
 
@@ -729,21 +760,21 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
 
         for (int i = 0; i < num_neighbors; i++) {  // we treat the case when the neighboring element is a ghost element.
           if (neighbor_ids[i] >= m_num_local_elements && m_rank < m_ranks[neighbor_ids[i]]) {
-            add_face<float_type, SubgridType>(face_idx,
-                                              num_neighbors,
-                                              m_forest,
-                                              tree_idx,
-                                              element_idx,
-                                              element,
-                                              neighbors[i],
-                                              neighbor_ids[i],
-                                              eclass_scheme,
-                                              neigh_scheme,
-                                              face_level_difference,
-                                              face_neighbor_offset,
-                                              face_neighbors,
-                                              face_normals,
-                                              face_area);
+            add_face<VariableType, SubgridType>(face_idx,
+						num_neighbors,
+						m_forest,
+						tree_idx,
+						element_idx,
+						element,
+						neighbors[i],
+						neighbor_ids[i],
+						eclass_scheme,
+						neigh_scheme,
+						face_level_difference,
+						face_neighbor_offset,
+						face_neighbors,
+						face_normals,
+						face_area);
           }
         }
 
@@ -752,21 +783,21 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::compute_con
             ((neighbor_ids[0] > element_idx) ||
              (neighbor_ids[0] < element_idx &&
               neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
-          add_face<float_type, SubgridType>(face_idx,
-                                            num_neighbors,
-                                            m_forest,
-                                            tree_idx,
-                                            element_idx,
-                                            element,
-                                            neighbors[0],
-                                            neighbor_ids[0],
-                                            eclass_scheme,
-                                            neigh_scheme,
-                                            face_level_difference,
-                                            face_neighbor_offset,
-                                            face_neighbors,
-                                            face_normals,
-                                            face_area);
+          add_face<VariableType, SubgridType>(face_idx,
+					      num_neighbors,
+					      m_forest,
+					      tree_idx,
+					      element_idx,
+					      element,
+					      neighbors[0],
+					      neighbor_ids[0],
+					      eclass_scheme,
+					      neigh_scheme,
+					      face_level_difference,
+					      face_neighbor_offset,
+					      face_neighbors,
+					      face_normals,
+					      face_area);
         }
         neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
         T8_FREE(neighbors);
@@ -924,7 +955,6 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::save_variab
     t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::step_index_type     step,
     t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::variable_index_type variable,
     std::string const&                                                                  prefix) const {
-  static_assert(std::is_same_v<SubgridType, Subgrid<4, 4, 4>>);
 
   thrust::device_vector<float_type> device_element_variable(m_num_local_elements * SubgridType::size);
 

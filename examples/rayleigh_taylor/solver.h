@@ -34,7 +34,7 @@ namespace t8gpu {
    public:
     using subgrid_type              = t8gpu::Subgrid<4, 4, 4>;
     using float_type                = variable_traits<VariableList>::float_type;
-    static constexpr size_t     dim = 3;
+    static constexpr size_t     dim = subgrid_type::rank;
     static constexpr float_type cfl = static_cast<float_type>(0.7);
 
     /// @brief Constructor for the SubgridCompressibleEulerSolver class.

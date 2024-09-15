@@ -1,12 +1,14 @@
 #include <t8gpu/timestepping/ssp_runge_kutta.h>
 #include <t8gpu/utils/cuda.h>
+#include <t8gpu/utils/meta.h>
 
 #include "kernels.h"
 #include "solver.h"
 
 using namespace t8gpu;
 
-__global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subgrid<4, 4, 4>> variables,
+template<typename SubgridType>
+__global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, SubgridType> variables,
                                      SubgridCompressibleEulerSolver::float_type const*        centers,
                                      t8_locidx_t const*                                       levels) {
   using float_type = SubgridCompressibleEulerSolver::float_type;
@@ -21,10 +23,12 @@ __global__ void initialize_variables(SubgridMemoryAccessorOwn<VariableList, Subg
 
   t8_locidx_t level = levels[e_idx];
 
+  float_type subgrid_edge_length = pow(0.5, static_cast<float_type>(t8gpu::meta::log2_v<SubgridType::template extent<0>>));
+
   float_type center[3] = {
-    static_cast<float_type>(centers[3 * e_idx] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + i * 0.25 * pow(0.5, level)),
-    static_cast<float_type>(centers[3 * e_idx + 1] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + j * 0.25 * pow(0.5, level)),
-    static_cast<float_type>(centers[3 * e_idx + 2] - 0.5 * pow(0.5, level) + 0.125 * pow(0.5, level) + k * 0.25 * pow(0.5, level))};
+    static_cast<float_type>(centers[3 * e_idx] - 0.5 * pow(0.5, level) + 0.5 * subgrid_edge_length * pow(0.5, level) + i * subgrid_edge_length * pow(0.5, level)),
+    static_cast<float_type>(centers[3 * e_idx + 1] - 0.5 * pow(0.5, level) + 0.5 * subgrid_edge_length * pow(0.5, level) + j * subgrid_edge_length * pow(0.5, level)),
+    static_cast<float_type>(centers[3 * e_idx + 2] - 0.5 * pow(0.5, level) + 0.5 * subgrid_edge_length * pow(0.5, level) + k * subgrid_edge_length * pow(0.5, level))};
 
   float_type x = float_type{center[0]};
   float_type y = float_type{center[1]};
@@ -87,9 +91,9 @@ SubgridCompressibleEulerSolver::SubgridCompressibleEulerSolver(sc_MPI_Comm      
   thrust::device_vector<float_type>  device_centers = centers;
   thrust::device_vector<t8_locidx_t> device_levels  = levels;
 
-  initialize_variables<<<m_mesh_manager.get_num_local_elements(), subgrid_type::block_size>>>(m_mesh_manager.get_own_variables(next),
-											      thrust::raw_pointer_cast(device_centers.data()),
-											      thrust::raw_pointer_cast(device_levels.data()));
+  initialize_variables<subgrid_type><<<m_mesh_manager.get_num_local_elements(), subgrid_type::block_size>>>(m_mesh_manager.get_own_variables(next),
+													   thrust::raw_pointer_cast(device_centers.data()),
+													   thrust::raw_pointer_cast(device_levels.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
 }
@@ -102,7 +106,7 @@ void SubgridCompressibleEulerSolver::iterate(float_type delta_t) {
 
   dim3 dim_grid_face(static_cast<unsigned int>(m_mesh_manager.get_num_local_faces()));
   dim3 dim_block_face(subgrid_type::template extent<0>,
-		    subgrid_type::template extent<1>);
+		      subgrid_type::template extent<1>);
 
   // compute fluxes.
   compute_inner_fluxes<<<dim_grid, dim_block>>>(m_mesh_manager.get_own_variables(prev),

@@ -272,7 +272,7 @@ __global__ void t8gpu::compute_inner_fluxes(
 
   float_type volume      = volumes[e_idx];
   float_type edge_length = cbrt(volume) / static_cast<float_type>(SubgridType::extent<0>);
-  float_type surface     = edge_length * edge_length;  // TODO
+  float_type surface     = edge_length * edge_length;
 
   __shared__ float_type shared_fluxes[VariableList::nb_variables * SubgridType::size];
 
@@ -282,7 +282,7 @@ __global__ void t8gpu::compute_inner_fluxes(
   shared_fluxes[SubgridType::flat_index(i, j, k) + 3 * SubgridType::size] = 0.0;
   shared_fluxes[SubgridType::flat_index(i, j, k) + 4 * SubgridType::size] = 0.0;
 
-  if (i < 3) {
+  if (i < SubgridType::template extent<0> - 1) {
     float_type n[3] = {1.0, 0.0, 0.0};
     float_type t1[3];
     float_type t2[3];
@@ -323,7 +323,7 @@ __global__ void t8gpu::compute_inner_fluxes(
   }
   __syncthreads();
 
-  if (i < 3) {
+  if (i < SubgridType::template extent<0> - 1) {
     fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
     fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size];
     fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size];
@@ -342,7 +342,7 @@ __global__ void t8gpu::compute_inner_fluxes(
         shared_fluxes[SubgridType::flat_index(i - 1, j, k) + 4 * SubgridType::size];
   }
 
-  if (j < 3) {
+  if (j < SubgridType::template extent<0> - 1) {
     float_type n[3] = {0.0, 1.0, 0.0};
     float_type t1[3];
     float_type t2[3];
@@ -383,7 +383,7 @@ __global__ void t8gpu::compute_inner_fluxes(
   }
   __syncthreads();
 
-  if (j < 3) {
+  if (j < SubgridType::template extent<0> - 1) {
     fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
     fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size];
     fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size];
@@ -402,7 +402,7 @@ __global__ void t8gpu::compute_inner_fluxes(
         shared_fluxes[SubgridType::flat_index(i, j - 1, k) + 4 * SubgridType::size];
   }
 
-  if (k < 3) {
+  if (k < SubgridType::template extent<0> - 1) {
     float_type n[3] = {0.0, 0.0, 1.0};
     float_type t1[3];
     float_type t2[3];
@@ -443,7 +443,7 @@ __global__ void t8gpu::compute_inner_fluxes(
   }
   __syncthreads();
 
-  if (k < 3) {
+  if (k < SubgridType::template extent<0> - 1) {
     fluxes_rho(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k)];
     fluxes_rho_v1(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + SubgridType::size];
     fluxes_rho_v2(e_idx, i, j, k) -= shared_fluxes[SubgridType::flat_index(i, j, k) + 2 * SubgridType::size];
@@ -468,6 +468,7 @@ __global__ void t8gpu::compute_outer_fluxes(
                                     SubgridCompressibleEulerSolver::subgrid_type>        connectivity,
     SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> variables,
     SubgridMemoryAccessorAll<VariableList, SubgridCompressibleEulerSolver::subgrid_type> fluxes) {
+  using subgrid_type = SubgridCompressibleEulerSolver::subgrid_type;
   using float_type = typename SubgridCompressibleEulerSolver::float_type;
 
   int const f_idx = blockIdx.x;
@@ -514,7 +515,7 @@ __global__ void t8gpu::compute_outer_fluxes(
   int stride_j[3] = {0, 0, 0};
 
   if (nx == 1.0) {
-    anchor_l[0] = 3;
+    anchor_l[0] = subgrid_type::template extent<0> - 1;
 
     stride_i[1] = 1;
     stride_j[2] = 1;
@@ -525,7 +526,7 @@ __global__ void t8gpu::compute_outer_fluxes(
   }
 
   if (ny == 1.0) {
-    anchor_l[1] = 3;
+    anchor_l[1] = subgrid_type::template extent<1> - 1;
 
     stride_i[0] = 1;
     stride_j[2] = 1;
@@ -537,7 +538,7 @@ __global__ void t8gpu::compute_outer_fluxes(
   }
 
   if (nz == 1.0) {
-    anchor_l[2] = 3;
+    anchor_l[2] = subgrid_type::template extent<2> - 1;
 
     stride_i[0] = 1;
     stride_j[1] = 1;
@@ -582,7 +583,7 @@ __global__ void t8gpu::compute_outer_fluxes(
 
   inverse_rotate_state(n, t1, t2, flux_rotated, flux);
 
-  float_type surface = face_surface / 16.0;  // TODO: make this independant of subgrid size.
+  float_type surface = face_surface / static_cast<float_type>(subgrid_type::template extent<0> * subgrid_type::template extent<1>);
 
   atomicAdd(&flux_rho_l(l_index, l_i, l_j, l_k), -flux[0] * surface);
   atomicAdd(&flux_rho_r(r_index, r_i, r_j, r_k), flux[0] * surface);
