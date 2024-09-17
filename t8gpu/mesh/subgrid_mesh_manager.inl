@@ -592,7 +592,7 @@ std::enable_if_t<SubgridType::rank == 3, void> add_face(t8_locidx_t             
   int level_difference = neighbor_level - level;
 
   if (level == neighbor_level) {
-    std::array<int, 3> neighbor_offset{};
+    std::array<int, SubgridType::rank> neighbor_offset{};
 
     if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
       neighbor_offset = {(face_idx == 1) ? 0 : (SubgridType::template extent<0> - 1), 0, 0};
@@ -607,14 +607,14 @@ std::enable_if_t<SubgridType::rank == 3, void> add_face(t8_locidx_t             
     }
 
     face_level_difference.push_back(level_difference);
-    for (size_t k = 0; k < 3; k++) {
+    for (size_t k = 0; k < SubgridType::rank; k++) {
       face_neighbor_offset.push_back(neighbor_offset[k]);
     }
 
     face_neighbors.push_back(element_idx);
     face_neighbors.push_back(neighbor_idx);
 
-    for (size_t k = 0; k < 3; k++) {
+    for (size_t k = 0; k < SubgridType::rank; k++) {
       face_normals.push_back(static_cast<float_type>(face_normal[k]));
     }
     face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
@@ -622,7 +622,7 @@ std::enable_if_t<SubgridType::rank == 3, void> add_face(t8_locidx_t             
   } else if (neighbor_level < level) {
     int child_id = scheme_element->t8_element_child_id(element);
 
-    std::array<int, 3> neighbor_offset{};
+    std::array<int, SubgridType::rank> neighbor_offset{};
 
     if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
       neighbor_offset = {(face_idx == 1) ? 0 : (SubgridType::template extent<0> - 1),
@@ -639,14 +639,14 @@ std::enable_if_t<SubgridType::rank == 3, void> add_face(t8_locidx_t             
     }
 
     face_level_difference.push_back(level_difference);
-    for (size_t k = 0; k < 3; k++) {
+    for (size_t k = 0; k < SubgridType::rank; k++) {
       face_neighbor_offset.push_back(neighbor_offset[k]);
     }
 
     face_neighbors.push_back(element_idx);
     face_neighbors.push_back(neighbor_idx);
 
-    for (size_t k = 0; k < 3; k++) {
+    for (size_t k = 0; k < SubgridType::rank; k++) {
       face_normals.push_back(static_cast<float_type>(face_normal[k]));
     }
     face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
@@ -655,7 +655,7 @@ std::enable_if_t<SubgridType::rank == 3, void> add_face(t8_locidx_t             
   } else {
     int neighbor_child_id = scheme_neighbor->t8_element_child_id(neighbor_element);
 
-    std::array<int, 3> neighbor_offset{};
+    std::array<int, SubgridType::rank> neighbor_offset{};
 
     if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
       neighbor_offset = {(face_idx == 0) ? 0 : (SubgridType::template extent<0> - 1),
@@ -672,14 +672,118 @@ std::enable_if_t<SubgridType::rank == 3, void> add_face(t8_locidx_t             
     }
 
     face_level_difference.push_back(-level_difference);
-    for (size_t k = 0; k < 3; k++) {
+    for (size_t k = 0; k < SubgridType::rank; k++) {
       face_neighbor_offset.push_back(neighbor_offset[k]);
     }
 
     face_neighbors.push_back(neighbor_idx);
     face_neighbors.push_back(element_idx);
 
-    for (size_t k = 0; k < 3; k++) {
+    for (size_t k = 0; k < SubgridType::rank; k++) {
+      face_normals.push_back(static_cast<float_type>(-face_normal[k]));
+    }
+    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
+                        static_cast<float_type>(num_neighbors));
+  }
+}
+
+template<typename VariableType, typename SubgridType>
+std::enable_if_t<SubgridType::rank == 2, void> add_face(t8_locidx_t                       face_idx,
+							int                               num_neighbors,
+							t8_forest_t                       forest,
+							t8_locidx_t                       tree_idx,
+							t8_locidx_t                       element_idx,
+							t8_element_t const*               element,
+							t8_element_t const*               neighbor_element,
+							t8_locidx_t                       neighbor_idx,
+							t8_eclass_scheme_c*               scheme_element,
+							t8_eclass_scheme_c*               scheme_neighbor,
+							thrust::host_vector<t8_locidx_t>& face_level_difference,
+							thrust::host_vector<t8_locidx_t>& face_neighbor_offset,
+							thrust::host_vector<t8_locidx_t>& face_neighbors,
+							thrust::host_vector<typename t8gpu::variable_traits<VariableType>::float_type>&  face_normals,
+              thrust::host_vector<typename t8gpu::variable_traits<VariableType>::float_type>&  face_area) {
+  using float_type = typename t8gpu::variable_traits<VariableType>::float_type;
+
+  int level          = scheme_element->t8_element_level(element);
+  int neighbor_level = scheme_neighbor->t8_element_level(neighbor_element);
+
+  double face_normal[3];
+  t8_forest_element_face_normal(forest, tree_idx, element, face_idx, face_normal);
+
+  int level_difference = neighbor_level - level;
+
+  if (level == neighbor_level) {
+    std::array<int, SubgridType::rank> neighbor_offset{};
+
+    if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
+      neighbor_offset = {(face_idx == 1) ? 0 : (SubgridType::template extent<0> - 1), 0};
+    } else {  // normal is along y axis.
+      neighbor_offset = {0, (face_idx == 3) ? 0 : (SubgridType::template extent<1> - 1)};
+    }
+
+    face_level_difference.push_back(level_difference);
+    for (size_t k = 0; k < SubgridType::rank; k++) {
+      face_neighbor_offset.push_back(neighbor_offset[k]);
+    }
+
+    face_neighbors.push_back(element_idx);
+    face_neighbors.push_back(neighbor_idx);
+
+    for (size_t k = 0; k < SubgridType::rank; k++) {
+      face_normals.push_back(static_cast<float_type>(face_normal[k]));
+    }
+    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
+                        static_cast<float_type>(num_neighbors));
+  } else if (neighbor_level < level) {
+    int child_id = scheme_element->t8_element_child_id(element);
+
+    std::array<int, SubgridType::rank> neighbor_offset{};
+
+    if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
+      neighbor_offset = {(face_idx == 1) ? 0 : (SubgridType::template extent<0> - 1),
+                         SubgridType::template extent<1> / 2 * ((child_id & 0b10) >> 1)};
+    } else {  // normal is along y axis.
+      neighbor_offset = {SubgridType::template extent<0> / 2 * ((child_id & 0b1) >> 0),
+                         (face_idx == 3) ? 0 : (SubgridType::template extent<1> - 1)};
+    }
+
+    face_level_difference.push_back(level_difference);
+    for (size_t k = 0; k < SubgridType::rank; k++) {
+      face_neighbor_offset.push_back(neighbor_offset[k]);
+    }
+
+    face_neighbors.push_back(element_idx);
+    face_neighbors.push_back(neighbor_idx);
+
+    for (size_t k = 0; k < SubgridType::rank; k++) {
+      face_normals.push_back(static_cast<float_type>(face_normal[k]));
+    }
+    face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
+                        static_cast<float_type>(num_neighbors));
+
+  } else {
+    int neighbor_child_id = scheme_neighbor->t8_element_child_id(neighbor_element);
+
+    std::array<int, SubgridType::rank> neighbor_offset{};
+
+    if (face_idx == 0 || face_idx == 1) {  // normal is along x axis.
+      neighbor_offset = {(face_idx == 0) ? 0 : (SubgridType::template extent<0> - 1),
+                         SubgridType::template extent<1> / 2 * ((neighbor_child_id & 0b10) >> 1)};
+    } else {  // normal is along y axis.
+      neighbor_offset = {SubgridType::template extent<0> / 2 * ((neighbor_child_id & 0b1) >> 0),
+                         (face_idx == 2) ? 0 : (SubgridType::template extent<1> - 1)};
+    }
+
+    face_level_difference.push_back(-level_difference);
+    for (size_t k = 0; k < SubgridType::rank; k++) {
+      face_neighbor_offset.push_back(neighbor_offset[k]);
+    }
+
+    face_neighbors.push_back(neighbor_idx);
+    face_neighbors.push_back(element_idx);
+
+    for (size_t k = 0; k < SubgridType::rank; k++) {
       face_normals.push_back(static_cast<float_type>(-face_normal[k]));
     }
     face_area.push_back(static_cast<float_type>(t8_forest_element_face_area(forest, tree_idx, element, face_idx)) /
