@@ -222,7 +222,10 @@ CompressibleEulerSolver::float_type CompressibleEulerSolver::compute_timestep() 
     MPI_Allreduce(&local_speed_estimate, &global_speed_estimate, 1, MPI_FLOAT, MPI_MAX, m_comm);
   }
 
-  return cfl * static_cast<float_type>(std::pow(static_cast<float_type>(0.5), max_level)) / global_speed_estimate;
+  return cfl *
+         static_cast<float_type>(
+             std::pow(static_cast<float_type>(0.5), MeshManager<VariableList, StepList, dim>::max_level)) /
+         global_speed_estimate;
 }
 
 __global__ static void compute_refinement_criteria(

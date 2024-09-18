@@ -1,1 +1,2 @@
 add_subdirectory(compressible_euler)
+add_subdirectory(subgrid)

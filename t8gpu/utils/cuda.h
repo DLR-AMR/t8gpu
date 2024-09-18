@@ -10,7 +10,7 @@
     if (value != cudaSuccess) {                                                            \
       std::cerr << "caught CUDA runtime error at: " __FILE__ ":" << __LINE__ << std::endl; \
       std::cerr << cudaGetErrorString(value) << std::endl;                                 \
-      exit(EXIT_FAILURE);                                                                  \
+      SC_ABORT("CUDA error caught");                                                       \
     }                                                                                      \
   } while (0)
 
@@ -25,7 +25,7 @@
     if (value != cudaSuccess) {                                                            \
       std::cerr << "caught CUDA runtime error at: " __FILE__ ":" << __LINE__ << std::endl; \
       std::cerr << cudaGetErrorString(value) << std::endl;                                 \
-      exit(EXIT_FAILURE);                                                                  \
+      SC_ABORT("CUDA error caught");                                                       \
     }                                                                                      \
   } while (0)
 #else

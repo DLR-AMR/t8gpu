@@ -1,60 +1,148 @@
-/// @file memory_manager.h
-/// @brief This header file declares the MemoryManager class that
-///        handles GPU memory allocation as well as the
-///        MemoryAccessor{Own,All} helper accessor classes.
+/// @file subgrid_memory_manager.h
+/// @brief This header file declares the SubgridMemoryManager class
+///        that handles GPU memory allocation as well as the
+///        SubgridMemoryAccessor{Own,All} helper accessor classes for
+///        the use of subgrids.
 
-#ifndef MEMORY_MEMORY_MANAGER_H
-#define MEMORY_MEMORY_MANAGER_H
+#ifndef MEMORY_SUBGRID_MEMORY_MANAGER_H
+#define MEMORY_SUBGRID_MEMORY_MANAGER_H
 
+#include <t8gpu/memory/memory_manager.h>
 #include <t8gpu/memory/shared_device_vector.h>
 #include <t8gpu/utils/meta.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <array>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace t8gpu {
 
-  // Type traits are necessary to be able to choose a VariableList type
-  // that is not a struct and thus cannot have static member and/or
-  // type-aliases (e.g. enums). For now, we are using enum for the
-  // variable list type, but we may change that later on to have
-  // something more flexible. This variables_traits can allow to still
-  // retain old behavior while allowing new types of VariableLists.
-  template<class VariableList, typename = void>
-  struct variable_traits {};
+  // Forward declarations.
+  template<typename VariableType, typename SubgridType>
+  class SubgridMemoryAccessorOwn;
 
-  template<class VariableType>
-  struct variable_traits<VariableType, typename std::enable_if_t<std::is_enum_v<VariableType>>> {
-    using float_type                     = float;
-    using index_type                     = VariableType;
-    static constexpr size_t nb_variables = VariableType::nb_variables;
-  };
+  template<typename VariableType, typename SubgridType>
+  class SubgridMemoryAccessorAll;
 
-  template<class StepList, typename = void>
-  struct step_traits {};
+  /// @brief Templated type representing a subgrid.
+  ///
+  /// @tparam extents... The extents of the subgrid.
+  ///
+  /// This templated struct defines the grid dimension as well as the
+  /// data access pattern (column major).
+  template<int... extents>
+  struct Subgrid {
+    /// @brief get the rank of the subgrid (i.e. the number of dimensions).
+    static constexpr int rank = sizeof...(extents);
 
-  template<class StepType>
-  struct step_traits<StepType, typename std::enable_if_t<std::is_enum_v<StepType>>> {
-    using float_type                 = float;
-    using index_type                 = StepType;
-    static constexpr size_t nb_steps = StepType::nb_steps;
+    /// @brief the number of elements in the subgrid.
+    static constexpr int size = (extents * ...);
+
+    /// @brief get the extent of the subgrid in a given dimension.
+    ///
+    /// @ptaram dim The dimension for which we want to fetch the extent.
+    template<int dim>
+    static constexpr int extent = meta::argpack_at_v<dim, extents...>;
+
+    /// @brief get the stride of a dimension.
+    ///
+    /// @tparam [in] i dimension.
+    ///
+    /// We use *column major* ordering to match CUDA grid ordering
+    /// (i.e. the first index changes the fastest).
+    template<int i>
+    static constexpr int stride = meta::argpack_mul_to_v<i, extents...>;
+
+    /// @brief from a rank-dim multi-index, retrieve the flat index.
+    ///
+    /// @param [in] is the indices.
+    template<typename... Ts>
+    static constexpr inline int flat_index(Ts... is) {
+      return flat_index_impl<Ts...>(is..., std::index_sequence_for<Ts...>{});
+    }
+
+    /// @brief A static block size use for invoking kernel where the
+    ///        block size must be identical to the subgrid size.
+    static constexpr dim3 block_size = {extents...};
+
+    /// @brief Simple wrapper class around an array to access subgrid
+    ///        data.
+    template<typename float_type>
+    class Accessor {
+     public:
+      /// @brief copy constructor.
+      Accessor(Accessor const& other) = default;
+
+      /// @brief assignment operator.
+      Accessor& operator=(Accessor const& other) = default;
+
+      /// @brief Retrieve data corresponding to a subgrid element.
+      ///
+      /// @param [in] e_idx The local element index.
+      /// @param [in] is the indices into the subgrid.
+      template<typename... Ts>
+      [[nodiscard]] inline __device__
+          std::enable_if_t<(sizeof...(Ts) == rank) && std::conjunction_v<std::is_integral<Ts>...>, float_type&>
+          operator()(size_t e_idx, Ts... is) {
+        return m_data[e_idx * size + flat_index(is...)];
+      }
+
+      /// @brief Retrieve data corresponding to a subgrid element.
+      ///
+      /// @param [in] e_idx The local element index.
+      /// @param [in] is the indices into the subgrid.
+      template<typename... Ts>
+      [[nodiscard]] inline __device__
+          std::enable_if_t<(sizeof...(Ts) == rank) && std::conjunction_v<std::is_integral<Ts>...>, float_type const&>
+          operator()(size_t e_idx, Ts... is) const {
+        return m_data[e_idx * size + flat_index(is...)];
+      }
+
+      /// @brief Conversion operator to retrieve the underlying
+      ///        pointer.
+      explicit operator float_type*() { return m_data; }
+
+      /// @brief Conversion operator to retrieve the underlying
+      ///        pointer.
+      explicit operator float_type const*() const { return m_data; }
+
+     private:
+      /// @brief Constructor accessible only to the necessary classes.
+      __device__ __host__ Accessor(float_type const* data) : m_data{const_cast<float_type*>(data)} {}
+
+      float_type* m_data;
+
+      template<typename VariableType, typename SubgridType>
+      friend class SubgridMemoryAccessorOwn;
+
+      template<typename VariableType, typename SubgridType>
+      friend class SubgridMemoryAccessorAll;
+
+      template<typename VariableType, typename StepType, typename SubgridType>
+      friend class SubgridMemoryManager;
+    };
+
+    template<typename float_type>
+    using accessor_type = Accessor<float_type>;
+
+   private:
+    template<typename... Ts, size_t... I>
+    static constexpr inline int flat_index_impl(Ts... is, std::index_sequence<I...>) {
+      return ((stride<I> * is) + ...);
+    }
   };
 
   /// Forward declaration of MemoryManager class needed to make it a
-  /// friend class of the MemoryAccessor{Own,All}.
-  template<typename VariableType, typename StepType>
-  class MemoryManager;
-
-  /// Forward declaration of MemoryManager class needed to make it a
-  /// friend class of the MemoryAccessor{Own,All}.
+  /// friend class of the SubgridMemoryAccessor{Own,All}.
   template<typename VariableType, typename StepType, typename SubgridType>
   class SubgridMemoryManager;
 
   /// Forward declaration of MeshManager class needed to make it a
-  /// friend class of the MemoryAccessor{Own,All}.
-  template<typename VariableType, typename StepType, size_t dim>
-  class MeshManager;
+  /// friend class of the SubgridMemoryAccessor{Own,All}.
+  template<typename VariableType, typename StepType, typename SubgridType>
+  class SubgridMeshManager;
 
   ///
   /// @brief A class that is used to access variables on the CPU and
@@ -68,11 +156,14 @@ namespace t8gpu {
   ///
   /// Either select the variables with their names:
   ///
-  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
+  /// __global__ void f(SubgridMemoryAccessorOwn<Variables> m) {
   ///   auto [rho_u, rho_v] = m.get(Rho_u, Rho_v);
   ///
-  ///   rho_u[i] = ...
-  ///
+  ///     element index
+  ///         ┌─┴─┐
+  ///   rho_u(e_idx, i, j, k) = ...
+  ///                └──┬──┘
+  ///          subgrid coordinates
   /// ...
   /// }
   ///
@@ -84,26 +175,25 @@ namespace t8gpu {
   ///     m.get(k)[i] = ...
   ///   }
   /// }
-  template<typename VariableType>
-  class MemoryAccessorOwn {
-    // Friend classesthat can instantiate this a class.
-    template<typename VT, typename ST>
-    friend class MemoryManager;
-    template<typename VT, typename ST, size_t dim_>
-    friend class MeshManager;
-    template<typename VT, typename ST, typename SubgridType>
+  template<typename VariableType, typename SubgridType>
+  class SubgridMemoryAccessorOwn {
+    // Friend classes that can instantiate this a class.
+    template<typename VariableType_, typename StepType_, typename SubgridType_>
+    friend class SubgridMemoryManager;
+    template<typename VariableType_, typename StepType_, typename SubgridType_>
     friend class SubgridMeshManager;
 
    public:
     using variable_index_type            = typename variable_traits<VariableType>::index_type;
     using float_type                     = typename variable_traits<VariableType>::float_type;
+    using subgrid_type                   = SubgridType;
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
     /// @brief copy constructor.
-    MemoryAccessorOwn(MemoryAccessorOwn const& other) = default;
+    SubgridMemoryAccessorOwn(SubgridMemoryAccessorOwn const& other) = default;
 
     /// @brief assignment operator.
-    MemoryAccessorOwn& operator=(MemoryAccessorOwn const& other) = default;
+    SubgridMemoryAccessorOwn& operator=(SubgridMemoryAccessorOwn const& other) = default;
 
     /// @brief getter function to access variable data.
     ///
@@ -113,9 +203,9 @@ namespace t8gpu {
     template<typename T>
     [[nodiscard]] __device__
         __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
-                                         float_type*>
+                                         typename SubgridType::accessor_type<float_type>>
         get(T i) {
-      return m_pointers[static_cast<variable_index_type>(i)];
+      return typename SubgridType::accessor_type<float_type>{m_pointers[static_cast<variable_index_type>(i)]};
     }
 
     /// @brief getter function to access variable data.
@@ -126,9 +216,9 @@ namespace t8gpu {
     template<typename T>
     [[nodiscard]] __device__
         __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
-                                         float_type const*>
+                                         typename SubgridType::accessor_type<float_type> const>
         get(T i) const {
-      return m_pointers[static_cast<variable_index_type>(i)];
+      return typename SubgridType::accessor_type<float_type>{m_pointers[static_cast<variable_index_type>(i)]};
     }
 
     /// @brief getter function to access multiple variables at the
@@ -136,7 +226,7 @@ namespace t8gpu {
     ///
     /// @param is variable indices.
     ///
-    /// @return array of device pointers to variable data.
+    /// @return array of variable accessor wrapper class to data.
     ///
     /// This function is meant to be used in conjunction with c++ 17
     /// structured bindings to get multiple variable at the same time.
@@ -145,7 +235,7 @@ namespace t8gpu {
         t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
                                                     variable_index_type> &&
             t8gpu::meta::all_same_v<Ts...>,
-        std::array<float_type*, sizeof...(Ts)>>
+        std::array<typename SubgridType::accessor_type<float_type>, sizeof...(Ts)>>
     get(Ts... is) {
       return {get(static_cast<variable_index_type>(is))...};
     }
@@ -155,7 +245,7 @@ namespace t8gpu {
     ///
     /// @param is variable indices.
     ///
-    /// @return array of device pointers to variable data.
+    /// @return array of variable accessor wrapper class to data.
     ///
     /// This function is meant to be used in conjunction with c++ 17
     /// structured bindings to get multiple variable at the same time.
@@ -164,7 +254,7 @@ namespace t8gpu {
         t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
                                                     variable_index_type> &&
             t8gpu::meta::all_same_v<Ts...>,
-        std::array<float_type const*, sizeof...(Ts)>>
+        std::array<typename SubgridType::accessor_type<float_type> const, sizeof...(Ts)>>
     get(Ts... is) const {
       return {get(static_cast<variable_index_type>(is))...};
     }
@@ -172,7 +262,7 @@ namespace t8gpu {
    private:
     std::array<float_type*, nb_variables> m_pointers;
 
-    /// @brief constructor of MemoryAccessorOwn
+    /// @brief constructor of SubgridMemoryAccessorOwn
     ///
     /// This constructor constructs an accessor by forwarding a
     /// container type. It is intentionally by design made private so
@@ -182,7 +272,7 @@ namespace t8gpu {
     /// through member functions. This allows us to freely change
     /// implementation details.
     template<typename Container>
-    MemoryAccessorOwn(Container&& array) : m_pointers(std::forward<Container>(array)) {}
+    SubgridMemoryAccessorOwn(Container&& array) : m_pointers(std::forward<Container>(array)) {}
   };
 
   ///
@@ -197,10 +287,14 @@ namespace t8gpu {
   ///
   /// Either select the variables with their names:
   ///
-  /// __global__ void f(MemoryAccessorOwn<Variables> m) {
-  ///   auto [rho_u, rho_v] = m.get(Rho_u, Rho_v);
+  /// __global__ void f(SubgridMemoryAccessorOwn<Variables> m) {
+  ///   auto [rho_u, rho_v] = m.get(rank, Rho_u, Rho_v);
   ///
-  ///   rho_u[i][rank] = ...
+  ///     element index
+  ///         ┌─┴─┐
+  ///   rho_u(e_idx, i, j, k) = ...
+  ///                └──┬──┘
+  ///          subgrid coordinates
   ///
   /// ...
   /// }
@@ -213,13 +307,13 @@ namespace t8gpu {
   ///     m.get(k)[rank][i] = ...
   ///   }
   /// }
-  template<typename VariableType>
-  class MemoryAccessorAll {
+  template<typename VariableType, typename SubgridType>
+  class SubgridMemoryAccessorAll {
     // Friend classesthat can instantiate this a class.
-    template<typename VT, typename ST>
-    friend class MemoryManager;
-    template<typename VT, typename ST, size_t dim_>
-    friend class MeshManager;
+    template<typename VT, typename ST, typename SubgridType_>
+    friend class SubgridMemoryManager;
+    template<typename VT, typename ST, typename SubgridType_>
+    friend class SubgridMeshManager;
 
    public:
     using variable_index_type            = typename variable_traits<VariableType>::index_type;
@@ -227,41 +321,44 @@ namespace t8gpu {
     constexpr static size_t nb_variables = variable_traits<VariableType>::nb_variables;
 
     /// @brief copy constructor.
-    MemoryAccessorAll(MemoryAccessorAll const& other) = default;
+    SubgridMemoryAccessorAll(SubgridMemoryAccessorAll const& other) = default;
 
     /// @brief assignment operator.
-    MemoryAccessorAll& operator=(MemoryAccessorAll const& other) = default;
+    SubgridMemoryAccessorAll& operator=(SubgridMemoryAccessorAll const& other) = default;
 
     /// @brief getter function to access variable data.
     ///
-    /// @param i variable index.
+    /// @param rank the rank.
+    /// @param i    variable index.
     ///
     /// @return an array of device pointer to variable data.
     template<typename T>
     [[nodiscard]] __device__
         __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
-                                         float_type* const*>
-        get(T i) {
-      return m_pointers[static_cast<variable_index_type>(i)];
+                                         typename SubgridType::accessor_type<float_type>>
+        get(int rank, T i) {
+      return typename SubgridType::accessor_type<float_type>{m_pointers[static_cast<variable_index_type>(i)][rank]};
     }
 
     /// @brief getter function to access variable data.
     ///
-    /// @param i variable index.
+    /// @param rank the rank.
+    /// @param i    variable index.
     ///
     /// @return an array of device pointer to variable data.
     template<typename T>
     [[nodiscard]] __device__
         __host__ inline std::enable_if_t<t8gpu::meta::is_explicitly_convertible_to_v<T, variable_index_type>,
-                                         float_type const* const*>
-        get(T i) const {
-      return m_pointers[static_cast<variable_index_type>(i)];
+                                         typename SubgridType::accessor_type<float_type> const>
+        get(int rank, T i) const {
+      return typename SubgridType::accessor_type<float_type>{m_pointers[static_cast<variable_index_type>(i)][rank]};
     }
 
     /// @brief getter function to access multiple variables at the
     ///        same time.
     ///
-    /// @param is variable indices.
+    /// @param rank  the rank.
+    /// @param is    variable indices.
     ///
     /// @return array of arrays to device pointers to variable data.
     ///
@@ -272,15 +369,16 @@ namespace t8gpu {
         t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
                                                     variable_index_type> &&
             t8gpu::meta::all_same_v<Ts...>,
-        std::array<float_type* const*, sizeof...(Ts)>>
-    get(Ts... is) {
-      return {get(static_cast<variable_index_type>(is))...};
+        std::array<typename SubgridType::accessor_type<float_type>, sizeof...(Ts)>>
+    get(int rank, Ts... is) {
+      return {get(rank, static_cast<variable_index_type>(is))...};
     }
 
     /// @brief getter function to access multiple variables at the
     ///        same time.
     ///
-    /// @param is variable indices.
+    /// @param rank  the rank.
+    /// @param is    variable indices.
     ///
     /// @return array of arrays to device pointers to variable data.
     ///
@@ -291,15 +389,15 @@ namespace t8gpu {
         t8gpu::meta::is_explicitly_convertible_to_v<typename std::tuple_element<0, std::tuple<Ts...>>::type,
                                                     variable_index_type> &&
             t8gpu::meta::all_same_v<Ts...>,
-        std::array<float_type const* const*, sizeof...(Ts)>>
-    get(Ts... is) const {
-      return {get(static_cast<variable_index_type>(is))...};
+        std::array<typename SubgridType::accessor_type<float_type> const, sizeof...(Ts)>>
+    get(int rank, Ts... is) const {
+      return {get(rank, static_cast<variable_index_type>(is))...};
     }
 
    private:
     std::array<float_type* const*, nb_variables> m_pointers;
 
-    /// @brief constructor of MemoryAccessorAll
+    /// @brief constructor of SubgridMemoryAccessorAll
     ///
     /// This constructor constructs an accessor by forwarding a
     /// container type. It is intentionally by design made private so
@@ -309,7 +407,7 @@ namespace t8gpu {
     /// through member functions. This allows us to freely change
     /// implementation details.
     template<typename Container>
-    MemoryAccessorAll(Container&& array) : m_pointers(std::forward<Container>(array)) {}
+    SubgridMemoryAccessorAll(Container&& array) : m_pointers(std::forward<Container>(array)) {}
   };
 
   ///
@@ -323,8 +421,8 @@ namespace t8gpu {
   /// using the appropriate get_{own,all}_variables{s} getter
   /// functions and the variable names given by the VariableType enum
   /// and StepType.
-  template<typename VariableType, typename StepType>
-  class MemoryManager {
+  template<typename VariableType, typename StepType, typename SubgridType>
+  class SubgridMemoryManager {
    public:
     using float_type                     = typename variable_traits<VariableType>::float_type;
     using variable_index_type            = typename variable_traits<VariableType>::index_type;
@@ -338,9 +436,9 @@ namespace t8gpu {
     /// @param [in]   nb_elements specifies the initial number of elements.
     /// @param [in]   comm        specifies the MPI communicator to use.
     ///
-    MemoryManager(size_t nb_elements = 0, sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
+    SubgridMemoryManager(size_t nb_elements = 0, sc_MPI_Comm comm = sc_MPI_COMM_WORLD);
 
-    ~MemoryManager() = default;
+    ~SubgridMemoryManager() = default;
 
     /// @brief set a variable.
     ///
@@ -377,13 +475,6 @@ namespace t8gpu {
     /// @param [in]   buffer   the GPU buffer to copy from.
     void set_volume(thrust::device_vector<float_type> const& buffer);
 
-    /// @brief set the volume variable.
-    ///
-    /// @param [in]   buffer   the GPU buffer to copy from (raw pointer).
-    ///
-    /// @warning the buffer needs to be of size the number of elements.
-    void set_volume(float_type* buffer);
-
     /// @brief get the volume variable of elements owned by this rank.
     ///
     /// @return A pointer to GPU memory containing the volume data.
@@ -412,7 +503,7 @@ namespace t8gpu {
     ///
     /// @return An object from which we can query the variables on the
     ///         CPU/GPU (but only access the data on the GPU).
-    [[nodiscard]] MemoryAccessorOwn<VariableType> get_own_variables(step_index_type step);
+    [[nodiscard]] SubgridMemoryAccessorOwn<VariableType, SubgridType> get_own_variables(step_index_type step);
 
     /// @brief get all variables owned by all ranks.
     ///
@@ -420,7 +511,7 @@ namespace t8gpu {
     ///
     /// @return An object from which we can query the variables on the
     ///         CPU/GPU (but only access the data on the GPU).
-    [[nodiscard]] MemoryAccessorAll<VariableType> get_all_variables(step_index_type step);
+    [[nodiscard]] SubgridMemoryAccessorAll<VariableType, SubgridType> get_all_variables(step_index_type step);
 
     /// @brief get variable owned by this rank.
     ///
@@ -428,7 +519,8 @@ namespace t8gpu {
     /// @param [in]   variable the name of the variable.
     ///
     /// @return A pointer to GPU memory containing the variable data.
-    [[nodiscard]] float_type* get_own_variable(step_index_type step, variable_index_type variable);
+    [[nodiscard]] typename SubgridType::accessor_type<float_type> get_own_variable(step_index_type     step,
+                                                                                   variable_index_type variable);
 
     /// @brief get variable owned by this rank.
     ///
@@ -436,7 +528,8 @@ namespace t8gpu {
     /// @param [in]   variable the name of the variable.
     ///
     /// @return A pointer to GPU memory containing the variable data.
-    [[nodiscard]] float_type const* get_own_variable(step_index_type step, variable_index_type variable) const;
+    [[nodiscard]] typename SubgridType::accessor_type<float_type> const get_own_variable(
+        step_index_type step, variable_index_type variable) const;
 
     /// @brief resize the variables.
     ///
@@ -457,11 +550,12 @@ namespace t8gpu {
     inline void resize(size_t new_size);
 
    private:
-    t8gpu::SharedDeviceVector<std::array<float_type, nb_variables * nb_steps + 1>> m_device_buffer;
+    t8gpu::SharedDeviceVector<std::array<float_type, nb_variables * nb_steps>> m_device_buffer;
+    t8gpu::SharedDeviceVector<float_type>                                      m_device_volume;
   };
 
 }  // namespace t8gpu
 
-#include "memory_manager.inl"
+#include "subgrid_memory_manager.inl"
 
-#endif  // MEMORY_MEMORY_MANAGER_H
+#endif  // MEMORY_SUBGRID_MEMORY_MANAGER_H
