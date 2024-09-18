@@ -1,5 +1,5 @@
-#ifndef EXAMPLES_RAYLEIGH_TAYLOR_KERNELS_H
-#define EXAMPLES_RAYLEIGH_TAYLOR_KERNELS_H
+#ifndef EXAMPLES_SUBGRID_KERNELS_H
+#define EXAMPLES_SUBGRID_KERNELS_H
 
 #include <t8gpu/memory/subgrid_memory_manager.h>
 #include <t8gpu/mesh/subgrid_mesh_manager.h>
@@ -52,4 +52,4 @@ __global__ void compute_refinement_criteria(
 #include "kernels.inl"
 #endif
 
-#endif  // EXAMPLES_RAYLEIGH_TAYLOR_KERNELS_H
+#endif  // EXAMPLES_SUBGRID_KERNELS_H

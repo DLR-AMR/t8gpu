@@ -689,8 +689,7 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::partition(step_index_type 
 
   std::array<float_type* __restrict__, t8gpu::variable_traits<VariableType>::nb_variables> new_variables{};
   for (size_t l = 0; l < t8gpu::variable_traits<VariableType>::nb_variables; l++) {
-    new_variables[l] =
-        thrust::raw_pointer_cast(device_new_conserved_variables.data()) + l * num_new_elements;
+    new_variables[l] = thrust::raw_pointer_cast(device_new_conserved_variables.data()) + l * num_new_elements;
   }
 
   constexpr int thread_block_size = 256;

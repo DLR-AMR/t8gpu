@@ -1,2 +1,2 @@
 add_subdirectory(compressible_euler)
-add_subdirectory(rayleigh_taylor)
+add_subdirectory(subgrid)

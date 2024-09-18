@@ -2,8 +2,8 @@
 /// @brief This header file declares a simple finite volume solver for
 ///        the compressible Euler equations
 
-#ifndef EXAMPLES_RAYLEIGH_TAYLOR_SOLVER_H
-#define EXAMPLES_RAYLEIGH_TAYLOR_SOLVER_H
+#ifndef EXAMPLES_SUBGRID_SOLVER_H
+#define EXAMPLES_SUBGRID_SOLVER_H
 
 #include <t8.h>
 #include <t8gpu/mesh/subgrid_mesh_manager.h>
@@ -111,4 +111,4 @@ class SubgridCompressibleEulerSolver {
 #include "solver.inl"
 #endif
 
-#endif  // EXAMPLES_RAYLEIGH_TAYLOR_SOLVER_H
+#endif  // EXAMPLES_SUBGRID_SOLVER_H

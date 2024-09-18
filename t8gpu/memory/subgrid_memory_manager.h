@@ -65,9 +65,10 @@ namespace t8gpu {
 
     /// @brief A static block size use for invoking kernel where the
     ///        block size must be identical to the subgrid size.
-    static constexpr dim3 block_size = { extents... };
+    static constexpr dim3 block_size = {extents...};
 
-    /// @brief Simple wrapper class around a array to access subgrid data.
+    /// @brief Simple wrapper class around an array to access subgrid
+    ///        data.
     template<typename float_type>
     class Accessor {
      public:

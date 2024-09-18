@@ -111,7 +111,7 @@ namespace t8gpu::meta {
 
   /// @brief computes the log in base 2 of an integer.
   template<size_t x>
-  struct log2 : std::integral_constant<size_t, 1+log2<x/2>::value> {};
+  struct log2 : std::integral_constant<size_t, 1 + log2<x / 2>::value> {};
 
   template<>
   struct log2<1> : std::integral_constant<size_t, 0> {};

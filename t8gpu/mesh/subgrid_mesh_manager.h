@@ -114,16 +114,14 @@ namespace t8gpu {
     /// @param face_idx [in] The face index.
     [[nodiscard]] __device__ inline std::array<t8_locidx_t, SubgridType::rank> get_face_neighbor_offset(int f_idx) {
       if constexpr (SubgridType::rank == 3) {
-	return {
-	  m_face_neighbor_offset[3 * f_idx],
-	  m_face_neighbor_offset[3 * f_idx + 1],
-	  m_face_neighbor_offset[3 * f_idx + 2]
-	};
+        return {m_face_neighbor_offset[3 * f_idx],
+                m_face_neighbor_offset[3 * f_idx + 1],
+                m_face_neighbor_offset[3 * f_idx + 2]};
       } else {
-	return {
-	  m_face_neighbor_offset[2 * f_idx],
-	  m_face_neighbor_offset[2 * f_idx + 1],
-	};
+        return {
+            m_face_neighbor_offset[2 * f_idx],
+            m_face_neighbor_offset[2 * f_idx + 1],
+        };
       }
     }
 
@@ -200,8 +198,8 @@ namespace t8gpu {
     SubgridMeshConnectivityAccessor(int const*         ranks,
                                     t8_locidx_t const* indices,
                                     t8_locidx_t const* face_neighbors,
-				    t8_locidx_t const* face_level_difference,
-				    t8_locidx_t const* face_neighbor_offset,
+                                    t8_locidx_t const* face_level_difference,
+                                    t8_locidx_t const* face_neighbor_offset,
                                     float_type const*  face_normals,
                                     float_type const*  face_surfaces,
                                     t8_locidx_t const  num_local_faces,
@@ -486,7 +484,8 @@ namespace t8gpu {
     thrust::device_vector<t8_locidx_t> m_device_indices;
 
     thrust::device_vector<t8_locidx_t> m_device_face_level_difference; /** inner faces neighbor elements */
-    thrust::device_vector<t8_locidx_t> m_device_face_neighbor_offset;  /** face anchor position in neighboring elements */
+    thrust::device_vector<t8_locidx_t>
+        m_device_face_neighbor_offset;                          /** face anchor position in neighboring elements */
     thrust::device_vector<t8_locidx_t> m_device_face_neighbors; /** inner faces neighbor elements */
     thrust::device_vector<float_type>  m_device_face_normals;   /** inner and boundary faces normals */
     thrust::device_vector<float_type>  m_device_face_area;      /** inner and boundary faces area */
