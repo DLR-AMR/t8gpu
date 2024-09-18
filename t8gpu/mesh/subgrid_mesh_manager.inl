@@ -432,7 +432,6 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   assert(t8_forest_is_committed(m_forest));
 
   assert(refinement_criteria.size() == m_num_local_elements);
-  assert(m_element_refinement_criteria.size() == m_num_local_elements);
   m_element_refinement_criteria = refinement_criteria;
 
   t8_forest_t adapted_forest{};
@@ -448,8 +447,6 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   t8_locidx_t num_new_elements{t8_forest_get_local_num_elements(adapted_forest)};
   t8_locidx_t num_old_elements{t8_forest_get_local_num_elements(m_forest)};
 
-  thrust::host_vector<float_type>  adapted_element_variable(num_new_elements);
-  thrust::host_vector<float_type>  adapted_element_volume(num_new_elements);
   thrust::host_vector<t8_locidx_t> element_adapt_data(num_new_elements + 1);
 
   thrust::host_vector<t8_locidx_t> old_levels(num_old_elements);
@@ -528,25 +525,19 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::adapt(
   }
 
   thrust::device_vector<float_type> device_element_volume_adapted(num_new_elements);
-  t8_locidx_t*                      device_element_adapt_data{};
-  T8GPU_CUDA_CHECK_ERROR(cudaMalloc(&device_element_adapt_data, (num_new_elements + 1) * sizeof(t8_locidx_t)));
-  T8GPU_CUDA_CHECK_ERROR(cudaMemcpy(device_element_adapt_data,
-                                    element_adapt_data.data(),
-                                    element_adapt_data.size() * sizeof(t8_locidx_t),
-                                    cudaMemcpyHostToDevice));
+  thrust::device_vector<t8_locidx_t> device_element_adapt_data = element_adapt_data;
 
   int const thread_block_size = 256;
   int const adapt_num_blocks  = (num_new_elements + thread_block_size - 1) / thread_block_size;
   adapt_volume<VariableType, SubgridType>
       <<<adapt_num_blocks, thread_block_size>>>(this->get_own_volume(),
                                                 thrust::raw_pointer_cast(device_element_volume_adapted.data()),
-                                                device_element_adapt_data,
+                                                thrust::raw_pointer_cast(device_element_adapt_data.data()),
                                                 num_new_elements);
   T8GPU_CUDA_CHECK_LAST_ERROR();
-  T8GPU_CUDA_CHECK_ERROR(cudaFree(device_element_adapt_data));
 
   adapt_variables<VariableType, SubgridType>
-    <<<num_new_elements, SubgridType::block_size>>>(this->get_own_variables(step), new_variables, device_element_adapt_data);
+    <<<num_new_elements, SubgridType::block_size>>>(this->get_own_variables(step), new_variables, thrust::raw_pointer_cast(device_element_adapt_data.data()));
   T8GPU_CUDA_CHECK_LAST_ERROR();
 
   // resize shared and owned element variables
@@ -1348,6 +1339,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::partition(s
 									    thrust::raw_pointer_cast(m_device_indices.data()),
 									    new_variables,
 									    this->get_all_variables(step));
+  T8GPU_CUDA_CHECK_LAST_ERROR();
 
   constexpr int thread_block_size = 256;
   int const     fluxes_num_blocks = (num_new_elements + thread_block_size - 1) / thread_block_size;
@@ -1357,6 +1349,7 @@ void t8gpu::SubgridMeshManager<VariableType, StepType, SubgridType>::partition(s
                                                  thrust::raw_pointer_cast(device_new_element_volume.data()),
                                                  this->get_all_volume(),
                                                  num_new_elements);
+  T8GPU_CUDA_CHECK_LAST_ERROR();
   cudaDeviceSynchronize();
   MPI_Barrier(m_comm);
 

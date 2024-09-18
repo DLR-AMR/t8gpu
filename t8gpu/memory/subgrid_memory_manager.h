@@ -60,7 +60,7 @@ namespace t8gpu {
     /// @param [in] is the indices.
     template<typename... Ts>
     static constexpr inline int flat_index(Ts... is) {
-      return flat_index_impl<Ts...>(is..., std::make_integer_sequence<int, sizeof...(is)>{});
+      return flat_index_impl<Ts...>(is..., std::index_sequence_for<Ts...>{});
     }
 
     /// @brief A static block size use for invoking kernel where the
@@ -127,8 +127,8 @@ namespace t8gpu {
     using accessor_type = Accessor<float_type>;
 
    private:
-    template<typename... Ts, int... I>
-    static constexpr inline int flat_index_impl(Ts... is, std::integer_sequence<int, I...>) {
+    template<typename... Ts, size_t... I>
+    static constexpr inline int flat_index_impl(Ts... is, std::index_sequence<I...>) {
       return ((stride<I> * is) + ...);
     }
   };
