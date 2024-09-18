@@ -63,59 +63,59 @@ namespace t8gpu::timestepping {
 
   namespace subgrid {
 
-  /// @brief First substep of SSP-RK3 timestepping.
-  ///
-  /// @param [in]      prev          previous step variables.
-  /// @param [out]     step1         1st substep variables.
-  /// @param [in,out] fluxes        fluxes variables. The fluxes
-  ///                               are also set back to 0.
-  /// @param [in]      volume        local element volumes.
-  /// @param [in]      delta_t       timestep.
-  /// @param [in]      num_elements  number of local elements.
-  template<typename VariableType, typename SubgridType>
-  __global__ void SSP_3RK_step1(SubgridMemoryAccessorOwn<VariableType, SubgridType> prev,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> step1,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> fluxes,
-                                typename variable_traits<VariableType>::float_type const* __restrict__ volumes,
-                                typename variable_traits<VariableType>::float_type delta_t);
+    /// @brief First substep of SSP-RK3 timestepping.
+    ///
+    /// @param [in]      prev          previous step variables.
+    /// @param [out]     step1         1st substep variables.
+    /// @param [in,out] fluxes        fluxes variables. The fluxes
+    ///                               are also set back to 0.
+    /// @param [in]      volume        local element volumes.
+    /// @param [in]      delta_t       timestep.
+    /// @param [in]      num_elements  number of local elements.
+    template<typename VariableType, typename SubgridType>
+    __global__ void SSP_3RK_step1(SubgridMemoryAccessorOwn<VariableType, SubgridType> prev,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> step1,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> fluxes,
+                                  typename variable_traits<VariableType>::float_type const* __restrict__ volumes,
+                                  typename variable_traits<VariableType>::float_type delta_t);
 
-  /// @brief Second substep of SSP-RK3 timestepping.
-  ///
-  /// @param [in]     prev          previous step variables.
-  /// @param [in]     step1         1st substep variables.
-  /// @param [out]    step2         2nd substep variables.
-  /// @param [in,out] fluxes        fluxes variables. The fluxes
-  ///                               are also set back to 0.
-  /// @param [in]     volume        local element volumes.
-  /// @param [in]     delta_t       timestep.
-  /// @param [in]     num_elements  number of local elements.
-  template<typename VariableType, typename SubgridType>
-  __global__ void SSP_3RK_step2(SubgridMemoryAccessorOwn<VariableType, SubgridType> prev,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> step1,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> step2,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> fluxes,
-                                typename variable_traits<VariableType>::float_type const* __restrict__ volumes,
-                                typename variable_traits<VariableType>::float_type delta_t);
+    /// @brief Second substep of SSP-RK3 timestepping.
+    ///
+    /// @param [in]     prev          previous step variables.
+    /// @param [in]     step1         1st substep variables.
+    /// @param [out]    step2         2nd substep variables.
+    /// @param [in,out] fluxes        fluxes variables. The fluxes
+    ///                               are also set back to 0.
+    /// @param [in]     volume        local element volumes.
+    /// @param [in]     delta_t       timestep.
+    /// @param [in]     num_elements  number of local elements.
+    template<typename VariableType, typename SubgridType>
+    __global__ void SSP_3RK_step2(SubgridMemoryAccessorOwn<VariableType, SubgridType> prev,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> step1,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> step2,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> fluxes,
+                                  typename variable_traits<VariableType>::float_type const* __restrict__ volumes,
+                                  typename variable_traits<VariableType>::float_type delta_t);
 
-  /// @brief Third substep of SSP-RK3 timestepping.
-  ///
-  /// @param [in]     prev          previous step variables.
-  /// @param [in]     step2         2nd substep variables.
-  /// @param [out]    next          next step variables.
-  /// @param [in,out] fluxes        fluxes variables. The fluxes
-  ///                               are also set back to 0.
-  /// @param [in]     volume        local element volumes.
-  /// @param [in]     delta_t       timestep.
-  /// @param [in]     num_elements  number of local elements.
-  template<typename VariableType, typename SubgridType>
-  __global__ void SSP_3RK_step3(SubgridMemoryAccessorOwn<VariableType, SubgridType> prev,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> step2,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> next,
-                                SubgridMemoryAccessorOwn<VariableType, SubgridType> fluxes,
-                                typename variable_traits<VariableType>::float_type const* __restrict__ volumes,
-                                typename variable_traits<VariableType>::float_type delta_t);
+    /// @brief Third substep of SSP-RK3 timestepping.
+    ///
+    /// @param [in]     prev          previous step variables.
+    /// @param [in]     step2         2nd substep variables.
+    /// @param [out]    next          next step variables.
+    /// @param [in,out] fluxes        fluxes variables. The fluxes
+    ///                               are also set back to 0.
+    /// @param [in]     volume        local element volumes.
+    /// @param [in]     delta_t       timestep.
+    /// @param [in]     num_elements  number of local elements.
+    template<typename VariableType, typename SubgridType>
+    __global__ void SSP_3RK_step3(SubgridMemoryAccessorOwn<VariableType, SubgridType> prev,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> step2,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> next,
+                                  SubgridMemoryAccessorOwn<VariableType, SubgridType> fluxes,
+                                  typename variable_traits<VariableType>::float_type const* __restrict__ volumes,
+                                  typename variable_traits<VariableType>::float_type delta_t);
 
-  }  // namespace t8gpu::timestepping::subgrid
+  }  // namespace subgrid
 
 }  // namespace t8gpu::timestepping
 
