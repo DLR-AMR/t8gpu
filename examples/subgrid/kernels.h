@@ -34,6 +34,20 @@ __global__ void compute_outer_fluxes(
     t8gpu::SubgridMemoryAccessorAll<VariableList, SubgridType>   variables,
     t8gpu::SubgridMemoryAccessorAll<VariableList, SubgridType>   fluxes);
 
+/// @brief This kernel computes the kepes flux at every boundary faces
+///        and adds every contribution to the fluxes variables. The
+///        flux variable must be set beforehand to zeros.
+///
+/// @param [in]  connectivity    face connectivity information.
+/// @param [in]  variables variables used to compute the fluxes.
+/// @param [out] fluxes    per subgrid element fluxes variables.
+template<typename SubgridType>
+__global__ void compute_boundary_fluxes(
+    typename t8gpu::SubgridMeshConnectivityAccessor<typename SubgridCompressibleEulerSolver<SubgridType>::float_type,
+                                                    SubgridType> connectivity,
+    t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>   variables,
+    t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>   fluxes);
+
 /// @brief This kernel computes the refinement criteria per element.
 ///
 /// @param [in] variables            variables used to compute

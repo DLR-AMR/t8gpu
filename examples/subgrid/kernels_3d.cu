@@ -18,6 +18,12 @@ template __global__ void compute_outer_fluxes<SubgridType>(
     t8gpu::SubgridMemoryAccessorAll<VariableList, SubgridType>   variables,
     t8gpu::SubgridMemoryAccessorAll<VariableList, SubgridType>   fluxes);
 
+template __global__ void compute_boundary_fluxes<SubgridType>(
+    typename t8gpu::SubgridMeshConnectivityAccessor<typename SubgridCompressibleEulerSolver<SubgridType>::float_type,
+                                                    SubgridType> connectivity,
+    t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>   variables,
+    t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>   fluxes);
+
 template __global__ void compute_refinement_criteria<SubgridType>(
     typename SubgridType::Accessor<typename SubgridCompressibleEulerSolver<SubgridType>::float_type> density,
     typename SubgridCompressibleEulerSolver<SubgridType>::float_type*       refinement_criteria,
