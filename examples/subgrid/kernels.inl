@@ -166,6 +166,16 @@ __device__ void rotate_state(
 }
 
 template<typename float_type>
+__device__ void reflect_state(
+    float_type n[3], float_type t1[3], float_type t2[3], float_type state[5], float_type state_rotated[5]) {
+  state_rotated[0] = state[0];
+  state_rotated[1] = -(state[1] * n[0] + state[2] * n[1] + state[3] * n[2]);
+  state_rotated[2] = state[1] * t1[0] + state[2] * t1[1] + state[3] * t1[2];
+  state_rotated[3] = state[1] * t2[0] + state[2] * t2[1] + state[3] * t2[2];
+  state_rotated[4] = state[4];
+}
+
+template<typename float_type>
 __device__ void inverse_rotate_state(
     float_type n[3], float_type t1[3], float_type t2[3], float_type state_rotated[5], float_type state[5]) {
   state[0] = state_rotated[0];
@@ -825,6 +835,202 @@ __global__ void compute_outer_fluxes(
 
     atomicAdd(&flux_rho_e_l(l_index, l_i, l_j), -flux[4] * surface);
     atomicAdd(&flux_rho_e_r(r_index, r_i, r_j), flux[4] * surface);
+  }
+}
+
+template<typename SubgridType>
+__global__ void compute_boundary_fluxes(
+    typename t8gpu::SubgridMeshConnectivityAccessor<typename SubgridCompressibleEulerSolver<SubgridType>::float_type,
+                                                    SubgridType> connectivity,
+    t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>   variables,
+    t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>   fluxes) {
+  using subgrid_type = SubgridType;
+  using float_type   = typename SubgridCompressibleEulerSolver<SubgridType>::float_type;
+
+  int const f_idx = blockIdx.x;
+
+  if constexpr (SubgridType::rank == 3) {
+    int const i = threadIdx.x;
+    int const j = threadIdx.y;
+
+    float_type face_surface = connectivity.get_boundary_face_surface(f_idx);
+
+    auto l_idx = connectivity.get_boundary_face_neighbor_index(f_idx);
+
+    auto [nx, ny, nz] = connectivity.get_boundary_face_normal(f_idx);
+
+    float_type n[3] = {nx, ny, nz};
+    float_type t1[3];
+    float_type t2[3];
+    complete_orthonormal_basis(n, t1, t2);
+
+    auto [rho, rho_v1, rho_v2, rho_v3, rho_e] = variables.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+
+    auto [flux_rho, flux_rho_v1, flux_rho_v2, flux_rho_v3, flux_rho_e] = fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+
+    int anchor_l[3] = {0, 0, 0};
+
+    int stride_i[3] = {0, 0, 0};
+    int stride_j[3] = {0, 0, 0};
+
+    if (nx == 1.0) {
+      anchor_l[0] = subgrid_type::template extent<0> - 1;
+
+      stride_i[1] = 1;
+      stride_j[2] = 1;
+    }
+    if (nx == -1.0) {
+      stride_i[1] = 1;
+      stride_j[2] = 1;
+    }
+
+    if (ny == 1.0) {
+      anchor_l[1] = subgrid_type::template extent<1> - 1;
+
+      stride_i[0] = 1;
+      stride_j[2] = 1;
+    }
+
+    if (ny == -1.0) {
+      stride_i[0] = 1;
+      stride_j[2] = 1;
+    }
+
+    if (nz == 1.0) {
+      anchor_l[2] = subgrid_type::template extent<2> - 1;
+
+      stride_i[0] = 1;
+      stride_j[1] = 1;
+    }
+
+    if (nz == -1.0) {
+      stride_i[0] = 1;
+      stride_j[1] = 1;
+    }
+
+    int l_i = anchor_l[0] + i * stride_i[0] + j * stride_j[0];
+    int l_j = anchor_l[1] + i * stride_i[1] + j * stride_j[1];
+    int l_k = anchor_l[2] + i * stride_i[2] + j * stride_j[2];
+
+    float_type variables_left[5] = {rho(l_idx, l_i, l_j, l_k),
+                                    rho_v1(l_idx, l_i, l_j, l_k),
+                                    rho_v2(l_idx, l_i, l_j, l_k),
+                                    rho_v3(l_idx, l_i, l_j, l_k),
+                                    rho_e(l_idx, l_i, l_j, l_k)};
+
+    float_type variables_right[5] = {rho(l_idx, l_i, l_j, l_k),
+                                     rho_v1(l_idx, l_i, l_j, l_k),
+                                     rho_v2(l_idx, l_i, l_j, l_k),
+                                     rho_v3(l_idx, l_i, l_j, l_k),
+                                     rho_e(l_idx, l_i, l_j, l_k)};
+
+    float_type variables_left_rotated[5];
+    float_type variables_right_rotated[5];
+
+    rotate_state(n, t1, t2, variables_left, variables_left_rotated);
+    reflect_state(n, t1, t2, variables_right, variables_right_rotated);
+
+    float_type flux_rotated[5];
+
+    compute_total_kepes_flux(variables_left_rotated, variables_right_rotated, flux_rotated);
+
+    float_type flux[5];
+
+    inverse_rotate_state(n, t1, t2, flux_rotated, flux);
+
+    float_type surface =
+        face_surface / static_cast<float_type>(subgrid_type::template extent<0> * subgrid_type::template extent<1>);
+
+    atomicAdd(&flux_rho(l_idx, l_i, l_j, l_k), -flux[0] * surface);
+
+    atomicAdd(&flux_rho_v1(l_idx, l_i, l_j, l_k), -flux[1] * surface);
+
+    atomicAdd(&flux_rho_v2(l_idx, l_i, l_j, l_k), -flux[2] * surface);
+
+    atomicAdd(&flux_rho_v3(l_idx, l_i, l_j, l_k), -flux[3] * surface);
+
+    atomicAdd(&flux_rho_e(l_idx, l_i, l_j, l_k), -flux[4] * surface);
+  } else {
+    int const i = threadIdx.x;
+
+    float_type face_surface = connectivity.get_boundary_face_surface(f_idx);
+
+    auto l_idx = connectivity.get_boundary_face_neighbor_index(f_idx);
+
+    auto [nx, ny] = connectivity.get_boundary_face_normal(f_idx);
+
+    float_type n[3] = {nx, ny, 0.0};
+    float_type t1[3];
+    float_type t2[3];
+    complete_orthonormal_basis(n, t1, t2);
+
+    auto [rho, rho_v1, rho_v2, rho_v3, rho_e] = variables.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+
+    auto [flux_rho, flux_rho_v1, flux_rho_v2, flux_rho_v3, flux_rho_e] = fluxes.get(Rho, Rho_v1, Rho_v2, Rho_v3, Rho_e);
+
+    int anchor_l[2] = {0, 0};
+
+    int stride_i[2] = {0, 0};
+
+    if (nx == 1.0) {
+      anchor_l[0] = subgrid_type::template extent<0> - 1;
+
+      stride_i[1] = 1;
+    }
+    if (nx == -1.0) {
+      stride_i[1] = 1;
+    }
+
+    if (ny == 1.0) {
+      anchor_l[1] = subgrid_type::template extent<1> - 1;
+
+      stride_i[0] = 1;
+    }
+
+    if (ny == -1.0) {
+      stride_i[0] = 1;
+    }
+
+    int l_i = anchor_l[0] + i * stride_i[0];
+    int l_j = anchor_l[1] + i * stride_i[1];
+
+    float_type variables_left[5] = {rho(l_idx, l_i, l_j),
+                                    rho_v1(l_idx, l_i, l_j),
+                                    rho_v2(l_idx, l_i, l_j),
+                                    rho_v3(l_idx, l_i, l_j),
+                                    rho_e(l_idx, l_i, l_j)};
+
+    float_type variables_right[5] = {rho(l_idx, l_i, l_j),
+                                     rho_v1(l_idx, l_i, l_j),
+                                     rho_v2(l_idx, l_i, l_j),
+                                     rho_v3(l_idx, l_i, l_j),
+                                     rho_e(l_idx, l_i, l_j)};
+
+    float_type variables_left_rotated[5];
+    float_type variables_right_rotated[5];
+
+    rotate_state(n, t1, t2, variables_left, variables_left_rotated);
+    reflect_state(n, t1, t2, variables_right, variables_right_rotated);
+
+    float_type flux_rotated[5];
+
+    compute_total_kepes_flux(variables_left_rotated, variables_right_rotated, flux_rotated);
+
+    float_type flux[5];
+
+    inverse_rotate_state(n, t1, t2, flux_rotated, flux);
+
+    float_type surface = face_surface / static_cast<float_type>(subgrid_type::template extent<0>);
+
+    atomicAdd(&flux_rho(l_idx, l_i, l_j), -flux[0] * surface);
+
+    atomicAdd(&flux_rho_v1(l_idx, l_i, l_j), -flux[1] * surface);
+
+    atomicAdd(&flux_rho_v2(l_idx, l_i, l_j), -flux[2] * surface);
+
+    atomicAdd(&flux_rho_v3(l_idx, l_i, l_j), -flux[3] * surface);
+
+    atomicAdd(&flux_rho_e(l_idx, l_i, l_j), -flux[4] * surface);
   }
 }
 
