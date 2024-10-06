@@ -2,6 +2,7 @@
 
 <p align="center">
   <img width="450px" src=AMR_example.png>
+  <img width="350px" src=AMR_subgrid_example.png>
 </p>
 
 A C++ finite volume header-only library using t8code targeting GPUs.
