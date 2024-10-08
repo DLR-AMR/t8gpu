@@ -260,6 +260,78 @@ __device__ void compute_total_kepes_flux(float_type u_L[5], float_type u_R[5], f
   for (size_t k = 0; k < 5; k++) flux[k] = F_star[k] - nc::half * diss_[k];
 }
 
+template<typename float_type>
+__device__ void compute_total_hll_flux(float_type u_L[5], float_type u_R[5], float_type flux[5]) {
+  float_type rho_l    = u_L[0];
+  float_type rho_v1_l = u_L[1];
+  float_type rho_v2_l = u_L[2];
+  float_type rho_v3_l = u_L[3];
+  float_type rho_e_l  = u_L[4];
+
+  float_type rho_r    = u_R[0];
+  float_type rho_v1_r = u_R[1];
+  float_type rho_v2_r = u_R[2];
+  float_type rho_v3_r = u_R[3];
+  float_type rho_e_r  = u_R[4];
+
+  float_type gamma = 1.4;
+
+  float_type v1_l = rho_v1_l/rho_l;
+  float_type v2_l = rho_v2_l/rho_l;
+  float_type v3_l = rho_v3_l/rho_l;
+  float_type p_l = (gamma-1)*(rho_e_l-nc::half*rho_l*(v1_l*v1_l + v2_l*v2_l + v3_l*v3_l));
+  float_type H_l = (rho_e_l+p_l)/rho_l;
+  float_type c_l = sqrt((gamma-1)*(H_l-nc::half*(v1_l*v1_l + v2_l*v2_l + v3_l*v3_l)));
+
+  float_type v1_r = rho_v1_r/rho_r;
+  float_type v2_r = rho_v2_r/rho_r;
+  float_type v3_r = rho_v3_r/rho_r;
+  float_type p_r = (gamma-nc::one)*(rho_e_r-nc::half*rho_r*(v1_r*v1_r + v2_r*v2_r + v3_r*v3_r));
+  float_type H_r = (rho_e_r+p_r)/rho_r;
+  float_type c_r = sqrt((gamma-nc::one)*(H_r-nc::half*(v1_r*v1_r + v2_r*v2_r + v3_r*v3_r)));
+
+  float_type sqrt_rho_l = sqrt(rho_l);
+  float_type sqrt_rho_r = sqrt(rho_r);
+  float_type sum_weights = sqrt_rho_l+sqrt_rho_r;
+
+  float_type v1_roe = (sqrt_rho_l*v1_l+sqrt_rho_r*v1_r)/sum_weights;
+  float_type v2_roe = (sqrt_rho_l*v2_l+sqrt_rho_r*v2_r)/sum_weights;
+  float_type v3_roe = (sqrt_rho_l*v3_l+sqrt_rho_r*v3_r)/sum_weights;
+  float_type H_roe = (sqrt_rho_l*H_l+sqrt_rho_r*H_r)/sum_weights;
+  float_type c_roe = sqrt((gamma-nc::one)*(H_roe-nc::half*(v1_roe*v1_roe + v2_roe*v2_roe + v3_roe*v3_roe)));
+
+  float_type S_l = min(v1_roe-c_roe, v1_l-c_l);
+  float_type S_r = max(v1_roe+c_roe, v1_r+c_r);
+
+  float_type F_l[5] = {rho_v1_l,
+    rho_v1_l*rho_v1_l/rho_l + p_l,
+    rho_v1_l*v2_l,
+    rho_v1_l*v3_l,
+    rho_v1_l*H_l};
+
+  float_type F_r[5] = {rho_v1_r,
+    rho_v1_r*rho_v1_r/rho_r + p_r,
+    rho_v1_r*v2_r,
+    rho_v1_r*v3_r,
+    rho_v1_r*H_r};
+
+  float_type S_l_clamp = min(S_l, nc::zero);
+  float_type S_r_clamp = max(S_r, nc::zero);
+
+  float_type rho_flux    = ((S_r_clamp*F_l[0]-S_l_clamp*F_r[0])+S_r_clamp*S_l_clamp*(rho_r-rho_l))/(S_r_clamp-S_l_clamp);
+  float_type rho_v1_flux = ((S_r_clamp*F_l[1]-S_l_clamp*F_r[1])+S_r_clamp*S_l_clamp*(rho_v1_r-rho_v1_l))/(S_r_clamp-S_l_clamp);
+  float_type rho_v2_flux = ((S_r_clamp*F_l[2]-S_l_clamp*F_r[2])+S_r_clamp*S_l_clamp*(rho_v2_r-rho_v2_l))/(S_r_clamp-S_l_clamp);
+  float_type rho_v3_flux = ((S_r_clamp*F_l[3]-S_l_clamp*F_r[3])+S_r_clamp*S_l_clamp*(rho_v3_r-rho_v3_l))/(S_r_clamp-S_l_clamp);
+  float_type rho_e_flux  = ((S_r_clamp*F_l[4]-S_l_clamp*F_r[4])+S_r_clamp*S_l_clamp*(rho_e_r-rho_e_l))/(S_r_clamp-S_l_clamp);
+
+  flux[0] = rho_flux;
+  flux[1] = rho_v1_flux;
+  flux[2] = rho_v2_flux;
+  flux[3] = rho_v3_flux;
+  flux[4] = rho_e_flux;
+}
+
+
 template<typename SubgridType>
 __global__ void compute_inner_fluxes(t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>              variables,
                                      t8gpu::SubgridMemoryAccessorOwn<VariableList, SubgridType>              fluxes,
