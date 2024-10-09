@@ -175,6 +175,8 @@ void SubgridCompressibleEulerSolver<SubgridType>::iterate(float_type delta_t) {
                                                  m_mesh_manager.get_own_variables(Fluxes));
   }
   T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
 
   compute_outer_fluxes<SubgridType><<<dim_grid_face, dim_block_face>>>(m_mesh_manager.get_connectivity_information(),
                                                                        m_mesh_manager.get_all_variables(prev),
@@ -207,6 +209,8 @@ void SubgridCompressibleEulerSolver<SubgridType>::iterate(float_type delta_t) {
                                                  m_mesh_manager.get_own_variables(Fluxes));
   }
   T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
 
   compute_outer_fluxes<SubgridType><<<dim_grid_face, dim_block_face>>>(m_mesh_manager.get_connectivity_information(),
                                                                        m_mesh_manager.get_all_variables(Step1),
@@ -230,8 +234,6 @@ void SubgridCompressibleEulerSolver<SubgridType>::iterate(float_type delta_t) {
                                                              m_mesh_manager.get_own_variables(Fluxes),
                                                              m_mesh_manager.get_own_volume());
   T8GPU_CUDA_CHECK_LAST_ERROR();
-  cudaDeviceSynchronize();
-  MPI_Barrier(m_comm);
 
   if (num_boundary_faces > 0) {
     compute_boundary_fluxes<SubgridType>
@@ -240,6 +242,8 @@ void SubgridCompressibleEulerSolver<SubgridType>::iterate(float_type delta_t) {
                                                  m_mesh_manager.get_own_variables(Fluxes));
   }
   T8GPU_CUDA_CHECK_LAST_ERROR();
+  cudaDeviceSynchronize();
+  MPI_Barrier(m_comm);
 
   compute_outer_fluxes<SubgridType><<<dim_grid_face, dim_block_face>>>(m_mesh_manager.get_connectivity_information(),
                                                                        m_mesh_manager.get_all_variables(Step2),
