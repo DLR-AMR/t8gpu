@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
   {
     size_t           dim    = 3;
     sc_MPI_Comm      comm   = MPI_COMM_WORLD;
-    t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();
+    t8_scheme*       scheme = t8_scheme_new_default();
     t8_cmesh_t       cmesh  = t8_cmesh_new_prismed_spherical_shell_icosahedron(0.8, 0.2, 2, 1, comm);
     t8_forest_t      forest = t8_forest_new_uniform(cmesh, scheme, 2, true, comm);
 

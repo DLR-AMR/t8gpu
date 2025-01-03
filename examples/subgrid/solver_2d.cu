@@ -1,7 +1,7 @@
 #define SOLVER_INCLUDE_IMPLEMENTATION
 #include "solver.h"
 
-using SubgridType = t8gpu::Subgrid<4, 4>;
+using SubgridType = t8gpu::Subgrid<16, 16>;
 
 // We explicitely instantiate the solver type for the 2D subgrid in a
 // separate compilation unit for better compilation speed (instead of

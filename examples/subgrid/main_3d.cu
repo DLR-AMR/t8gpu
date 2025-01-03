@@ -29,11 +29,10 @@ int main(int argc, char* argv[]) {
                                           SubgridMeshManager<VariableList, StepList, SubgridType>::max_level +
                                               t8gpu::meta::log2_v<SubgridType::template extent<0>>));
 
-    sc_MPI_Comm      comm   = MPI_COMM_WORLD;
-    t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();
-    t8_cmesh_t       cmesh  = t8_cmesh_new_periodic(comm, SubgridType::rank);
-    t8_forest_t      forest = t8_forest_new_uniform(cmesh, scheme, 4, true, comm);
-    // t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 2, true, comm);
+    sc_MPI_Comm comm   = MPI_COMM_WORLD;
+    t8_scheme*  scheme = t8_scheme_new_default();
+    t8_cmesh_t  cmesh  = t8_cmesh_new_periodic(comm, SubgridType::rank);
+    t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 4, true, comm);
 
     SubgridCompressibleEulerSolver<SubgridType> solver{comm, scheme, cmesh, forest};
 

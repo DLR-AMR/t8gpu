@@ -41,7 +41,7 @@ class SubgridCompressibleEulerSolver {
   /// This class takes ownership of the cmesh and forest given and
   /// the constructor computes the necessary face information and
   /// allocates space to store all of the variables.
-  SubgridCompressibleEulerSolver(sc_MPI_Comm comm, t8_scheme_cxx_t* scheme, t8_cmesh_t cmesh, t8_forest_t forest);
+  SubgridCompressibleEulerSolver(sc_MPI_Comm comm, t8_scheme* scheme, t8_cmesh_t cmesh, t8_forest_t forest);
 
   /// @brief Destructor.
   ///
