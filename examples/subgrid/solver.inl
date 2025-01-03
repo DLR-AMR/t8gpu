@@ -104,10 +104,10 @@ __global__ std::enable_if_t<SubgridType::rank == 2, void> initialize_variables(
 }
 
 template<typename SubgridType>
-SubgridCompressibleEulerSolver<SubgridType>::SubgridCompressibleEulerSolver(sc_MPI_Comm      comm,
-                                                                            t8_scheme_cxx_t* scheme,
-                                                                            t8_cmesh_t       cmesh,
-                                                                            t8_forest_t      forest)
+SubgridCompressibleEulerSolver<SubgridType>::SubgridCompressibleEulerSolver(sc_MPI_Comm comm,
+                                                                            t8_scheme*  scheme,
+                                                                            t8_cmesh_t  cmesh,
+                                                                            t8_forest_t forest)
     : m_comm{comm},
       m_mesh_manager{comm, scheme, cmesh, forest},
       m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() +
@@ -119,8 +119,8 @@ SubgridCompressibleEulerSolver<SubgridType>::SubgridCompressibleEulerSolver(sc_M
 
   t8_locidx_t element_idx = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t         tree_class{t8_forest_get_tree_class(forest, tree_idx)};
-    t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(forest, tree_class)};
+    t8_eclass_t tree_class{t8_forest_get_tree_class(forest, tree_idx)};
+    t8_scheme*  scheme{t8_forest_get_scheme(forest)};
 
     t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
@@ -132,7 +132,7 @@ SubgridCompressibleEulerSolver<SubgridType>::SubgridCompressibleEulerSolver(sc_M
       centers[3 * element_idx + 1] = static_cast<float_type>(center[1]);
       centers[3 * element_idx + 2] = static_cast<float_type>(center[2]);
 
-      levels[element_idx] = eclass_scheme->t8_element_level(element);
+      levels[element_idx] = scheme->element_get_level(tree_class, element);
 
       element_idx++;
     }

@@ -1,7 +1,7 @@
 #define KERNELS_INCLUDE_IMPLEMENTATION
 #include "kernels.h"
 
-using SubgridType = t8gpu::Subgrid<4, 4>;
+using SubgridType = t8gpu::Subgrid<16, 16>;
 
 // We explicitely instantiate the kernel functions for the 2D subgrid
 // in a separate compilation unit for better compilation speed

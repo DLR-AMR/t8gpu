@@ -1,3 +1,4 @@
+
 #include <cstdio>
 #include <string>
 
@@ -21,18 +22,18 @@ int main(int argc, char* argv[]) {
   // We create a dummy frame so that destructors of solver class are
   // called before MPI finalize.
   {
-    using SubgridType = Subgrid<4, 4>;
+    using SubgridType = Subgrid<16, 16>;
     using float_type  = typename SubgridCompressibleEulerSolver<SubgridType>::float_type;
 
     float_type delta_t =
-        static_cast<float_type>(0.1 * pow(0.5,
+        static_cast<float_type>(0.05 * pow(0.5,
                                           SubgridMeshManager<VariableList, StepList, SubgridType>::max_level +
                                               t8gpu::meta::log2_v<SubgridType::template extent<0>>));
 
-    sc_MPI_Comm      comm   = MPI_COMM_WORLD;
-    t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();
-    t8_cmesh_t       cmesh  = t8_cmesh_new_periodic(comm, SubgridType::rank);
-    t8_forest_t      forest = t8_forest_new_uniform(cmesh, scheme, 4, true, comm);
+    sc_MPI_Comm comm   = MPI_COMM_WORLD;
+    t8_scheme*  scheme = t8_scheme_new_default();
+    t8_cmesh_t  cmesh  = t8_cmesh_new_periodic(comm, SubgridType::rank);
+    t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 8, true, comm);
 
     SubgridCompressibleEulerSolver<SubgridType> solver{comm, scheme, cmesh, forest};
 

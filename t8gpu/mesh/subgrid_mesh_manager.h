@@ -285,7 +285,7 @@ namespace t8gpu {
     ///
     /// This constructor initializes a MeshManager class taking
     /// ownership of the coarse mesh cmesh and forest.
-    SubgridMeshManager(sc_MPI_Comm comm, t8_scheme_cxx_t* scheme, t8_cmesh_t cmesh, t8_forest_t forest);
+    SubgridMeshManager(sc_MPI_Comm comm, t8_scheme* scheme, t8_cmesh_t cmesh, t8_forest_t forest);
 
     /// @brief Destructor of the MeshManager class.
     ///
@@ -465,12 +465,12 @@ namespace t8gpu {
     /// We make the base class resize member function private.
     using SubgridMemoryManager<VariableType, StepType, SubgridType>::resize;
 
-    sc_MPI_Comm      m_comm;
-    int              m_rank;
-    int              m_nb_ranks;
-    t8_scheme_cxx_t* m_scheme;
-    t8_cmesh_t       m_cmesh;
-    t8_forest_t      m_forest;
+    sc_MPI_Comm m_comm;
+    int         m_rank;
+    int         m_nb_ranks;
+    t8_scheme*  m_scheme;
+    t8_cmesh_t  m_cmesh;
+    t8_forest_t m_forest;
 
     t8_locidx_t m_num_local_elements;
     t8_locidx_t m_num_ghost_elements;
@@ -498,14 +498,15 @@ namespace t8gpu {
       thrust::host_vector<float_type>* element_refinement_criteria;
     };
 
-    static int adapt_callback_iteration(t8_forest_t         forest,
-                                        t8_forest_t         forest_from,
-                                        t8_locidx_t         which_tree,
-                                        t8_locidx_t         lelement_id,
-                                        t8_eclass_scheme_c* ts,
-                                        int const           is_family,
-                                        int const           num_elements,
-                                        t8_element_t*       elements[]);
+    static int adapt_callback_iteration(t8_forest_t        forest,
+                                        t8_forest_t        forest_from,
+                                        t8_locidx_t        which_tree,
+					t8_eclass_t const  tree_class,
+                                        t8_locidx_t        lelement_id,
+                                        t8_scheme_c const* ts,
+                                        int const          is_family,
+                                        int const          num_elements,
+                                        t8_element_t*      elements[]);
   };
 }  // namespace t8gpu
 
