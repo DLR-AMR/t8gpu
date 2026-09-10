@@ -21,14 +21,17 @@ target_include_directories(t8gpu
     $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>)
 
+# Compile options for C/C++ only (not for CUDA)
+# CUDA's nvcc doesn't support GCC-style warning flags like -Wextra, -Werror
 target_compile_options(t8gpu
   INTERFACE
-    -Wall
-    -Wextra
-    -Wno-unused-parameter
-    -Wconversion
-    $<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>
-    --expt-relaxed-constexpr)
+    $<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:
+      -Wall
+      -Wextra
+      -Wno-unused-parameter
+      -Wconversion
+      --expt-relaxed-constexpr
+    >)
 
 find_package(T8CODE REQUIRED)
 target_link_libraries(t8gpu INTERFACE T8CODE::T8)
