@@ -105,11 +105,10 @@ __global__ std::enable_if_t<SubgridType::rank == 2, void> initialize_variables(
 
 template<typename SubgridType>
 SubgridCompressibleEulerSolver<SubgridType>::SubgridCompressibleEulerSolver(sc_MPI_Comm      comm,
-                                                                            t8_scheme_cxx_t* scheme,
                                                                             t8_cmesh_t       cmesh,
                                                                             t8_forest_t      forest)
     : m_comm{comm},
-      m_mesh_manager{comm, scheme, cmesh, forest},
+      m_mesh_manager{comm, cmesh, forest},
       m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() +
                                    m_mesh_manager.get_num_local_boundary_faces()) {
   t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(forest);
@@ -118,13 +117,13 @@ SubgridCompressibleEulerSolver<SubgridType>::SubgridCompressibleEulerSolver(sc_M
   thrust::host_vector<t8_locidx_t> levels(m_mesh_manager.get_num_local_elements());
 
   t8_locidx_t element_idx = 0;
+  const t8_scheme* scheme = t8_forest_get_scheme(forest);
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
     t8_eclass_t         tree_class{t8_forest_get_tree_class(forest, tree_idx)};
-    t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_leaf_elements(forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      t8_element_t const* element{t8_forest_get_element_in_tree(forest, tree_idx, tree_element_idx)};
+      t8_element_t const* element{t8_forest_get_leaf_element_in_tree(forest, tree_idx, tree_element_idx)};
 
       double center[3];
       t8_forest_element_centroid(forest, tree_idx, element, center);
@@ -132,7 +131,7 @@ SubgridCompressibleEulerSolver<SubgridType>::SubgridCompressibleEulerSolver(sc_M
       centers[3 * element_idx + 1] = static_cast<float_type>(center[1]);
       centers[3 * element_idx + 2] = static_cast<float_type>(center[2]);
 
-      levels[element_idx] = eclass_scheme->t8_element_level(element);
+      levels[element_idx] = scheme->element_get_level(tree_class, element);
 
       element_idx++;
     }

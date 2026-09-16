@@ -29,12 +29,14 @@ int main(int argc, char* argv[]) {
                                           SubgridMeshManager<VariableList, StepList, SubgridType>::max_level +
                                               t8gpu::meta::log2_v<SubgridType::template extent<0>>));
 
-    sc_MPI_Comm      comm   = MPI_COMM_WORLD;
-    t8_scheme_cxx_t* scheme = t8_scheme_new_default_cxx();
-    t8_cmesh_t       cmesh  = t8_cmesh_new_periodic(comm, SubgridType::rank);
-    t8_forest_t      forest = t8_forest_new_uniform(cmesh, scheme, 4, true, comm);
+    sc_MPI_Comm comm = MPI_COMM_WORLD;
+    const t8_scheme* scheme = t8_scheme_new_default();
+    t8_cmesh_t cmesh;
+    t8_cmesh_init(&cmesh);
+    t8_cmesh_new_periodic(cmesh, comm, SubgridType::rank);
+    t8_forest_t forest = t8_forest_new_uniform(cmesh, scheme, 4, 1, comm);
 
-    SubgridCompressibleEulerSolver<SubgridType> solver{comm, scheme, cmesh, forest};
+    SubgridCompressibleEulerSolver<SubgridType> solver{comm, cmesh, forest};
 
     for (int it = 0; it < 4'000; it++) {
       if (it % 50 == 0) {

@@ -8,9 +8,9 @@
 #include <t8gpu/utils/profiling.h>
 
 #include <t8.h>
-#include <t8_cmesh.h>
+#include <t8_cmesh/t8_cmesh.h>
 #include <t8_cmesh/t8_cmesh_examples.h>
-#include <t8_element_c_interface.h>
+#include <t8_element/t8_element.h>
 #include <t8_forest/t8_forest.h>
 #include <t8_forest/t8_forest_io.h>
 #include <t8_forest/t8_forest_iterate.h>
@@ -19,20 +19,19 @@
 
 template<typename VariableType, typename StepType, size_t dim>
 t8gpu::MeshManager<VariableType, StepType, dim>::MeshManager(sc_MPI_Comm      comm,
-                                                             t8_scheme_cxx_t* scheme,
                                                              t8_cmesh_t       cmesh,
                                                              t8_forest_t      forest)
     : m_comm{comm},
-      m_scheme{scheme},
+      m_scheme{t8_forest_get_scheme (forest)},
       m_cmesh{cmesh},
       m_forest{forest},
-      t8gpu::MemoryManager<VariableType, StepType>{static_cast<size_t>(t8_forest_get_local_num_elements(forest)),
+      t8gpu::MemoryManager<VariableType, StepType>{static_cast<size_t>(t8_forest_get_local_num_leaf_elements(forest)),
                                                    comm} {
   MPI_Comm_size(m_comm, &m_nb_ranks);
   MPI_Comm_rank(m_comm, &m_rank);
 
   m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
-  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_leaf_elements(m_forest);
 
   m_ranks.resize(m_num_local_elements + m_num_ghost_elements);
   m_indices.resize(m_num_local_elements + m_num_ghost_elements);
@@ -91,12 +90,10 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::initialize_variables(Func 
   t8_locidx_t num_local_trees = t8_forest_get_num_local_trees(m_forest);
   t8_locidx_t element_idx     = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
-    t8_eclass_t         tree_class{t8_forest_get_tree_class(m_forest, tree_idx)};
-    t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(m_forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(m_forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_leaf_elements(m_forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      t8_element_t const* element{t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
+      t8_element_t const* element{t8_forest_get_leaf_element_in_tree(m_forest, tree_idx, tree_element_idx)};
 
       element_volume[element_idx] = static_cast<float_type>(t8_forest_element_volume(m_forest, tree_idx, element));
       func(host_variable_memory, m_forest, tree_idx, element, element_idx);
@@ -125,16 +122,16 @@ template<typename VariableType, typename StepType, size_t dim>
 int t8gpu::MeshManager<VariableType, StepType, dim>::adapt_callback_iteration(t8_forest_t         forest,
                                                                               t8_forest_t         forest_from,
                                                                               t8_locidx_t         which_tree,
+                                                                              const t8_eclass_t   tree_class,
                                                                               t8_locidx_t         lelement_id,
-                                                                              t8_eclass_scheme_c* ts,
+                                                                              const t8_scheme* ts,
                                                                               int const           is_family,
                                                                               int const           num_elements,
                                                                               t8_element_t*       elements[]) {
   t8gpu::MeshManager<VariableType, StepType, dim>::UserData* forest_user_data =
       static_cast<t8gpu::MeshManager<VariableType, StepType, dim>::UserData*>(t8_forest_get_user_data(forest_from));
   assert(forest_user_data != nullptr);
-
-  t8_locidx_t element_level{ts->t8_element_level(elements[0])};
+  t8_locidx_t element_level{ts->element_get_level(tree_class, elements[0])};
 
   t8_locidx_t tree_offset = t8_forest_get_tree_element_offset(forest_from, which_tree);
 
@@ -214,8 +211,8 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::adapt(
   t8_locidx_t old_idx = 0;
   t8_locidx_t new_idx = 0;
 
-  t8_locidx_t num_new_elements{t8_forest_get_local_num_elements(adapted_forest)};
-  t8_locidx_t num_old_elements{t8_forest_get_local_num_elements(m_forest)};
+  t8_locidx_t num_new_elements{t8_forest_get_local_num_leaf_elements(adapted_forest)};
+  t8_locidx_t num_old_elements{t8_forest_get_local_num_leaf_elements(m_forest)};
 
   thrust::host_vector<float_type>  adapted_element_variable(num_new_elements);
   thrust::host_vector<float_type>  adapted_element_volume(num_new_elements);
@@ -226,17 +223,18 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::adapt(
 
   t8_locidx_t num_old_local_trees = {t8_forest_get_num_local_trees(m_forest)};
   t8_locidx_t num_new_local_trees = {t8_forest_get_num_local_trees(m_forest)};
+  const t8_scheme* old_scheme = t8_forest_get_scheme(m_forest);
+  const t8_scheme* new_scheme = t8_forest_get_scheme(adapted_forest);
 
   t8_locidx_t current_idx = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_old_local_trees; tree_idx++) {
     t8_eclass_t         old_tree_class{t8_forest_get_tree_class(m_forest, tree_idx)};
-    t8_eclass_scheme_c* old_scheme = {t8_forest_get_eclass_scheme(m_forest, old_tree_class)};
 
-    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(m_forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_leaf_elements(m_forest, tree_idx)};
 
     for (t8_locidx_t elem_idx = 0; elem_idx < num_elements_in_tree; elem_idx++) {
-      t8_element_t const* element{t8_forest_get_element_in_tree(m_forest, tree_idx, elem_idx)};
-      old_levels[current_idx] = old_scheme->t8_element_level(element);
+      t8_element_t const* element{t8_forest_get_leaf_element_in_tree(m_forest, tree_idx, elem_idx)};
+      old_levels[current_idx] = old_scheme->element_get_level(old_tree_class, element);
       current_idx++;
     }
   }
@@ -244,13 +242,12 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::adapt(
   current_idx = 0;
   for (t8_locidx_t tree_idx = 0; tree_idx < num_new_local_trees; tree_idx++) {
     t8_eclass_t         new_tree_class{t8_forest_get_tree_class(adapted_forest, tree_idx)};
-    t8_eclass_scheme_c* new_scheme = {t8_forest_get_eclass_scheme(adapted_forest, new_tree_class)};
 
-    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(adapted_forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_leaf_elements(adapted_forest, tree_idx)};
 
     for (t8_locidx_t elem_idx = 0; elem_idx < num_elements_in_tree; elem_idx++) {
-      t8_element_t const* element{t8_forest_get_element_in_tree(adapted_forest, tree_idx, elem_idx)};
-      new_levels[current_idx] = new_scheme->t8_element_level(element);
+      t8_element_t const* element{t8_forest_get_leaf_element_in_tree(adapted_forest, tree_idx, elem_idx)};
+      new_levels[current_idx] = new_scheme->element_get_level(new_tree_class, element);
       current_idx++;
     }
   }
@@ -326,7 +323,7 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::adapt(
   m_forest = adapted_forest;
 
   m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
-  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_leaf_elements(m_forest);
 }
 
 template<typename VariableType, typename StepType, size_t dim>
@@ -367,21 +364,21 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
 
   t8_locidx_t num_local_trees{t8_forest_get_num_local_trees(m_forest)};
   t8_locidx_t element_idx = 0;
+  const t8_scheme* scheme{t8_forest_get_scheme(m_forest)};
   for (t8_locidx_t tree_idx = 0; tree_idx < num_local_trees; tree_idx++) {
     t8_eclass_t         tree_class = t8_forest_get_tree_class(m_forest, tree_idx);
-    t8_eclass_scheme_c* eclass_scheme{t8_forest_get_eclass_scheme(m_forest, tree_class)};
 
-    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_elements(m_forest, tree_idx)};
+    t8_locidx_t num_elements_in_tree{t8_forest_get_tree_num_leaf_elements(m_forest, tree_idx)};
     for (t8_locidx_t tree_element_idx = 0; tree_element_idx < num_elements_in_tree; tree_element_idx++) {
-      t8_element_t const* element{t8_forest_get_element_in_tree(m_forest, tree_idx, tree_element_idx)};
+      t8_element_t const* element{t8_forest_get_leaf_element_in_tree(m_forest, tree_idx, tree_element_idx)};
 
-      t8_locidx_t num_faces{eclass_scheme->t8_element_num_faces(element)};
+      t8_locidx_t num_faces{scheme->element_get_num_faces(tree_class, element)};
       for (t8_locidx_t face_idx = 0; face_idx < num_faces; face_idx++) {
         int                 num_neighbors{};
         int*                dual_faces{};
         t8_locidx_t*        neighbor_ids{};
-        t8_element_t**      neighbors{};
-        t8_eclass_scheme_c* neigh_scheme{};
+        const t8_element_t**      neighbors{};
+        t8_eclass_t         neighbor_eclass;
         t8_forest_leaf_face_neighbors(m_forest,
                                       tree_idx,
                                       element,
@@ -390,8 +387,7 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
                                       &dual_faces,
                                       &num_neighbors,
                                       &neighbor_ids,
-                                      &neigh_scheme,
-                                      true);
+                                      &neighbor_eclass);
 
         for (int i = 0; i < num_neighbors; i++) {
           if (neighbor_ids[i] >= m_num_local_elements && m_rank < m_ranks[neighbor_ids[i]]) {
@@ -408,21 +404,21 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::compute_connectivity_infor
           }
         }
 
-        if ((num_neighbors == 1) && (neighbor_ids[0] < m_num_local_elements) &&
-            ((neighbor_ids[0] > element_idx) ||
-             (neighbor_ids[0] < element_idx &&
-              neigh_scheme[0].t8_element_level(neighbors[0]) < eclass_scheme->t8_element_level(element)))) {
-          face_neighbors.push_back(element_idx);
-          face_neighbors.push_back(neighbor_ids[0]);
-          double face_normal[dim];
-          t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
-          for (size_t k = 0; k < dim; k++) {
-            face_normals.push_back(static_cast<float_type>(face_normal[k]));
+        if (num_neighbors == 1 && neighbor_ids[0] < m_num_local_elements) {
+          if ((neighbor_ids[0] > element_idx) ||
+              (neighbor_ids[0] < element_idx &&
+               scheme->element_get_level(neighbor_eclass, neighbors[0]) < scheme->element_get_level(tree_class, element))) {
+            face_neighbors.push_back(element_idx);
+            face_neighbors.push_back(neighbor_ids[0]);
+            double face_normal[dim];
+            t8_forest_element_face_normal(m_forest, tree_idx, element, face_idx, face_normal);
+            for (size_t k = 0; k < dim; k++) {
+              face_normals.push_back(static_cast<float_type>(face_normal[k]));
+            }
+            face_area.push_back(
+                static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)));
           }
-          face_area.push_back(
-              static_cast<float_type>(t8_forest_element_face_area(m_forest, tree_idx, element, face_idx)));
         }
-        neigh_scheme->t8_element_destroy(num_neighbors, neighbors);
         T8_FREE(neighbors);
 
         T8_FREE(dual_faces);
@@ -652,8 +648,8 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::partition(step_index_type 
   t8_forest_set_ghost(partitioned_forest, true, T8_GHOST_FACES);
   t8_forest_commit(partitioned_forest);
 
-  t8_locidx_t num_old_elements{t8_forest_get_local_num_elements(m_forest)};
-  t8_locidx_t num_new_elements{t8_forest_get_local_num_elements(partitioned_forest)};
+  t8_locidx_t num_old_elements{t8_forest_get_local_num_leaf_elements(m_forest)};
+  t8_locidx_t num_new_elements{t8_forest_get_local_num_leaf_elements(partitioned_forest)};
 
   thrust::host_vector<t8_locidx_t> old_ranks(num_old_elements);
   thrust::host_vector<t8_locidx_t> old_indices(num_old_elements);
@@ -719,5 +715,5 @@ void t8gpu::MeshManager<VariableType, StepType, dim>::partition(step_index_type 
   m_forest = partitioned_forest;
 
   m_num_ghost_elements = t8_forest_get_num_ghosts(m_forest);
-  m_num_local_elements = t8_forest_get_local_num_elements(m_forest);
+  m_num_local_elements = t8_forest_get_local_num_leaf_elements(m_forest);
 }

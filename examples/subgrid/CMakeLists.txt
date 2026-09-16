@@ -29,14 +29,6 @@ if (T8CODE_ENABLE_MPI)
     find_package(MPI REQUIRED)
   endif()
   
-  # The MPI::MPI_C target might not include the library, so we need to add it explicitly
-  # Add the MPI library directory to the linker search path and link the specific version
-  link_directories(/tools/modulesystem/spack-25.1/opt/spack/linux-ubuntu22.04-x86_64_v3/gcc-13.3.0/mpich-4.2.3-giqqbpyfhaqbg5fnkbotl5zbnwi7efak/lib)
-  
-  # Link to MPI::MPI_C for includes and explicitly link the MPI library
-  # Use the full path to ensure we get the correct version (libmpi.so.12)
-  target_link_libraries(subgrid_2d MPI::MPI_C /tools/modulesystem/spack-25.1/opt/spack/linux-ubuntu22.04-x86_64_v3/gcc-13.3.0/mpich-4.2.3-giqqbpyfhaqbg5fnkbotl5zbnwi7efak/lib/libmpi.so.12)
-  target_link_libraries(subgrid_3d MPI::MPI_C /tools/modulesystem/spack-25.1/opt/spack/linux-ubuntu22.04-x86_64_v3/gcc-13.3.0/mpich-4.2.3-giqqbpyfhaqbg5fnkbotl5zbnwi7efak/lib/libmpi.so.12)
 endif()
 
 # If t8code uses MPI, we need to ensure MPI include directories are available to CUDA
