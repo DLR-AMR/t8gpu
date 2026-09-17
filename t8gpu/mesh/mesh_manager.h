@@ -8,7 +8,7 @@
 
 #include <t8.h>
 #include <t8_forest/t8_forest.h>
-#include <t8_vtk.h>
+#include <t8_vtk/t8_vtk.h>
 #include <t8gpu/memory/memory_manager.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
@@ -244,13 +244,12 @@ namespace t8gpu {
     /// @brief Constructor of the MeshManager class.
     ///
     /// @param [in]   comm   specifies the MPI communicator to use.
-    /// @param [in]   scheme specifies the t8code scheme used.
     /// @param [in]   cmesh  specifies the t8code cmesh used.
     /// @param [in]   forest specifies the t8code forest.
     ///
     /// This constructor initializes a MeshManager class taking
     /// ownership of the coarse mesh cmesh and forest.
-    MeshManager(sc_MPI_Comm comm, t8_scheme_cxx_t* scheme, t8_cmesh_t cmesh, t8_forest_t forest);
+    MeshManager(sc_MPI_Comm comm, t8_cmesh_t cmesh, t8_forest_t forest);
 
     /// @brief Destructor of the MeshManager class.
     ///
@@ -427,7 +426,7 @@ namespace t8gpu {
     sc_MPI_Comm      m_comm;
     int              m_rank;
     int              m_nb_ranks;
-    t8_scheme_cxx_t* m_scheme;
+    const t8_scheme*       m_scheme;
     t8_cmesh_t       m_cmesh;
     t8_forest_t      m_forest;
 
@@ -457,8 +456,9 @@ namespace t8gpu {
     static int adapt_callback_iteration(t8_forest_t         forest,
                                         t8_forest_t         forest_from,
                                         t8_locidx_t         which_tree,
+                                        const t8_eclass_t tree_class,
                                         t8_locidx_t         lelement_id,
-                                        t8_eclass_scheme_c* ts,
+                                        const t8_scheme* ts,
                                         int const           is_family,
                                         int const           num_elements,
                                         t8_element_t*       elements[]);

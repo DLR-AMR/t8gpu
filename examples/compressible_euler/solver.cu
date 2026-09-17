@@ -7,11 +7,10 @@
 using namespace t8gpu;
 
 CompressibleEulerSolver::CompressibleEulerSolver(sc_MPI_Comm      comm,
-                                                 t8_scheme_cxx_t* scheme,
                                                  t8_cmesh_t       cmesh,
                                                  t8_forest_t      forest)
     : m_comm{comm},
-      m_mesh_manager{comm, scheme, cmesh, forest},
+      m_mesh_manager{comm, cmesh, forest},
       m_device_face_speed_estimate(m_mesh_manager.get_num_local_faces() +
                                    m_mesh_manager.get_num_local_boundary_faces()) {
   m_mesh_manager.initialize_variables([](MemoryAccessorOwn<VariableList>& accessor,
