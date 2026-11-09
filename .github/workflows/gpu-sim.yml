@@ -1,0 +1,97 @@
+name: CUDA on simulated H100
+
+# Optional, non-required check. The hosted runners have no GPU, so this builds
+# t8code and the t8gpu examples with CUDA and runs a few time steps of two of
+# them on one MPI rank on a simulated NVIDIA H100
+# (https://github.com/pantheongpu/pantheonsim). A simulator cannot reproduce
+# hardware-specific behavior or timing, so it complements real-GPU testing and
+# does not replace it.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "t8gpu/**"
+      - "examples/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/gpu-sim.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  T8CODE_VERSION: v3.0.0
+
+jobs:
+  build-and-run:
+    name: CUDA 13.0 on simulated H100
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        path: source
+
+    - name: Set up the simulated GPU and CUDA toolkit
+      uses: pantheongpu/setup-pantheonsim@ca87fe3143b29166822b923d6050945c5179408c # v0.1.5
+      with:
+        gpu: nvidia/h100
+        cuda-toolkit: "13.0"
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libopenmpi-dev openmpi-bin zlib1g-dev
+
+    # t8gpu uses the t8code 2.x/3.x API (t8_scheme_cxx_t), which main still
+    # targets. The v4.0.0 port is in an open pull request.
+    - name: Build t8code
+      run: |
+        git clone --depth 1 --branch ${T8CODE_VERSION} --recurse-submodules --shallow-submodules \
+            https://github.com/DLR-AMR/t8code.git t8code
+        cmake -S t8code -B t8code-build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DT8CODE_BUILD_TESTS=OFF \
+              -DT8CODE_BUILD_TUTORIALS=OFF \
+              -DT8CODE_BUILD_EXAMPLES=OFF \
+              -DT8CODE_BUILD_BENCHMARKS=OFF \
+              -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/t8code-install
+        cmake --build t8code-build -j3
+        cmake --install t8code-build
+
+    # The simulator JIT-compiles PTX and does not run SASS, and it needs a
+    # shared CUDA runtime. CMakeLists.txt hardcodes architecture 86 (SASS), so
+    # it is changed to 90-virtual (PTX only). The examples run forever, so the
+    # loops are shortened to a few time steps. libt8 needs the MPI C++ library,
+    # which CMake does not add for the CUDA link step.
+    - name: Configure t8gpu
+      working-directory: source
+      run: |
+        sed -i 's/set(CMAKE_CUDA_ARCHITECTURES 86)/set(CMAKE_CUDA_ARCHITECTURES 90-virtual)/' CMakeLists.txt
+        sed -i "s/it < 4'000/it < 20/" examples/subgrid/main_2d.cu
+        sed -i "s/i < 20'000/i < 3/" examples/compressible_euler/main.cu
+        cmake -S . -B build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13.0/bin/nvcc \
+              -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared \
+              -DT8CODE_ROOT=${{github.workspace}}/t8code-install \
+              -DCMAKE_CUDA_STANDARD_LIBRARIES="-L/usr/lib/x86_64-linux-gnu/openmpi/lib -lmpi_cxx"
+
+    - name: Build examples
+      working-directory: source
+      run: cmake --build build -j3 --target kelvin_helmholtz subgrid_2d
+
+    - name: Run subgrid_2d
+      working-directory: source/build
+      run: vgpu run ./examples/subgrid/subgrid_2d
+
+    - name: Run kelvin_helmholtz
+      working-directory: source/build
+      run: vgpu run ./examples/compressible_euler/kelvin_helmholtz
